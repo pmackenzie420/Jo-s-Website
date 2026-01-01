@@ -1,35 +1,29 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import { useState } from 'react';
+import { Routes, Route } from 'react-router-dom';
+import Layout from './BoxedLayout';
+//import Layout from './Layout';
+import Home from './Home';
+import Prices from './Prices';
+import Order from './Order';
+import Admin from './Admin';
 
 function App() {
-  const [count, setCount] = useState(0)
+  // Master Language State (Lifted Up)
+  const [lang, setLang] = useState('fr');
 
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
+    <Routes>
+      {/* WRAPPER ROUTE: Applies Header/Nav to everything inside */}
+      <Route element={<Layout lang={lang} setLang={setLang} />}>
+        <Route path="/" element={<Home lang={lang} />} />
+        <Route path="/prices" element={<Prices lang={lang} />} />
+        <Route path="/order" element={<Order lang={lang} />} />
+      </Route>
+      
+      {/* ADMIN IS SEPARATE (No Header) */}
+      <Route path="/admin" element={<Admin />} />
+    </Routes>
+  );
 }
 
-export default App
+export default App;

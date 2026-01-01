@@ -1,68 +1,294 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+  --color-brand: #5D4037;
+  --color-accent: #4A7c59;
+  --color-white: #FFFFFF;
+  --color-black: #000000;
 
-  color-scheme: light dark;
-  color: rgba(255, 255, 255, 0.87);
-  background-color: #242424;
+  --content-width: 1100px;
+  --border-standard: 1px solid var(--color-black);
+}
 
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: var(--color-white);
+  overflow-x: hidden;
+  /* Prevents side-scrolling */
   -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
-a {
-  font-weight: 500;
-  color: #646cff;
-  text-decoration: inherit;
-}
-a:hover {
-  color: #535bf2;
+#root {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--color-white);
 }
 
 body {
-  margin: 0;
+  font-family: Arial, Helvetica, sans-serif;
+  color: var(--color-black);
+}
+
+/* ... Keep the rest of your CSS (hard edges, header, etc.) below this ... */
+
+/* HARD GEOMETRY */
+button,
+input,
+div,
+img,
+table,
+th,
+td {
+  border-radius: 0px !important;
+  box-shadow: none !important;
+}
+
+/* HEADER */
+header {
+  width: 100%;
+  border-bottom: var(--border-standard);
+}
+
+.header-top {
+  background-color: var(--color-accent);
+  color: white;
+  padding: 8px;
+  font-weight: bold;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+}
+
+.header-middle {
+  background-color: white;
+  color: black;
+  padding: 20px 0;
   display: flex;
-  place-items: center;
-  min-width: 320px;
-  min-height: 100vh;
+  justify-content: center;
 }
 
-h1 {
-  font-size: 3.2em;
-  line-height: 1.1;
+.header-middle-content {
+  width: var(--content-width);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 10px;
 }
 
-button {
-  border-radius: 8px;
-  border: 1px solid transparent;
-  padding: 0.6em 1.2em;
-  font-size: 1em;
-  font-weight: 500;
-  font-family: inherit;
-  background-color: #1a1a1a;
+.logo-text {
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.phone-display {
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: -1px;
+}
+
+.address-text {
+  font-size: 0.9rem;
+  text-align: right;
+  max-width: 200px;
+}
+
+.header-nav {
+  background-color: var(--color-brand);
+  color: white;
+  display: flex;
+  justify-content: center;
+}
+
+.nav-content {
+  width: var(--content-width);
+  display: flex;
+  gap: 30px;
+  padding: 0 10px;
+}
+
+.nav-item {
+  padding: 15px 0;
+  color: white;
+  text-decoration: none;
+  font-weight: bold;
+  font-size: 1rem;
+}
+
+.nav-item:hover {
+  text-decoration: underline;
+}
+
+/* MAIN LAYOUT: 2-COLUMN GRID */
+.order-layout {
+  display: grid;
+  grid-template-columns: 1fr 350px;
+  /* Left Content | Right Sidebar */
+  gap: 40px;
+  max-width: var(--content-width);
+  margin: 0 auto 20px auto;
+  padding: 0 10px;
+  align-items: start;
+  /* Keeps sidebar sticky at top */
+}
+
+/* PRODUCTS LIST (Left Column) */
+.product-list {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+/* PRODUCT CARD */
+.product-card {
+  border: var(--border-standard);
+  display: flex;
+  background: white;
+}
+
+.product-img {
+  width: 250px;
+  height: 250px;
+  object-fit: cover;
+  border-right: var(--border-standard);
+}
+
+.product-info {
+  padding: 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+/* STEPPER CONTROL */
+.stepper {
+  display: flex;
+  height: 50px;
+  border: var(--border-standard);
+  width: fit-content;
+  margin-top: 15px;
+}
+
+.stepper button {
+  width: 50px;
+  background: #eee;
+  border: none;
+  font-size: 1.5rem;
+  font-weight: bold;
   cursor: pointer;
-  transition: border-color 0.25s;
-}
-button:hover {
-  border-color: #646cff;
-}
-button:focus,
-button:focus-visible {
-  outline: 4px auto -webkit-focus-ring-color;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+.stepper button:hover {
+  background: #ddd;
+}
+
+.stepper input {
+  width: 80px;
+  text-align: center;
+  border: none;
+  border-left: var(--border-standard);
+  border-right: var(--border-standard);
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+/* Hide stepper arrows */
+input::-webkit-outer-spin-button,
+input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+/* ORDER SUMMARY (Sticky Right Column) */
+.order-summary {
+  position: sticky;
+  top: 20px;
+  /* Sticks to top of viewport */
+  border: var(--border-standard);
+  background: #f9f9f9;
+  padding: 20px;
+}
+
+.summary-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  font-size: 0.95rem;
+}
+
+.summary-total {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: var(--border-standard);
+  font-size: 1.2rem;
+  font-weight: bold;
+}
+
+.btn-checkout {
+  width: 100%;
+  background-color: var(--color-accent);
+  color: white;
+  border: none;
+  padding: 15px;
+  font-size: 1.1rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  margin-top: 20px;
+  cursor: pointer;
+}
+
+.btn-checkout:disabled {
+  background-color: #ccc;
+  cursor: not-allowed;
+}
+
+/* MOBILE RESPONSIVE */
+@media (max-width: 800px) {
+  .header-middle-content {
+    flex-direction: column;
+    gap: 15px;
+    text-align: center;
   }
-  a:hover {
-    color: #747bff;
+
+  .address-text {
+    text-align: center;
   }
-  button {
-    background-color: #f9f9f9;
+
+  .order-layout {
+    grid-template-columns: 1fr;
   }
+
+  .product-card {
+    flex-direction: column;
+  }
+
+  .product-img {
+    width: 100%;
+    height: 200px;
+    border-right: none;
+    border-bottom: var(--border-standard);
+  }
+
+  .order-summary {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    z-index: 100;
+    border-top: 2px solid black;
+    box-shadow: 0 -5px 15px rgba(0, 0, 0, 0.1);
+  }
+
+  .container {
+    padding-bottom: 300px;
+  }
+
+  /* Space for fixed footer */
 }

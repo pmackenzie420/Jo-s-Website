@@ -1,0 +1,224 @@
+/* SITE HEADER COMPONENT - REDESIGNED TO MATCH REFERENCE LAYOUT */
+
+.site-header {
+    width: calc(100% + 24px);
+    margin-left: -12px;
+    margin-right: -12px;
+    background: #fff;
+    border-left: 12px solid #fff;
+    border-right: 12px solid #fff;
+}
+
+/* ==================== ROW 1: GREEN TOP BAR ==================== */
+.green-top-bar {
+    background-color: var(--color-accent);
+    color: white;
+    padding: 8px 0;
+    height: 35px;
+    display: flex;
+    align-items: center;
+}
+
+.green-bar-content {
+    width: 100%;
+    max-width: var(--content-width);
+    margin: 0 auto;
+    padding: 0 20px;
+}
+
+.lang-toggle {
+    cursor: pointer;
+    font-weight: bold;
+    user-select: none;
+    color: white;
+    font-size: 0.9rem;
+}
+
+.lang-toggle span {
+    opacity: 0.7;
+    transition: opacity 0.2s;
+}
+
+.lang-toggle span.active {
+    opacity: 1;
+    text-decoration: underline;
+}
+
+.lang-toggle span:hover {
+    opacity: 0.9;
+}
+
+/* ==================== ROW 2: WHITE HEADER ==================== */
+.white-header {
+    background-color: white;
+    padding: 20px 0;
+}
+
+.white-header-content {
+    width: 100%;
+    max-width: var(--content-width);
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.logo-link {
+    display: flex;
+    align-items: center;
+}
+
+.header-logo {
+    height: 120px;
+    width: auto;
+    object-fit: contain;
+}
+
+/* Contact Section (Right Side) */
+.contact-section {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+
+.contact-details {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 8px;
+}
+
+.contact-phone {
+    font-size: 20px;
+    font-weight: 900;
+    color: black;
+    text-decoration: none;
+    letter-spacing: -0.5px;
+    line-height: 1.5;
+}
+
+.contact-phone:hover {
+    color: var(--color-accent);
+}
+
+.contact-email {
+    font-size: 16px;
+    font-weight: 700;
+    color: black;
+    text-decoration: none;
+    line-height: 1.6;
+}
+
+.contact-email:hover {
+    text-decoration: underline;
+    color: var(--color-accent);
+}
+
+.contact-address {
+    font-size: 15px;
+    font-weight: 700;
+    color: black;
+    line-height: 1.6;
+}
+
+.fb-icon-header {
+    display: flex;
+    align-items: center;
+    transition: transform 0.2s;
+}
+
+.fb-icon-header:hover {
+    transform: scale(1.1);
+}
+
+/* ==================== ROW 3: BROWN NAVIGATION BAR ==================== */
+.brown-nav-bar {
+    background-color: #6B4E3D;
+    padding: 15px 0;
+}
+
+.brown-nav-content {
+    width: 100%;
+    max-width: var(--content-width);
+    margin: 0 auto;
+    padding: 0 20px;
+    display: flex;
+    gap: 40px;
+}
+
+.nav-link {
+    color: white;
+    text-decoration: none;
+    font-weight: bold;
+    font-size: 17px;
+    text-transform: uppercase;
+    padding: 8px 16px;
+    transition: background-color 0.2s;
+    border-radius: 4px;
+}
+
+.nav-link:hover {
+    background-color: rgba(255, 255, 255, 0.15);
+}
+
+.nav-link.active {
+    font-weight: 900;
+    color: rgba(255, 255, 255, 0.95);
+}
+
+/* ==================== RESPONSIVE: MOBILE ==================== */
+@media (max-width: 850px) {
+    .green-top-bar {
+        padding: 12px 0;
+    }
+
+    .green-bar-content {
+        text-align: center;
+    }
+
+    .white-header-content {
+        flex-direction: column;
+        gap: 20px;
+        text-align: center;
+    }
+
+    .header-logo {
+        height: 90px;
+    }
+
+    .contact-section {
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .contact-details {
+        align-items: center;
+    }
+
+    .contact-phone {
+        font-size: 22px;
+    }
+
+    .contact-email,
+    .contact-address {
+        font-size: 14px;
+    }
+
+    .fb-icon-header svg {
+        width: 40px;
+        height: 40px;
+    }
+
+    .brown-nav-content {
+        flex-direction: column;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .nav-link {
+        width: 100%;
+        text-align: center;
+        max-width: 250px;
+    }
+}

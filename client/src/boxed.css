@@ -1,0 +1,173 @@
+/* boxed.css — Safari-proof “boxed page over fixed wallpaper” layout */
+
+/* =========================
+   CONFIG
+========================= */
+:root {
+  /* Target ~1" side margins on ~1440px wide laptop -> paper ~1248px */
+  --paper-target: 1248px;
+  --paper-max: 1320px;
+  /* safety cap for bigger monitors */
+  --paper-border: #ccc;
+  --fallback-green: #4A7c59;
+}
+
+/* =========================
+   GLOBAL RESET + TRANSPARENCY
+   (Prevents html/body/root from painting white over the wallpaper)
+========================= */
+html,
+body {
+  height: 100%;
+  margin: 0;
+  background: transparent;
+}
+
+body {
+  overflow-x: hidden;
+  background: transparent;
+}
+
+html::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background:
+    /* BLACK FILM - darker overlay */
+    linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)),
+    url("/wallpaper.jpg") center/cover no-repeat;
+  z-index: 0;
+  pointer-events: none;
+  transform: translateZ(0);
+}
+
+#root {
+  min-height: 100%;
+  position: relative;
+  z-index: 1;
+  background: transparent !important;
+}
+
+/* OPTIONAL but recommended:
+   If your app uses any top-level wrappers that might paint white,
+   you can apply this class to them: <div className="app-shell">...</div>
+   (Avoid globally forcing all divs to transparent.)
+*/
+.app-shell {
+  background: transparent !important;
+}
+
+/* =========================
+   BOXED LAYOUT STRUCTURE
+========================= */
+/* PAPER WIDTH: margins on sides to show grass */
+.page-wrapper {
+  width: calc(100% - 40px);
+  max-width: 1100px;
+  margin: 0 auto;
+  background: #fff;
+  padding: 0 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.boxed-container {
+  width: 100%;
+  max-width: var(--content-width);
+  margin: 0 auto;
+  padding: 0 20px;
+  display: flex;
+  flex-direction: column;
+}
+
+.white-paper {
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* Optional: add rounded corners if you want the “sheet” look */
+.white-paper.rounded {
+  border-radius: 6px;
+}
+
+/* Footer that floats over wallpaper */
+.boxed-footer {
+  text-align: center;
+  padding: 40px 20px;
+  margin-top: 20px;
+  background: transparent !important;
+  color: #fff;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
+}
+
+.boxed-footer p {
+  font-size: 1.1rem;
+  margin: 6px 0;
+  font-weight: 700;
+}
+
+.footer-logo-text {
+  text-transform: uppercase;
+  font-size: 1.8rem;
+  font-weight: 900;
+  margin-bottom: 14px;
+  letter-spacing: 1px;
+}
+
+.footer-fb-link {
+  display: inline-block;
+  margin-bottom: 10px;
+  opacity: 1;
+  transition: opacity 0.2s ease;
+}
+
+.footer-fb-link:hover {
+  opacity: 0.7;
+}
+
+/* =========================
+   IMPORTANT: COMMON “MARGINS NOT SHOWING” GOTCHA
+   If you still don’t see wallpaper in the margins, it means some layout wrapper
+   in your app is painting a solid background (often white).
+   Make sure ONLY .white-paper is white.
+========================= */
+/* Example helper (use selectively if needed):
+.main-layout,
+.site-layout,
+.layout,
+.container,
+main {
+  background: transparent !important;
+}
+*/
+
+/* =========================
+   MOBILE OVERRIDES
+   (Remove the boxed margins, use full width; make footer readable)
+========================= */
+/* Mobile: full width */
+@media (max-width: 800px) {
+  .page-wrapper {
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+  }
+
+  .white-paper {
+    box-shadow: none;
+    border: none;
+    border-bottom: 1px solid #ccc;
+  }
+
+  .boxed-footer {
+    background: #222 !important;
+    color: #fff;
+    text-shadow: none;
+    margin-top: 0;
+    padding: 40px 20px;
+  }
+}
