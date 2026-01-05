@@ -1,29 +1,38 @@
 /* SITE HEADER COMPONENT - REDESIGNED TO MATCH REFERENCE LAYOUT */
 
 .site-header {
-    width: calc(100% + 24px);
-    margin-left: -12px;
-    margin-right: -12px;
-    background: #fff;
-    border-left: 12px solid #fff;
-    border-right: 12px solid #fff;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    background-color: white;
+    /* Changed to white to fill sides of boxed nav */
+    padding-bottom: 12px;
+    /* Extend white down */
+    border-bottom: none !important;
+    /* Remove black line */
+    display: flex;
+    flex-direction: column;
+    position: relative;
 }
 
+/* ==================== ROW 1: GREEN TOP BAR ==================== */
 /* ==================== ROW 1: GREEN TOP BAR ==================== */
 .green-top-bar {
     background-color: var(--color-accent);
     color: white;
-    padding: 8px 0;
-    height: 35px;
+    padding: 14px 0;
+    min-height: 48px;
     display: flex;
     align-items: center;
+    width: 100%;
 }
 
 .green-bar-content {
     width: 100%;
-    max-width: var(--content-width);
+    max-width: 1250px;
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 40px;
+    box-sizing: border-box;
 }
 
 .lang-toggle {
@@ -49,19 +58,22 @@
 }
 
 /* ==================== ROW 2: WHITE HEADER ==================== */
+/* ==================== ROW 2: HEADER MAIN SECTION ==================== */
 .white-header {
     background-color: white;
     padding: 20px 0;
+    width: 100%;
 }
 
 .white-header-content {
     width: 100%;
-    max-width: var(--content-width);
+    max-width: 1250px;
     margin: 0 auto;
-    padding: 0 20px;
+    padding: 0 40px;
     display: flex;
     justify-content: space-between;
     align-items: center;
+    box-sizing: border-box;
 }
 
 .logo-link {
@@ -81,6 +93,62 @@
     align-items: center;
     gap: 20px;
 }
+
+.menu-toggle {
+    display: none;
+    background: transparent;
+    border: none;
+    border-radius: 8px;
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    flex-direction: column;
+    cursor: pointer;
+}
+
+.menu-bar {
+    display: block;
+    width: 26px;
+    height: 3px;
+    background: #333;
+    border-radius: 2px;
+}
+
+.mobile-menu {
+    display: none;
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    top: 100%;
+    background-color: #5a7c5e;
+    border-radius: 0 0 10px 10px;
+    overflow: hidden;
+    max-height: 0;
+    transition: max-height 0.2s ease;
+    z-index: 5;
+}
+
+.mobile-menu.open {
+    max-height: 500px;
+    padding: 10px 0 16px;
+}
+
+.mobile-nav-links {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 0 16px 12px;
+}
+
+.mobile-nav-link {
+    width: 100%;
+    text-align: left;
+    padding: 10px 16px;
+    border-radius: 6px;
+}
+
 
 .contact-details {
     display: flex;
@@ -132,19 +200,28 @@
     transform: scale(1.1);
 }
 
-/* ==================== ROW 3: BROWN NAVIGATION BAR ==================== */
+/* ==================== ROW 3: GREEN NAVIGATION BAR ==================== */
+/* ==================== ROW 3: GREEN NAVIGATION BAR ==================== */
+/* ==================== ROW 3: GREEN NAVIGATION BAR ==================== */
 .brown-nav-bar {
-    background-color: #6B4E3D;
+    background-color: #5a7c5e;
     padding: 15px 0;
+    border-radius: 10px 10px 0 0;
+    /* Slight rounded upper corners */
+
+    /* BOXED LAYOUT MATCHING .page-wrapper */
+    width: calc(100% - 40px);
+    max-width: 1250px;
+    margin: 0 auto;
 }
 
 .brown-nav-content {
     width: 100%;
-    max-width: var(--content-width);
-    margin: 0 auto;
-    padding: 0 20px;
+    /* Remove max-width/margin as parent is already restricted */
+    padding: 0 40px;
     display: flex;
     gap: 40px;
+    box-sizing: border-box;
 }
 
 .nav-link {
@@ -169,27 +246,25 @@
 
 /* ==================== RESPONSIVE: MOBILE ==================== */
 @media (max-width: 850px) {
-    .green-top-bar {
-        padding: 12px 0;
-    }
-
     .green-bar-content {
         text-align: center;
+        padding: 0 20px;
     }
 
     .white-header-content {
-        flex-direction: column;
-        gap: 20px;
-        text-align: center;
+        flex-direction: row;
+        justify-content: space-between;
+        gap: 16px;
+        text-align: left;
+        padding: 0 20px;
     }
 
     .header-logo {
-        height: 90px;
+        height: 70px;
     }
 
     .contact-section {
-        flex-direction: column;
-        gap: 15px;
+        display: none;
     }
 
     .contact-details {
@@ -210,15 +285,17 @@
         height: 40px;
     }
 
-    .brown-nav-content {
-        flex-direction: column;
-        align-items: center;
-        gap: 10px;
+    .brown-nav-bar {
+        display: none;
     }
 
-    .nav-link {
-        width: 100%;
-        text-align: center;
-        max-width: 250px;
+    .menu-toggle {
+        display: inline-flex;
+    }
+
+    .mobile-menu {
+        display: block;
+        left: 12px;
+        right: 12px;
     }
 }

@@ -1,22 +1,22 @@
 import { Outlet } from 'react-router-dom';
-import SiteHeader from './SiteHeader';
-import './boxed.css';
+import SiteHeader from '../components/SiteHeader';
+import { LINKS } from '../constants/links';
+import '../styles/layouts/boxed.css';
 
 export default function BoxedLayout({ lang, setLang }) {
 
   return (
     <>
+      <SiteHeader lang={lang} setLang={setLang} />
+
       {/* 1. MAIN WRAPPER */}
       <div className="page-wrapper">
 
         {/* 2. WHITE PAPER CONTAINER (Header + Content) */}
         <div className="white-paper">
 
-          {/* Site Header Component */}
-          <SiteHeader lang={lang} setLang={setLang} />
-
           {/* --- Main Content (Outlet) --- */}
-          <div style={{ minHeight: '60vh' }}>
+          <div>
             <Outlet />
           </div>
 
@@ -30,7 +30,7 @@ export default function BoxedLayout({ lang, setLang }) {
         <img src="/logo_white.png" alt="Les Fermes Soulard Logo" style={{ height: '160px', marginBottom: '35px' }} />
 
         <a
-          href="https://www.facebook.com/profile.php?id=100057648781893"
+          href={LINKS.facebook}
           target="_blank"
           rel="noopener noreferrer"
           aria-label="Facebook"
@@ -43,14 +43,13 @@ export default function BoxedLayout({ lang, setLang }) {
         </a>
 
         <div style={{ marginTop: '35px', marginBottom: '20px', textAlign: 'center' }}>
-          <p style={{ margin: '5px 0', fontSize: '1rem' }}>315 ch. Back Bush, Hemmingford, QC</p>
           <a
-            href="https://www.google.com/maps/search/?api=1&query=315+ch.+Back+Bush,+Hemmingford,+QC"
+            href={LINKS.maps.hemmingford}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ color: '#fff', textDecoration: 'underline', fontSize: '0.9rem' }}
+            style={{ margin: '5px 0', fontSize: '0.9rem', color: '#fff', textDecoration: 'none', display: 'block' }}
           >
-            Get Directions / Obtenir l'itinéraire
+            315 ch. Back Bush, Hemmingford, QC
           </a>
         </div>
       </footer>

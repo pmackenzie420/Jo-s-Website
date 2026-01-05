@@ -1,8 +1,7 @@
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import './SiteHeader.css';
-
-// Facebook page URL
-const FB_URL = "https://www.facebook.com/profile.php?id=100057648781893";
+import { LINKS } from '../constants/links';
+import '../styles/components/SiteHeader.css';
 
 // Content translations
 const contentMap = {
@@ -23,9 +22,18 @@ const contentMap = {
 export default function SiteHeader({ lang, setLang }) {
     const t = contentMap[lang];
     const location = useLocation();
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
 
     // Check if link is active
     const isActive = (path) => location.pathname === path ? 'active' : '';
+
+    useEffect(() => {
+        setIsMenuOpen(false);
+    }, [location.pathname]);
+
+    const handleNavClick = () => {
+        setIsMenuOpen(false);
+    };
 
     return (
         <header className="site-header">
@@ -58,15 +66,36 @@ export default function SiteHeader({ lang, setLang }) {
                         <img src="/logo.png" alt="Les Fermes Soulard S.E.N.C." className="header-logo" />
                     </Link>
 
+                    <button
+                        className="menu-toggle"
+                        type="button"
+                        aria-label="Toggle navigation menu"
+                        aria-expanded={isMenuOpen}
+                        aria-controls="mobile-menu"
+                        onClick={() => setIsMenuOpen((open) => !open)}
+                    >
+                        <span className="menu-bar" />
+                        <span className="menu-bar" />
+                        <span className="menu-bar" />
+                    </button>
+
                     {/* Contact Info Right */}
                     <div className="contact-section">
                         <div className="contact-details">
                             <a href="tel:8197700070" className="contact-phone">(819) 770-0070</a>
                             <a href="mailto:lesfermessoulard@gmail.com" className="contact-email">lesfermessoulard@gmail.com</a>
-                            <span className="contact-address">315 ch. Back Bush, Hemmingford, Qc</span>
+                            <a
+                                href={LINKS.maps.hemmingford}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="contact-address"
+                                style={{ textDecoration: 'none' }}
+                            >
+                                315 ch. Back Bush, Hemmingford, Qc
+                            </a>
                         </div>
                         <a
-                            href={FB_URL}
+                            href={LINKS.facebook}
                             target="_blank"
                             rel="noopener noreferrer"
                             aria-label="Facebook"
@@ -79,6 +108,14 @@ export default function SiteHeader({ lang, setLang }) {
                         </a>
                     </div>
                 </div>
+            </div>
+
+            <div id="mobile-menu" className={`mobile-menu ${isMenuOpen ? 'open' : ''}`}>
+                <nav className="mobile-nav-links">
+                    <Link to="/" className={`nav-link mobile-nav-link ${isActive('/')}`} onClick={handleNavClick}>{t.nav_home}</Link>
+                    <Link to="/prices" className={`nav-link mobile-nav-link ${isActive('/prices')}`} onClick={handleNavClick}>{t.nav_prices}</Link>
+                    <Link to="/order" className={`nav-link mobile-nav-link ${isActive('/order')}`} onClick={handleNavClick}>{t.nav_order}</Link>
+                </nav>
             </div>
 
             {/* ROW 3: BROWN NAVIGATION BAR */}
