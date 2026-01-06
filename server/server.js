@@ -1,20 +1,80 @@
 require('dotenv').config();
+const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const EMAIL_API_KEY = process.env.EMAIL_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM;
+const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Les Fermes Soulard';
+const PAID_STATUSES = new Set(['paid', 'fulfilled', 'picked_up']);
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET;
+const ADMIN_SESSION_COOKIE = 'admin_session';
+const ADMIN_SESSION_DAYS = Number(process.env.ADMIN_SESSION_DAYS || 30);
+const ADMIN_SESSION_TTL_MS = Number.isFinite(ADMIN_SESSION_DAYS)
+    ? ADMIN_SESSION_DAYS * 24 * 60 * 60 * 1000
+    : 30 * 24 * 60 * 60 * 1000;
+const ORDER_CONFIRM_SECRET = process.env.ORDER_CONFIRM_SECRET;
+const ORDER_CONFIRM_COOKIE = 'order_confirm';
+const ORDER_CONFIRM_TTL_MINUTES = Number(process.env.ORDER_CONFIRM_TTL_MINUTES || 120);
+const ORDER_CONFIRM_TTL_MS = Number.isFinite(ORDER_CONFIRM_TTL_MINUTES)
+    ? ORDER_CONFIRM_TTL_MINUTES * 60 * 1000
+    : 2 * 60 * 60 * 1000;
+
+const LOCATION_DETAILS = {
+    hemmingford: {
+        label: 'Hemmingford',
+        address: '315 ch. Back Bush, Hemmingford, QC'
+    },
+    bristol: {
+        label: 'Bristol',
+        address: '84 Rte 148, Bristol, QC'
+    }
+};
+
+const COMPANY_CONTACT = {
+    name: 'Les Fermes Soulard',
+    address: '315 ch. Back Bush, Hemmingford, QC',
+    phone: '(819) 770-0070',
+    email: 'lesfermessoulard@gmail.com'
+};
 
 const app = express();
 const port = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "my-secret-password";
+app.set('trust proxy', 1);
 
-app.use(cors());
+const parseOriginList = (value) => (value || '')
+    .split(',')
+    .map((entry) => entry.trim().replace(/\/+$/, ''))
+    .filter(Boolean);
 
+const corsOrigins = parseOriginList(process.env.CORS_ORIGINS || process.env.CLIENT_URL);
+const corsOptions = {
+    origin: (origin, callback) => {
+        if (!origin) {
+            callback(null, true);
+            return;
+        }
+        if (corsOrigins.length === 0) {
+            callback(new Error('CORS_ORIGINS not configured'));
+            return;
+        }
+        if (corsOrigins.includes(origin)) {
+            callback(null, true);
+            return;
+        }
+        callback(new Error('Not allowed by CORS'));
+    },
+    credentials: true
+};
+
+app.use(cors(corsOptions));
+
+const shouldUseDatabaseSsl = String(process.env.DATABASE_SSL || 'true').toLowerCase() !== 'false';
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: { rejectUnauthorized: false }
+    ssl: shouldUseDatabaseSsl ? { rejectUnauthorized: true } : false
 });
 
 const parseOrderItems = (items) => {
@@ -29,6 +89,214 @@ const parseOrderItems = (items) => {
     }
     return [];
 };
+
+const getRequestBaseUrl = (req) => {
+    const envUrl = process.env.CLIENT_URL;
+    const originHeader = req.get('origin');
+    const sanitizedOrigin =
+        typeof originHeader === 'string' ? originHeader.trim().replace(/\/+$/, '') : '';
+
+    if (envUrl) {
+        return envUrl.replace(/\/+$/, '');
+    }
+
+    if (sanitizedOrigin && corsOrigins.includes(sanitizedOrigin)) {
+        return sanitizedOrigin;
+    }
+
+    if (corsOrigins.length === 0) {
+        return null;
+    }
+
+    const forwardedProto = req.headers['x-forwarded-proto'];
+    const forwardedHost = req.headers['x-forwarded-host'];
+    const proto = typeof forwardedProto === 'string'
+        ? forwardedProto.split(',')[0]
+        : req.protocol;
+    const host = typeof forwardedHost === 'string'
+        ? forwardedHost.split(',')[0]
+        : req.get('host');
+    const candidate = `${proto}://${host}`;
+    if (corsOrigins.includes(candidate)) {
+        return candidate;
+    }
+    return null;
+};
+
+const formatPickupDate = (value) => {
+    if (!value) return '';
+    if (value instanceof Date) {
+        return value.toISOString().split('T')[0];
+    }
+    if (typeof value === 'string') {
+        return value.split('T')[0];
+    }
+    return String(value);
+};
+
+const formatPickupDateLong = (value) => {
+    if (!value) return '';
+    const dateValue = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(dateValue.getTime())) {
+        return formatPickupDate(value);
+    }
+    try {
+        return new Intl.DateTimeFormat('en-CA', {
+            month: 'long',
+            day: 'numeric',
+            year: 'numeric'
+        }).format(dateValue);
+    } catch (err) {
+        return formatPickupDate(value);
+    }
+};
+
+const formatCurrency = (cents) => {
+    const numeric = Number(cents);
+    if (!Number.isFinite(numeric)) return '';
+    return `$${(numeric / 100).toFixed(2)}`;
+};
+
+const escapeHtml = (value) => String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+
+const parseCookies = (cookieHeader) => {
+    if (!cookieHeader) return {};
+    return cookieHeader.split(';').reduce((acc, part) => {
+        const [key, ...rest] = part.trim().split('=');
+        if (!key) return acc;
+        const value = rest.join('=');
+        try {
+            acc[key] = decodeURIComponent(value);
+        } catch (error) {
+            acc[key] = value;
+        }
+        return acc;
+    }, {});
+};
+
+const rateLimitStore = new Map();
+
+const getClientIp = (req) => {
+    const forwarded = req.headers['x-forwarded-for'];
+    if (typeof forwarded === 'string' && forwarded.length > 0) {
+        return forwarded.split(',')[0].trim();
+    }
+    return req.ip || 'unknown';
+};
+
+const createRateLimiter = ({ windowMs, max, keyPrefix }) => (req, res, next) => {
+    const key = `${keyPrefix}:${getClientIp(req)}`;
+    const now = Date.now();
+    const entry = rateLimitStore.get(key);
+    if (!entry || entry.resetAt <= now) {
+        rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
+        return next();
+    }
+    if (entry.count >= max) {
+        const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
+        res.set('Retry-After', String(retryAfter));
+        return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    }
+    entry.count += 1;
+    return next();
+};
+
+const signToken = (payload, secret) => {
+    if (!secret) {
+        throw new Error('Token secret is not configured');
+    }
+    const body = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+    const signature = crypto
+        .createHmac('sha256', secret)
+        .update(body)
+        .digest('base64url');
+    return `${body}.${signature}`;
+};
+
+const verifyToken = (token, secret) => {
+    if (!token || !secret) return null;
+    const parts = token.split('.');
+    if (parts.length !== 2) return null;
+    const [body, signature] = parts;
+    const expected = crypto
+        .createHmac('sha256', secret)
+        .update(body)
+        .digest('base64url');
+    try {
+        if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+            return null;
+        }
+    } catch (error) {
+        return null;
+    }
+    let payload;
+    try {
+        payload = JSON.parse(Buffer.from(body, 'base64url').toString('utf8'));
+    } catch (error) {
+        return null;
+    }
+    if (!payload?.exp || Date.now() > payload.exp) {
+        return null;
+    }
+    return payload;
+};
+
+const signAdminSession = (payload) => signToken(payload, ADMIN_SESSION_SECRET);
+const verifyAdminSession = (token) => verifyToken(token, ADMIN_SESSION_SECRET);
+
+const signOrderConfirmToken = (sessionId) => {
+    if (!ORDER_CONFIRM_SECRET || !sessionId) {
+        return null;
+    }
+    const now = Date.now();
+    return signToken({
+        sub: 'order-confirm',
+        sid: sessionId,
+        iat: now,
+        exp: now + ORDER_CONFIRM_TTL_MS
+    }, ORDER_CONFIRM_SECRET);
+};
+
+const verifyOrderConfirmToken = (token) => {
+    const payload = verifyToken(token, ORDER_CONFIRM_SECRET);
+    if (!payload || payload.sub !== 'order-confirm' || !payload.sid) {
+        return null;
+    }
+    return payload;
+};
+
+const getAdminSessionCookieOptions = () => ({
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: ADMIN_SESSION_TTL_MS,
+    path: '/api'
+});
+
+const getOrderConfirmCookieOptions = () => ({
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: ORDER_CONFIRM_TTL_MS,
+    path: '/api'
+});
+
+const adminLoginLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 10,
+    keyPrefix: 'admin-login'
+});
+
+const orderConfirmLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: 30,
+    keyPrefix: 'order-confirm'
+});
 
 const finalizeOrderFromSession = async (session) => {
     const orderIdFromMetadata = session?.metadata?.order_id;
@@ -87,7 +355,13 @@ const finalizeOrderFromSession = async (session) => {
         ]);
 
         await pool.query('COMMIT');
-        return { status: nextStatus, orderId };
+        const result = { status: nextStatus, orderId };
+        try {
+            await sendOrderConfirmationEmail(orderId);
+        } catch (err) {
+            console.error('Error sending confirmation email:', err);
+        }
+        return result;
     } catch (err) {
         if (transactionStarted) {
             try {
@@ -153,6 +427,275 @@ const calculateItemPrice = (henName, qty) => {
     return 0;
 };
 
+const getOrderSummary = async (orderId) => {
+    const orderResult = await pool.query(
+        `SELECT 
+            orders.*,
+            customers.name as customer_name,
+            customers.phone as customer_phone,
+            customers.address as customer_address
+         FROM orders
+         LEFT JOIN customers ON orders.customer_id = customers.id
+         WHERE orders.id = $1`,
+        [orderId]
+    );
+
+    if (orderResult.rows.length === 0) {
+        return null;
+    }
+
+    const order = orderResult.rows[0];
+    const parsedItems = parseOrderItems(order.items);
+    const itemIds = parsedItems
+        .map((item) => String(item.id))
+        .filter((id) => id && id !== 'undefined' && id !== 'null');
+    let henMap = new Map();
+    if (itemIds.length > 0) {
+        const hensResult = await pool.query(
+            'SELECT id::text as id, name FROM hens WHERE id::text = ANY($1::text[])',
+            [itemIds]
+        );
+        henMap = new Map(hensResult.rows.map((hen) => [hen.id, hen.name]));
+    }
+    const items = parsedItems.map((item) => {
+        const id = String(item.id);
+        const quantity = Number(item.quantity ?? item.qty ?? 0);
+        const rawName = henMap.get(id) || item.name || 'Item';
+        const name = String(rawName);
+        const unitCents = calculateItemPrice(name, quantity);
+        const lineCents = unitCents * quantity;
+        return {
+            id,
+            name,
+            quantity,
+            unit_cents: unitCents,
+            line_cents: lineCents
+        };
+    });
+
+    return { order, items };
+};
+
+const buildOrderConfirmationEmailText = ({ order, items }) => {
+    const customerName = order.customer_name || 'there';
+    const pickupDate = formatPickupDateLong(order.pickup_date);
+    const locationKey = order.pickup_location;
+    const locationDetails = locationKey ? LOCATION_DETAILS[locationKey] : null;
+    const locationLabel = locationDetails?.label || locationKey || '';
+    const locationAddress = locationDetails?.address || '';
+    const total = formatCurrency(order.total_cents);
+
+    const lines = [`Hi ${customerName},`, '', 'Thank you for your order!'];
+
+    if (pickupDate || locationLabel || locationAddress) {
+        lines.push('', 'PICKUP DETAILS:');
+        if (pickupDate) {
+            lines.push(`Date: ${pickupDate}`);
+        }
+        if (locationLabel) {
+            lines.push(`Location: ${locationLabel}`);
+        }
+        if (locationAddress) {
+            lines.push(`Address: ${locationAddress}`);
+        }
+    }
+
+    lines.push('', 'YOUR ORDER:');
+    if (items.length > 0) {
+        for (const item of items) {
+            const displayName = String(item.name || 'Item').split(' / ')[0];
+            const lineTotal = formatCurrency(item.line_cents);
+            const quantity = Number(item.quantity ?? 0);
+            const line = lineTotal
+                ? `- ${quantity} ${displayName} - ${lineTotal}`
+                : `- ${quantity} ${displayName}`;
+            lines.push(line);
+        }
+    } else {
+        lines.push('- Item details unavailable');
+    }
+
+    lines.push('');
+
+    if (total) {
+        lines.push(`Total: ${total}`, '');
+    }
+
+    lines.push(
+        `Order ID: ${order.id}`,
+        '',
+        `Questions? Reply to this email or call us at ${COMPANY_CONTACT.phone}.`,
+        '',
+        '---',
+        COMPANY_CONTACT.name,
+        COMPANY_CONTACT.address,
+        `${COMPANY_CONTACT.phone}`,
+        COMPANY_CONTACT.email
+    );
+
+    return lines.join('\n');
+};
+
+const buildOrderConfirmationEmailHtml = ({ order, items }) => {
+    const customerName = escapeHtml(order.customer_name || 'there');
+    const pickupDate = escapeHtml(formatPickupDateLong(order.pickup_date));
+    const locationKey = order.pickup_location;
+    const locationDetails = locationKey ? LOCATION_DETAILS[locationKey] : null;
+    const locationLabel = escapeHtml(locationDetails?.label || locationKey || '');
+    const locationAddress = escapeHtml(locationDetails?.address || '');
+    const total = escapeHtml(formatCurrency(order.total_cents));
+    const orderId = escapeHtml(order.id);
+    const emailLink = `mailto:${encodeURIComponent(COMPANY_CONTACT.email)}`;
+
+    const itemRows = items.length > 0
+        ? items.map((item) => {
+            const displayName = escapeHtml(String(item.name || 'Item').split(' / ')[0]);
+            const quantity = escapeHtml(Number(item.quantity ?? 0));
+            const lineTotal = escapeHtml(formatCurrency(item.line_cents));
+            return `<li style="margin-bottom: 6px;">${quantity} ${displayName}${lineTotal ? ` - ${lineTotal}` : ''}</li>`;
+        }).join('')
+        : '<li>Item details unavailable</li>';
+
+    const pickupDetails = (pickupDate || locationLabel || locationAddress)
+        ? `
+      <div style="background: #f5f5f5; padding: 15px; margin: 20px 0; border-left: 4px solid #2D5A3D;">
+        <h3 style="margin-top: 0; color: #333;">Pickup Details</h3>
+        <p style="margin: 0; color: #333;">
+          ${pickupDate ? `<strong>Date:</strong> ${pickupDate}<br>` : ''}
+          ${locationLabel ? `<strong>Location:</strong> ${locationLabel}<br>` : ''}
+          ${locationAddress ? `<strong>Address:</strong> ${locationAddress}` : ''}
+        </p>
+      </div>`
+        : '';
+
+    return `
+  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+  <div style="background: #2D5A3D; color: white; padding: 20px; text-align: center;">
+    <h1 style="margin: 0;">${escapeHtml(COMPANY_CONTACT.name)}</h1>
+  </div>
+
+  <div style="padding: 20px; background: white; color: #333;">
+    <p>Hi ${customerName},</p>
+    <p>Thank you for your order!</p>
+    ${pickupDetails}
+    <h3 style="margin-bottom: 8px;">Your Order</h3>
+    <ul style="padding-left: 18px; margin-top: 0;">${itemRows}</ul>
+    ${total ? `<p style="font-weight: bold;">Total: ${total}</p>` : ''}
+    <p style="font-size: 12px; color: #666;">Order ID: ${orderId}</p>
+    <p>Questions? Reply to this email or call us at ${escapeHtml(COMPANY_CONTACT.phone)}.</p>
+  </div>
+
+  <div style="background: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #666;">
+    <p style="margin: 0;">
+      ${escapeHtml(COMPANY_CONTACT.name)}<br>
+      ${escapeHtml(COMPANY_CONTACT.address)}<br>
+      ${escapeHtml(COMPANY_CONTACT.phone)} • <a href="${emailLink}" style="color: #2D5A3D; text-decoration: none;">${escapeHtml(COMPANY_CONTACT.email)}</a>
+    </p>
+  </div>
+</div>`.trim();
+};
+
+const buildOrderConfirmationEmailPayload = ({ order, items }) => {
+    const pickupDate = formatPickupDateLong(order.pickup_date);
+    const subjectDate = pickupDate ? ` - Pickup ${pickupDate}` : '';
+    const subject = `Order Confirmed${subjectDate}`;
+    const text = buildOrderConfirmationEmailText({ order, items });
+    const html = buildOrderConfirmationEmailHtml({ order, items });
+    return { subject, text, html };
+};
+
+const sendEmailMessage = async ({ to, subject, text, html }) => {
+    const content = [
+        {
+            type: 'text/plain',
+            value: text || ''
+        }
+    ];
+
+    if (html) {
+        content.push({
+            type: 'text/html',
+            value: html
+        });
+    }
+
+    const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
+        method: 'POST',
+        headers: {
+            Authorization: `Bearer ${EMAIL_API_KEY}`,
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            personalizations: [
+                {
+                    to: [{
+                        email: to.email,
+                        name: to.name || undefined
+                    }]
+                }
+            ],
+            from: { email: EMAIL_FROM, name: EMAIL_FROM_NAME },
+            subject,
+            content
+        })
+    });
+
+    if (!response.ok) {
+        const errorBody = await response.text();
+        throw new Error(`Email send failed: ${errorBody}`);
+    }
+};
+
+const sendOrderConfirmationEmail = async (orderId) => {
+    if (!EMAIL_API_KEY || !EMAIL_FROM) {
+        return { skipped: 'not_configured' };
+    }
+
+    const summary = await getOrderSummary(orderId);
+    if (!summary) {
+        return { skipped: 'missing_order' };
+    }
+
+    const { order, items } = summary;
+    if (!order.customer_email) {
+        return { skipped: 'missing_email' };
+    }
+
+    const status = String(order.status || '').toLowerCase();
+    if (!PAID_STATUSES.has(status)) {
+        return { skipped: 'not_paid' };
+    }
+
+    const claim = await pool.query(
+        'UPDATE orders SET confirmation_email_sent_at = NOW() WHERE id = $1 AND confirmation_email_sent_at IS NULL RETURNING confirmation_email_sent_at',
+        [orderId]
+    );
+    if (claim.rows.length === 0) {
+        return { skipped: 'already_sent' };
+    }
+
+    const emailPayload = buildOrderConfirmationEmailPayload({ order, items });
+
+    try {
+        await sendEmailMessage({
+            to: {
+                email: order.customer_email,
+                name: order.customer_name
+            },
+            subject: emailPayload.subject,
+            text: emailPayload.text,
+            html: emailPayload.html
+        });
+        return { sent: true };
+    } catch (err) {
+        await pool.query(
+            'UPDATE orders SET confirmation_email_sent_at = NULL WHERE id = $1',
+            [orderId]
+        );
+        throw err;
+    }
+};
+
 // --- ROUTES ---
 
 app.get('/', (req, res) => res.send('Hen Store API Running 🐔'));
@@ -166,112 +709,9 @@ app.get('/api/hens', async (req, res) => {
     }
 });
 
-app.post('/api/create-checkout-session', async (req, res) => {
-    try {
-        const { items } = req.body;
-        let lineItems = [];
-
-        for (const item of items) {
-            const result = await pool.query('SELECT * FROM hens WHERE id = $1', [item.id]);
-            const hen = result.rows[0];
-
-            if (!hen) continue;
-
-            const quantity = Number(item.quantity);
-            if (!Number.isFinite(quantity) || quantity <= 0) continue;
-
-            const availableStock = Number(hen.stock);
-            if (Number.isFinite(availableStock) && availableStock < quantity) {
-                return res.status(400).json({
-                    error: `Insufficient stock for ${hen.name}`
-                });
-            }
-
-            // Calculate Dynamic Price based on Quantity
-            const unitPrice = calculateItemPrice(hen.name, quantity);
-
-            // Build product_data
-            const productData = {
-                name: hen.name,
-                description: `Bulk Tier Applied: $${(unitPrice / 100).toFixed(2)}/unit`,
-            };
-
-            // Only add images if we have a valid absolute URL
-            if (hen.image_url) {
-                // If it's a relative URL (starts with /), make it absolute
-                if (hen.image_url.startsWith('/')) {
-                    productData.images = [`${process.env.CLIENT_URL}${hen.image_url}`];
-                }
-                // If it's already absolute (starts with http), use as-is
-                else if (hen.image_url.startsWith('http')) {
-                    productData.images = [hen.image_url];
-                }
-                // Otherwise, skip the image (invalid format)
-            }
-
-            lineItems.push({
-                price_data: {
-                    currency: 'cad', // Changed to CAD since you are in Quebec
-                    product_data: productData,
-                    unit_amount: unitPrice,
-                },
-                quantity,
-            });
-        }
-
-        const session = await stripe.checkout.sessions.create({
-            payment_method_types: ['card'],
-            line_items: lineItems,
-            mode: 'payment',
-            // FORCE PICKUP SELECTION
-            custom_fields: [
-                {
-                    key: 'pickup_location',
-                    label: {
-                        type: 'custom',
-                        custom: 'Pick-up Location / Lieu de ramassage',
-                    },
-                    type: 'dropdown',
-                    dropdown: {
-                        options: [
-                            { label: 'Hemmingford (Montérégie)', value: 'hemmingford' },
-                            { label: 'Bristol (Outaouais)', value: 'bristol' },
-                        ],
-                    },
-                },
-            ],
-            success_url: `${process.env.CLIENT_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${process.env.CLIENT_URL}?canceled=true`,
-        });
-
-        res.json({ url: session.url });
-
-    } catch (err) {
-        console.error(err);
-        res.status(500).json({ error: err.message });
-    }
-});
-
 // --- CUSTOMER & CHECKOUT ROUTES ---
 
-// 1. Lookup Customer by Phone
-app.get('/api/customers/lookup', async (req, res) => {
-    const { phone } = req.query;
-    if (!phone) return res.status(400).send("Phone required");
-
-    try {
-        const result = await pool.query('SELECT * FROM customers WHERE phone = $1', [phone]);
-        if (result.rows.length > 0) {
-            res.json(result.rows[0]);
-        } else {
-            res.json(null); // Not found
-        }
-    } catch (err) {
-        res.status(500).send(err.message);
-    }
-});
-
-// 2. Checkout (Upsert Customer -> Create Order -> Stripe Session)
+// 1. Checkout (Upsert Customer -> Create Order -> Stripe Session)
 app.post('/api/checkout', async (req, res) => {
     const { customer, items, pickup } = req.body;
     // customer: { name, phone, email, address }
@@ -279,6 +719,16 @@ app.post('/api/checkout', async (req, res) => {
     // items: [{ id, quantity }]
 
     try {
+        if (!pickup?.date || !pickup?.location) {
+            return res.status(400).json({ error: 'Pickup date and location are required.' });
+        }
+        const pickupCheck = await pool.query(
+            'SELECT 1 FROM pickup_dates WHERE is_active = true AND date_value = $1 AND location = $2',
+            [pickup.date, pickup.location]
+        );
+        if (pickupCheck.rows.length === 0) {
+            return res.status(400).json({ error: 'Selected pickup date is not available for that location.' });
+        }
         // A. Upsert Customer
         let customerId;
         const existingCust = await pool.query('SELECT id FROM customers WHERE phone = $1', [customer.phone]);
@@ -351,17 +801,27 @@ app.post('/api/checkout', async (req, res) => {
         const orderId = newOrder.rows[0].id;
 
         // D. Create Stripe Session
+        const baseUrl = getRequestBaseUrl(req);
+        if (!baseUrl) {
+            return res.status(500).json({ error: 'Checkout redirect URL not configured.' });
+        }
+
         const session = await stripe.checkout.sessions.create({
             payment_method_types: ['card'],
             line_items: lineItems,
             mode: 'payment',
             metadata: { order_id: orderId }, // Link Stripe to our DB Order
-            success_url: `${process.env.CLIENT_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
-            cancel_url: `${process.env.CLIENT_URL}?canceled=true`,
+            success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancel_url: `${baseUrl}?canceled=true`,
         });
 
         // Update Order with Stripe ID
         await pool.query('UPDATE orders SET stripe_payment_id = $1 WHERE id = $2', [session.id, orderId]);
+
+        const confirmToken = signOrderConfirmToken(session.id);
+        if (confirmToken) {
+            res.cookie(ORDER_CONFIRM_COOKIE, confirmToken, getOrderConfirmCookieOptions());
+        }
 
         res.json({ url: session.url });
 
@@ -371,7 +831,7 @@ app.post('/api/checkout', async (req, res) => {
     }
 });
 
-app.get('/api/orders/confirm', async (req, res) => {
+app.get('/api/orders/confirm', orderConfirmLimiter, async (req, res) => {
     const sessionId = req.query.session_id;
     if (!sessionId) {
         return res.status(400).json({ error: 'session_id required' });
@@ -382,54 +842,117 @@ app.get('/api/orders/confirm', async (req, res) => {
         session = await stripe.checkout.sessions.retrieve(sessionId);
     } catch (err) {
         console.error('Invalid Stripe session:', err);
-        return res.status(400).json({ error: 'Invalid session' });
-    }
-
-    if (session.payment_status !== 'paid') {
-        return res.status(400).json({ error: 'Payment not completed' });
     }
 
     try {
-        const result = await finalizeOrderFromSession(session);
-        if (result.status === 'missing_order') {
+        let orderId = null;
+        let orderStatus = null;
+        const cookies = parseCookies(req.headers.cookie);
+        const confirmToken = cookies[ORDER_CONFIRM_COOKIE];
+        const confirmedSession = verifyOrderConfirmToken(confirmToken);
+        const requestedSessionId = session?.id || sessionId;
+
+        if (session?.payment_status === 'paid') {
+            const result = await finalizeOrderFromSession(session);
+            if (result.status !== 'missing_order') {
+                orderId = result.orderId;
+                orderStatus = result.status;
+            }
+        }
+
+        if (!orderId) {
+            const lookup = await pool.query(
+                'SELECT id, status FROM orders WHERE stripe_payment_id = $1',
+                [session?.id || sessionId]
+            );
+            if (lookup.rows.length > 0) {
+                orderId = lookup.rows[0].id;
+                orderStatus = lookup.rows[0].status || orderStatus;
+            }
+        }
+
+        if (!orderId) {
             return res.status(404).json({ error: 'Order not found' });
         }
-        return res.json({ success: true, status: result.status, orderId: result.orderId });
+
+        const summary = await getOrderSummary(orderId);
+        if (!summary) {
+            return res.status(404).json({ error: 'Order not found' });
+        }
+
+        const { order, items } = summary;
+
+        const normalizedStatus = String(orderStatus || order.status || 'pending').toLowerCase();
+        const isPaid = session?.payment_status === 'paid' || PAID_STATUSES.has(normalizedStatus);
+        const allowSensitive =
+            Boolean(isPaid)
+            && Boolean(confirmedSession?.sid)
+            && confirmedSession.sid === requestedSessionId;
+
+        const orderPayload = {
+            id: order.id,
+            pickup_date: order.pickup_date,
+            pickup_location: order.pickup_location,
+            total_cents: order.total_cents,
+            items
+        };
+
+        if (allowSensitive) {
+            orderPayload.customer_email = order.customer_email;
+            orderPayload.customer_name = order.customer_name;
+            orderPayload.customer_phone = order.customer_phone;
+            orderPayload.customer_address = order.customer_address;
+        }
+
+        return res.json({
+            success: true,
+            status: normalizedStatus,
+            order: orderPayload
+        });
     } catch (err) {
         console.error('Error confirming order:', err);
         return res.status(500).json({ error: 'Failed to confirm order' });
     }
 });
 
-
 // --- ADMIN ROUTES ---
 
 // Middleware for Admin Auth
 const checkAuth = (req, res, next) => {
-    const password = req.headers.authorization;
-    const correctPassword = process.env.ADMIN_PASSWORD || "chickens";
-
-    console.log(`Auth Check: Header='${password}', Expected='${correctPassword}'`); // DEBUG
-
-    if (password === correctPassword) {
-        next();
-    } else {
-        res.status(401).send("Unauthorized");
+    if (!ADMIN_SESSION_SECRET) {
+        return res.status(500).send('Admin auth not configured');
     }
+    const cookies = parseCookies(req.headers.cookie);
+    const token = cookies[ADMIN_SESSION_COOKIE];
+    const session = verifyAdminSession(token);
+    if (!session) {
+        return res.status(401).send('Unauthorized');
+    }
+    req.adminSession = session;
+    return next();
 };
 
 // 1. Login
-app.post('/api/admin/login', (req, res) => {
+app.post('/api/admin/login', adminLoginLimiter, (req, res) => {
     const { password } = req.body;
-    const correctPassword = process.env.ADMIN_PASSWORD || "chickens";
-
-    console.log('Login attempt:', password, 'Expected:', correctPassword); // DEBUG
-
-    if (password === correctPassword) {
-        res.json({ success: true });
-    } else {
-        res.status(401).send("Wrong password");
+    if (!ADMIN_PASSWORD || !ADMIN_SESSION_SECRET) {
+        return res.status(500).json({ error: 'Admin auth not configured.' });
     }
+    if (password !== ADMIN_PASSWORD) {
+        return res.status(401).send('Wrong password');
+    }
+    const now = Date.now();
+    const token = signAdminSession({
+        sub: 'admin',
+        iat: now,
+        exp: now + ADMIN_SESSION_TTL_MS
+    });
+    res.cookie(ADMIN_SESSION_COOKIE, token, getAdminSessionCookieOptions());
+    return res.json({ success: true });
+});
+
+app.get('/api/admin/session', checkAuth, (req, res) => {
+    res.json({ success: true });
 });
 
 // 2. Get Orders (Admin)
@@ -454,6 +977,7 @@ app.get('/api/admin/orders', checkAuth, async (req, res) => {
     }
 });
 
+
 // 3. Update Hen Stock
 app.put('/api/admin/hens/:id', checkAuth, async (req, res) => {
     const { id } = req.params;
@@ -471,7 +995,15 @@ app.put('/api/admin/hens/:id', checkAuth, async (req, res) => {
 // GET Dates (Public)
 app.get('/api/pickup-dates', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM pickup_dates WHERE is_active = true ORDER BY date_value ASC');
+        const { location } = req.query;
+        let query = 'SELECT * FROM pickup_dates WHERE is_active = true';
+        const values = [];
+        if (location) {
+            values.push(location);
+            query += ' AND location = $1';
+        }
+        query += ' ORDER BY date_value ASC';
+        const result = await pool.query(query, values);
         res.json(result.rows);
     } catch (err) {
         res.status(500).send(err.message);
@@ -480,11 +1012,14 @@ app.get('/api/pickup-dates', async (req, res) => {
 
 // POST Add Date
 app.post('/api/admin/pickup-dates', checkAuth, async (req, res) => {
-    const { date_value } = req.body;
+    const { date_value, location } = req.body;
+    if (!date_value || !location) {
+        return res.status(400).send('Date and location are required.');
+    }
     try {
         const result = await pool.query(
-            'INSERT INTO pickup_dates (date_value) VALUES ($1) RETURNING *',
-            [date_value]
+            'INSERT INTO pickup_dates (date_value, location) VALUES ($1, $2) RETURNING *',
+            [date_value, location]
         );
         res.json(result.rows[0]);
     } catch (err) {
@@ -539,7 +1074,9 @@ app.post('/api/admin/email', checkAuth, async (req, res) => {
     }
 
     const validMessages = sendMessages.filter((item) =>
-        item?.to?.email && item?.subject && item?.text
+        item?.to?.email
+        && item?.subject
+        && (item?.text || item?.attachments?.length || item?.csv)
     );
 
     if (validMessages.length === 0) {
@@ -548,6 +1085,22 @@ app.post('/api/admin/email', checkAuth, async (req, res) => {
 
     try {
         for (const item of validMessages) {
+            const attachments = Array.isArray(item.attachments)
+                ? item.attachments.map((attachment) => ({
+                    content: attachment.content,
+                    filename: attachment.filename,
+                    type: attachment.type || 'text/plain',
+                    disposition: attachment.disposition || 'attachment'
+                }))
+                : (item.csv
+                    ? [{
+                        content: Buffer.from(item.csv, 'utf8').toString('base64'),
+                        filename: item.filename || 'pickup-orders.csv',
+                        type: 'text/csv',
+                        disposition: 'attachment'
+                    }]
+                    : undefined);
+
             const response = await fetch('https://api.sendgrid.com/v3/mail/send', {
                 method: 'POST',
                 headers: {
@@ -563,14 +1116,15 @@ app.post('/api/admin/email', checkAuth, async (req, res) => {
                             }]
                         }
                     ],
-                    from: { email: EMAIL_FROM },
+                    from: { email: EMAIL_FROM, name: EMAIL_FROM_NAME },
                     subject: item.subject,
                     content: [
                         {
                             type: 'text/plain',
-                            value: item.text
+                            value: item.text || ''
                         }
-                    ]
+                    ],
+                    attachments
                 })
             });
 

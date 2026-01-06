@@ -1,4 +1,4 @@
-import { Outlet } from 'react-router-dom';
+import { Link, Outlet } from 'react-router-dom';
 import SiteHeader from '../components/SiteHeader';
 import { LINKS } from '../constants/links';
 import '../styles/layouts/boxed.css';
@@ -51,6 +51,9 @@ export default function BoxedLayout({ lang, setLang }) {
           >
             315 ch. Back Bush, Hemmingford, QC
           </a>
+          <Link to="/privacy" className="footer-privacy-link">
+            Privacy
+          </Link>
         </div>
       </footer>
     </>

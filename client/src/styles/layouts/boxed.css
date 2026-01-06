@@ -9,7 +9,7 @@
   --paper-max: 1320px;
   /* safety cap for bigger monitors */
   --paper-border: #ccc;
-  --fallback-green: #4A7c59;
+  --fallback-green: var(--color-accent);
 }
 
 /* =========================
@@ -40,6 +40,7 @@ html::before {
   pointer-events: none;
   transform: translateZ(0);
 }
+
 
 #root {
   min-height: 100%;
@@ -108,6 +109,21 @@ html::before {
   font-size: 1.1rem;
   margin: 6px 0;
   font-weight: 700;
+}
+
+.footer-privacy-link {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 0.6rem;
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: none;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.footer-privacy-link:hover {
+  color: #ffffff;
+  text-decoration: underline;
 }
 
 .footer-logo-text {

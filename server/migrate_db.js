@@ -68,6 +68,16 @@ async function migrate() {
             END $$;
         `);
 
+        // Add confirmation_email_sent_at
+        await pool.query(`
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='confirmation_email_sent_at') THEN
+                    ALTER TABLE orders ADD COLUMN confirmation_email_sent_at TIMESTAMP WITH TIME ZONE;
+                END IF;
+            END $$;
+        `);
+
         console.log("Migration Complete!");
         pool.end();
     } catch (err) {

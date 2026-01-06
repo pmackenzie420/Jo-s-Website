@@ -1,14 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
+import { jsPDF } from 'jspdf';
+import autoTable from 'jspdf-autotable';
+import useMediaQuery from '../hooks/useMediaQuery';
 import '../styles/pages/Admin.css';
 
 const API_URL = '/api';
-const ADMIN_AUTH_KEY = 'adminAuth';
-
 const LOCATION_LABELS = {
   hemmingford: 'Hemmingford',
   bristol: 'Bristol'
 };
+
+const LOCATION_OPTIONS = Object.entries(LOCATION_LABELS).map(([value, label]) => ({
+  value,
+  label
+}));
 
 const TAB_CONFIG = [
   { key: 'pickups', label: 'Pickups' },
@@ -43,6 +49,18 @@ const formatCurrency = (amount) => `$${amount.toFixed(2)}`;
 const formatPhoneLink = (phone) => {
   if (!phone) return '';
   return phone.replace(/[^\d+]/g, '');
+};
+
+const formatPhoneDisplay = (phone) => {
+  if (!phone) return '';
+  const digits = phone.replace(/\D/g, '');
+  if (digits.length === 10) {
+    return `(${digits.slice(0, 3)}) ${digits.slice(3, 6)}-${digits.slice(6)}`;
+  }
+  if (digits.length === 11 && digits.startsWith('1')) {
+    return `+1 (${digits.slice(1, 4)}) ${digits.slice(4, 7)}-${digits.slice(7)}`;
+  }
+  return phone;
 };
 
 const getDisplayName = (name) => {
@@ -87,6 +105,40 @@ const STOCK_CATEGORIES = [
   }
 ];
 
+const buildShortSummary = (items, itemCount) => {
+  const counts = {
+    hens: 0,
+    chickens: 0
+  };
+  items.forEach((item) => {
+    if (STOCK_CATEGORIES[0].matcher(item.displayName)) {
+      counts.hens += item.quantity;
+      return;
+    }
+    if (STOCK_CATEGORIES[1].matcher(item.displayName)) {
+      counts.chickens += item.quantity;
+    }
+  });
+  const parts = [];
+  if (counts.hens) {
+    parts.push(
+      `${counts.hens} ready-to-lay ${counts.hens === 1 ? 'hen' : 'hens'}`
+    );
+  }
+  if (counts.chickens) {
+    parts.push(
+      `${counts.chickens} meat ${counts.chickens === 1 ? 'chicken' : 'chickens'}`
+    );
+  }
+  if (parts.length) {
+    return parts.join(' · ');
+  }
+  if (itemCount > 0) {
+    return `${itemCount} ${itemCount === 1 ? 'item' : 'items'}`;
+  }
+  return 'Items';
+};
+
 export default function Admin() {
   const [password, setPassword] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -102,18 +154,49 @@ export default function Admin() {
   const [stockInputs, setStockInputs] = useState({});
   const [stockLoading, setStockLoading] = useState(null);
   const [selectedCustomer, setSelectedCustomer] = useState(null);
+  const [pickupConfirm, setPickupConfirm] = useState(null);
   const [newPickupDate, setNewPickupDate] = useState('');
+  const [newPickupLocation, setNewPickupLocation] = useState(LOCATION_OPTIONS[0]?.value || '');
   const [isDatePickerOpen, setIsDatePickerOpen] = useState(false);
+  const [emailGroupKey, setEmailGroupKey] = useState(null);
+  const [emailSubject, setEmailSubject] = useState('');
+  const [emailMessage, setEmailMessage] = useState('');
+  const [emailSending, setEmailSending] = useState(null);
   const dateInputRef = useRef(null);
+  const isMobile = useMediaQuery('(max-width: 767px)');
 
   useEffect(() => {
+    const root = document.documentElement;
+    const viewport = window.visualViewport;
+    const setViewportHeight = () => {
+      const height = viewport?.height || window.innerHeight;
+      root.style.setProperty('--admin-viewport-height', `${height}px`);
+    };
+
     document.body.classList.add('admin-active');
-    document.documentElement.classList.add('admin-active');
+    root.classList.add('admin-active');
+    setViewportHeight();
+    window.addEventListener('resize', setViewportHeight);
+    viewport?.addEventListener('resize', setViewportHeight);
+
     return () => {
+      window.removeEventListener('resize', setViewportHeight);
+      viewport?.removeEventListener('resize', setViewportHeight);
+      root.style.removeProperty('--admin-viewport-height');
       document.body.classList.remove('admin-active');
-      document.documentElement.classList.remove('admin-active');
+      root.classList.remove('admin-active');
     };
   }, []);
+
+  useEffect(() => {
+    const hasModal = Boolean(selectedCustomer || pickupConfirm);
+    if (hasModal) {
+      document.body.classList.add('admin-modal-open');
+    } else {
+      document.body.classList.remove('admin-modal-open');
+    }
+    return () => document.body.classList.remove('admin-modal-open');
+  }, [selectedCustomer, pickupConfirm]);
 
   const showToast = (payload) => {
     setNotice(payload);
@@ -125,24 +208,104 @@ export default function Admin() {
   const handleLogin = async (event) => {
     event.preventDefault();
     try {
-      await axios.post(`${API_URL}/admin/login`, { password });
+      await axios.post(`${API_URL}/admin/login`, { password }, { withCredentials: true });
       setIsLoggedIn(true);
       setNotice(null);
-      localStorage.setItem(
-        ADMIN_AUTH_KEY,
-        JSON.stringify({ password, expiresAt: Date.now() + 60 * 60 * 1000 })
-      );
-      fetchData(password);
+      setPassword('');
+      fetchData();
     } catch (error) {
       showToast({ type: 'error', text: 'Wrong password. Try again.' });
     }
   };
 
-  const fetchData = (pwd) => {
+  const buildOrdersTableRows = () => {
+    const rows = [];
+
+    groupedPickups.forEach((group) => {
+      group.locations.forEach((locationGroup) => {
+        locationGroup.orders.forEach((order) => {
+          rows.push([
+            formatDateLong(group.date),
+            locationGroup.locationLabel,
+            order.customerName,
+            formatPhoneDisplay(order.customerPhone || ''),
+            order.customerEmail || '',
+            order.itemSummary || `${order.itemCount} items`,
+            formatCurrency(order.totalAmount)
+          ]);
+        });
+      });
+    });
+
+    if (rows.length === 0) {
+      rows.push(['No orders', '', '', '', '', '', '', '']);
+    }
+
+    return rows;
+  };
+
+  const getExportTitle = () => `Orders — ${formatDateLong(new Date())}`;
+
+  const handleExportDownload = () => {
+    if (dataLoading) {
+      showToast({ type: 'error', text: 'Orders are still loading.' });
+      return;
+    }
+    const rows = buildOrdersTableRows();
+    const filename = `orders-${new Date().toISOString().split('T')[0]}.pdf`;
+    const doc = new jsPDF({
+      orientation: 'landscape',
+      unit: 'pt',
+      format: 'letter'
+    });
+
+    const title = getExportTitle();
+    doc.setFontSize(14);
+    doc.text(title, 40, 32);
+
+    autoTable(doc, {
+      startY: 50,
+      head: [[
+        'Pickup Date',
+        'Pickup Location',
+        'Customer',
+        'Phone',
+        'Email',
+        'Items',
+        'Order Total'
+      ]],
+      body: rows,
+      styles: { fontSize: 9, cellPadding: 4 },
+      headStyles: { fillColor: [47, 107, 63], textColor: 255 },
+      columnStyles: {
+        5: { cellWidth: 220 }
+      }
+    });
+
+    const isIOS =
+      /iPad|iPhone|iPod/.test(navigator.userAgent)
+      || (navigator.userAgent.includes('Mac') && 'ontouchend' in document);
+
+    if (isIOS) {
+      const pdfBlob = doc.output('blob');
+      const pdfUrl = window.URL.createObjectURL(pdfBlob);
+      const link = document.createElement('a');
+      link.href = pdfUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(pdfUrl);
+    } else {
+      doc.save(filename);
+    }
+
+  };
+
+  const fetchData = () => {
     setDataLoading(true);
-    const config = { headers: { Authorization: pwd } };
     Promise.all([
-      axios.get(`${API_URL}/admin/orders`, config),
+      axios.get(`${API_URL}/admin/orders`, { withCredentials: true }),
       axios.get(`${API_URL}/hens`),
       axios.get(`${API_URL}/pickup-dates`)
     ])
@@ -160,20 +323,16 @@ export default function Admin() {
   };
 
   useEffect(() => {
-    const savedAuth = localStorage.getItem(ADMIN_AUTH_KEY);
-    if (!savedAuth) return;
-    try {
-      const parsed = JSON.parse(savedAuth);
-      if (parsed?.password && parsed?.expiresAt > Date.now()) {
-        setPassword(parsed.password);
+    const checkSession = async () => {
+      try {
+        await axios.get(`${API_URL}/admin/session`, { withCredentials: true });
         setIsLoggedIn(true);
-        fetchData(parsed.password);
-        return;
+        fetchData();
+      } catch (error) {
+        setIsLoggedIn(false);
       }
-    } catch (error) {
-      // Ignore parse errors and clear invalid data.
-    }
-    localStorage.removeItem(ADMIN_AUTH_KEY);
+    };
+    checkSession();
   }, []);
 
   const ordersWithDetails = useMemo(() => {
@@ -192,6 +351,7 @@ export default function Admin() {
       const itemSummary = orderItems
         .map((item) => `${item.quantity} x ${item.displayName}`)
         .join(', ');
+      const itemSummaryShort = buildShortSummary(orderItems, itemCount);
       return {
         ...order,
         pickupDate: normalizeDate(order.pickup_date || order.created_at),
@@ -205,7 +365,8 @@ export default function Admin() {
         customerAddress: order.customer_address || '',
         totalAmount: (order.total_cents || 0) / 100,
         itemCount,
-        itemSummary
+        itemSummary,
+        itemSummaryShort
       };
     });
   }, [orders, hens]);
@@ -233,21 +394,23 @@ export default function Admin() {
       return dateA - dateB;
     });
     return sortedDates.map(([date, locations]) => {
-      const locationGroups = Array.from(locations.entries()).map(([location, ordersList]) => {
-        const sortedOrders = [...ordersList].sort((first, second) =>
-          first.customerName.localeCompare(second.customerName)
-        );
-        const uniqueCustomers = new Set(
-          sortedOrders.map((order) => order.customerPhone || order.customerEmail || order.id)
-        );
-        return {
-          date,
-          location,
-          locationLabel: LOCATION_LABELS[location] || location,
-          orders: sortedOrders,
-          customerCount: uniqueCustomers.size
-        };
-      });
+      const locationGroups = Array.from(locations.entries())
+        .map(([location, ordersList]) => {
+          const sortedOrders = [...ordersList].sort((first, second) =>
+            first.customerName.localeCompare(second.customerName)
+          );
+          const uniqueCustomers = new Set(
+            sortedOrders.map((order) => order.customerPhone || order.customerEmail || order.id)
+          );
+          return {
+            date,
+            location,
+            locationLabel: LOCATION_LABELS[location] || location,
+            orders: sortedOrders,
+            customerCount: uniqueCustomers.size
+          };
+        })
+        .sort((a, b) => a.locationLabel.localeCompare(b.locationLabel));
       const totalOrders = locationGroups.reduce((sum, group) => sum + group.orders.length, 0);
       const totalCustomers = locationGroups.reduce((sum, group) => sum + group.customerCount, 0);
       return { date, locations: locationGroups, totalOrders, totalCustomers };
@@ -293,12 +456,16 @@ export default function Admin() {
   const filteredCustomers = useMemo(() => {
     if (!searchQuery.trim()) return customers;
     const query = searchQuery.trim().toLowerCase();
+    const queryDigits = query.replace(/\D/g, '');
     return customers.filter((customer) => {
       const values = [customer.name, customer.phone, customer.email]
         .filter(Boolean)
         .join(' ')
         .toLowerCase();
-      return values.includes(query);
+      const phoneDigits = (customer.phone || '').replace(/\D/g, '');
+      const matchesText = values.includes(query);
+      const matchesPhoneDigits = queryDigits.length > 0 && phoneDigits.includes(queryDigits);
+      return matchesText || matchesPhoneDigits;
     });
   }, [customers, searchQuery]);
 
@@ -332,12 +499,12 @@ export default function Admin() {
           axios.put(
             `${API_URL}/admin/hens/${hen.id}`,
             { stock: nextValue },
-            { headers: { Authorization: password } }
+            { withCredentials: true }
           )
         )
       );
       showToast({ type: 'success', text: 'Stock updated.' });
-      fetchData(password);
+      fetchData();
     } catch (error) {
       showToast({ type: 'error', text: 'Failed to update stock.' });
     } finally {
@@ -345,17 +512,17 @@ export default function Admin() {
     }
   };
 
-  const addDate = async (dateValue) => {
-    if (!dateValue) return false;
+  const addDate = async (dateValue, locationValue) => {
+    if (!dateValue || !locationValue) return false;
     setScheduleLoading('add');
     try {
       await axios.post(
         `${API_URL}/admin/pickup-dates`,
-        { date_value: dateValue },
-        { headers: { Authorization: password } }
+        { date_value: dateValue, location: locationValue },
+        { withCredentials: true }
       );
       showToast({ type: 'success', text: 'Pickup date added.' });
-      fetchData(password);
+      fetchData();
       return true;
     } catch (error) {
       showToast({ type: 'error', text: 'Failed to add pickup date.' });
@@ -372,11 +539,9 @@ export default function Admin() {
     }
     setScheduleLoading(dateItem.id);
     try {
-      await axios.delete(`${API_URL}/admin/pickup-dates/${dateItem.id}`,
-        { headers: { Authorization: password } }
-      );
+      await axios.delete(`${API_URL}/admin/pickup-dates/${dateItem.id}`, { withCredentials: true });
       showToast({ type: 'success', text: 'Pickup date removed.' });
-      fetchData(password);
+      fetchData();
     } catch (error) {
       showToast({ type: 'error', text: 'Failed to remove pickup date.' });
     } finally {
@@ -390,10 +555,10 @@ export default function Admin() {
       await axios.put(
         `${API_URL}/admin/orders/${id}/status`,
         { status: newStatus },
-        { headers: { Authorization: password } }
+        { withCredentials: true }
       );
       showToast({ type: 'success', text: 'Pickup status updated.' });
-      fetchData(password);
+      fetchData();
     } catch (error) {
       showToast({ type: 'error', text: 'Failed to update pickup status.' });
     } finally {
@@ -405,6 +570,19 @@ export default function Admin() {
     if (normalizeStatus(order.status) === 'cancelled') return;
     const nextStatus = normalizeStatus(order.status) === 'picked_up' ? 'pending' : 'picked_up';
     updateOrderStatus(order.id, nextStatus);
+  };
+
+  const handlePickupConfirm = (order) => {
+    if (normalizeStatus(order.status) !== 'pending') return;
+    if (orderActionLoading === order.id) return;
+    setPickupConfirm(order);
+  };
+
+  const handlePickupConfirmSubmit = async () => {
+    if (!pickupConfirm) return;
+    const order = pickupConfirm;
+    setPickupConfirm(null);
+    await updateOrderStatus(order.id, 'picked_up');
   };
 
   const handleDatePicker = () => {
@@ -423,12 +601,17 @@ export default function Admin() {
       setTimeout(() => handleDatePicker(), 0);
       return;
     }
+    if (!newPickupLocation) {
+      showToast({ type: 'error', text: 'Select a pickup location.' });
+      return;
+    }
     const confirmLabel = formatDateLong(newPickupDate);
-    const confirmed = window.confirm(`Add pickup date: ${confirmLabel}?`);
+    const locationLabel = LOCATION_LABELS[newPickupLocation] || newPickupLocation;
+    const confirmed = window.confirm(`Add pickup date: ${confirmLabel} (${locationLabel})?`);
     if (!confirmed) {
       return;
     }
-    const didAdd = await addDate(newPickupDate);
+    const didAdd = await addDate(newPickupDate, newPickupLocation);
     if (didAdd) {
       setNewPickupDate('');
       setIsDatePickerOpen(false);
@@ -444,8 +627,12 @@ export default function Admin() {
   const handleTabChange = (key) => {
     setActiveTab(key);
     setSelectedCustomer(null);
+    setPickupConfirm(null);
     if (key !== 'search') {
       setSearchQuery('');
+    }
+    if (key !== 'email') {
+      setEmailGroupKey(null);
     }
   };
 
@@ -462,17 +649,17 @@ export default function Admin() {
     return (
       <div className="admin-container login-container">
         <div className="login-card">
-          <div className="login-title">Farm Admin</div>
+          <div className="login-title">L.F.S Admin</div>
           <form onSubmit={handleLogin}>
-            <label className="admin-label" htmlFor="admin-password">
-              Password
-            </label>
             <input
               id="admin-password"
               type="password"
               className="admin-input"
+              placeholder="Password"
+              aria-label="Password"
               value={password}
               onChange={(event) => setPassword(event.target.value)}
+              autoComplete="current-password"
             />
             <button type="submit" className="admin-button">
               Log In
@@ -492,46 +679,71 @@ export default function Admin() {
       return <div className="admin-panel">No pickups scheduled yet.</div>;
     }
     return (
-      <div className="admin-stack">
+      <div className="admin-stack pickups-stack">
         {groupedPickups.map((group, index) => (
           <section
             key={group.date}
             className="pickup-day stagger-item"
-            style={{ '--stagger': index }}
+            style={{ '--stagger': index + 1 }}
           >
-            <div className="pickup-day-header">
-            <div>
-              <div className="pickup-day-title">{formatDateLong(group.date)}</div>
-              <div className="pickup-day-subtitle">
-                  {group.totalOrders} pickups
+            {!isMobile && (
+              <div className="pickup-day-header">
+                <div>
+                  <div className="pickup-day-title">{formatDateLong(group.date)}</div>
+                  <div className="pickup-day-subtitle">{group.totalOrders} pickups</div>
+                </div>
               </div>
-            </div>
-          </div>
-          {group.locations.map((locationGroup) => (
-            <div key={`${group.date}-${locationGroup.location}`} className="pickup-location">
-              <div className="pickup-location-title">{locationGroup.locationLabel}</div>
-              <div className="pickup-list">
+            )}
+            {group.locations.map((locationGroup) => (
+              <div key={`${group.date}-${locationGroup.location}`} className="pickup-location">
+                <div className="pickup-location-title">
+                  {isMobile
+                    ? `${formatDateLong(group.date)} · ${locationGroup.locationLabel}`
+                    : locationGroup.locationLabel}
+                </div>
+                <div className="pickup-list">
                 {locationGroup.orders.map((order) => {
                   const status = normalizeStatus(order.status);
                   const isDisabled = orderActionLoading === order.id || status === 'cancelled';
                   const pickupSummary = order.itemSummary || `${order.itemCount} items`;
+                  const phoneDisplay = formatPhoneDisplay(order.customerPhone || '');
                   return (
-                    <label key={order.id} className={`pickup-row ${status}`}>
-                      <input
-                        type="checkbox"
-                        checked={status === 'picked_up'}
-                        disabled={isDisabled}
-                        onChange={() => handlePickupToggle(order)}
-                      />
-                      <span className="pickup-check" aria-hidden="true" />
-                      <div className="pickup-info">
-                        <div className="pickup-name">{order.customerName}</div>
-                        <div className="pickup-meta">
-                            {pickupSummary} - {order.pickupLocationLabel}
+                    isMobile ? (
+                      <button
+                        key={order.id}
+                        type="button"
+                        className={`order-row ${status}`}
+                        onClick={() => handlePickupConfirm(order)}
+                        aria-disabled={status !== 'pending'}
+                        disabled={orderActionLoading === order.id}
+                      >
+                        <div className="order-info">
+                          <div className="customer-name">{order.customerName}</div>
+                          <div className="product-summary">{order.itemSummaryShort}</div>
                         </div>
-                      </div>
-                      <span className={`pickup-pill ${status}`}>{getStatusLabel(order.status)}</span>
-                    </label>
+                        <span className={`status-badge ${status}`}>{getStatusLabel(order.status)}</span>
+                      </button>
+                    ) : (
+                      <label key={order.id} className={`pickup-row ${status}`}>
+                        <input
+                          type="checkbox"
+                          checked={status === 'picked_up'}
+                          disabled={isDisabled}
+                          onChange={() => handlePickupToggle(order)}
+                        />
+                        <span className="pickup-check" aria-hidden="true" />
+                        <div className="pickup-info">
+                          <div className="pickup-name">{order.customerName}</div>
+                          <div className="pickup-meta">
+                            <div className="pickup-summary">
+                              {pickupSummary} - {order.pickupLocationLabel}
+                            </div>
+                            {phoneDisplay && <div className="pickup-phone">{phoneDisplay}</div>}
+                          </div>
+                        </div>
+                        <span className={`pickup-pill ${status}`}>{getStatusLabel(order.status)}</span>
+                      </label>
+                    )
                   );
                 })}
                 </div>
@@ -602,14 +814,19 @@ export default function Admin() {
             {dates.map((dateItem) => {
               const dateValue = normalizeDate(dateItem.date_value);
               const dateLabel = formatDateLong(dateValue);
+              const locationLabel =
+                LOCATION_LABELS[dateItem.location] || dateItem.location || 'Unknown';
               const orderCount = ordersWithDetails.filter(
-                (order) => order.pickupDate === dateValue
+                (order) =>
+                  order.pickupDate === dateValue && order.pickupLocation === dateItem.location
               ).length;
               return (
                 <div key={dateItem.id} className="date-row">
                   <div>
                     <div className="date-title">{dateLabel}</div>
-                    <div className="date-meta">{orderCount} pickups</div>
+                    <div className="date-meta">
+                      {locationLabel} · {orderCount} pickups
+                    </div>
                   </div>
                   <button
                     className="admin-button ghost"
@@ -623,6 +840,21 @@ export default function Admin() {
             })}
           </div>
           <div className="date-actions">
+            <label className="admin-label" htmlFor="pickup-location-select">
+              Pickup location
+            </label>
+            <select
+              id="pickup-location-select"
+              className="admin-input"
+              value={newPickupLocation}
+              onChange={(event) => setNewPickupLocation(event.target.value)}
+            >
+              {LOCATION_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
             <div className={`date-picker ${isDatePickerOpen ? 'open' : ''}`}>
               <input
                 ref={dateInputRef}
@@ -685,27 +917,146 @@ export default function Admin() {
     );
   };
 
-  const renderEmailPage = () => (
-    <div className="admin-panel stagger-item" style={{ '--stagger': 0 }}>
-      <div className="panel-header">
-        <div>
-          <div className="panel-title">Emailing</div>
-          <div className="panel-subtitle">We will add templates and sending tools here.</div>
-        </div>
+  const renderEmailPage = () => {
+    if (dataLoading) {
+      return <div className="admin-panel">Loading email groups...</div>;
+    }
+
+    return (
+      <div className="admin-stack">
+        <section className="admin-panel stagger-item" style={{ '--stagger': 0 }}>
+          <div className="panel-header">
+            <div>
+              <div className="panel-title">Emailing</div>
+              <div className="panel-subtitle">Send a note to each pickup group.</div>
+            </div>
+          </div>
+          {groupedPickups.length === 0 ? (
+            <div className="empty-state">No pickup groups yet.</div>
+          ) : (
+            <div className="email-group-list">
+              {groupedPickups.flatMap((group) =>
+                group.locations.map((locationGroup) => {
+                  const groupKey = `${group.date}-${locationGroup.location}`;
+                  const recipients = new Map();
+                  locationGroup.orders.forEach((order) => {
+                    const email = (order.customerEmail || '').trim().toLowerCase();
+                    if (!email) return;
+                    if (!recipients.has(email)) {
+                      recipients.set(email, {
+                        email,
+                        name: order.customerName
+                      });
+                    }
+                  });
+                  const isActive = emailGroupKey === groupKey;
+                  return (
+                    <div key={groupKey} className="email-group">
+                      <button
+                        type="button"
+                        className={`email-group-card ${isActive ? 'active' : ''}`}
+                        onClick={() => {
+                          const nextActive = isActive ? null : groupKey;
+                          setEmailGroupKey(nextActive);
+                          if (!isActive) {
+                            const dateLabel = formatDateLong(group.date);
+                            setEmailSubject(`Pickup reminder - ${dateLabel} (${locationGroup.locationLabel})`);
+                            setEmailMessage(
+                              `Hello,\n\nThis is a reminder for your pickup on ${dateLabel} at ${locationGroup.locationLabel}.\n\nThank you.`
+                            );
+                          }
+                        }}
+                      >
+                        <div>
+                          <div className="email-group-title">
+                            {formatDateLong(group.date)} - {locationGroup.locationLabel}
+                          </div>
+                          <div className="email-group-meta">
+                            {locationGroup.orders.length} orders - {recipients.size} emails
+                          </div>
+                        </div>
+                        <span className="email-group-action">{isActive ? 'Close' : 'Email'}</span>
+                      </button>
+                      {isActive && (
+                        <div className="email-group-form">
+                          <input
+                            className="admin-input"
+                            type="text"
+                            placeholder="Subject"
+                            value={emailSubject}
+                            onChange={(event) => setEmailSubject(event.target.value)}
+                          />
+                          <textarea
+                            className="admin-textarea"
+                            rows={5}
+                            placeholder="Message"
+                            value={emailMessage}
+                            onChange={(event) => setEmailMessage(event.target.value)}
+                          />
+                          <button
+                            className="admin-button"
+                            type="button"
+                            disabled={recipients.size === 0 || emailSending === groupKey}
+                            onClick={async () => {
+                              if (recipients.size === 0) {
+                                showToast({ type: 'error', text: 'No email addresses for this group.' });
+                                return;
+                              }
+                              setEmailSending(groupKey);
+                              try {
+                                await axios.post(
+                                  `${API_URL}/admin/email`,
+                                  {
+                                    messages: Array.from(recipients.values()).map((recipient) => ({
+                                      to: { email: recipient.email, name: recipient.name },
+                                      subject: emailSubject || 'Pickup reminder',
+                                      text: emailMessage || 'Pickup reminder.'
+                                    }))
+                                  },
+                                  { withCredentials: true }
+                                );
+                                showToast({ type: 'success', text: 'Group email sent.' });
+                              } catch (error) {
+                                showToast({ type: 'error', text: 'Failed to send group email.' });
+                              } finally {
+                                setEmailSending(null);
+                              }
+                            }}
+                          >
+                            {emailSending === groupKey ? 'Sending...' : 'Send Email'}
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          )}
+        </section>
       </div>
-      <div className="empty-state">
-        Emailing tools are coming soon.
-      </div>
-    </div>
-  );
+    );
+  };
 
   const activeTabConfig = TAB_CONFIG.find((tab) => tab.key === activeTab);
   return (
     <div className="admin-container">
       <div className="admin-shell">
         <header className="admin-topbar">
-          <div className="admin-brand">
-            <div className="admin-page-title">{activeTabConfig?.label}</div>
+          <div className="admin-topbar-row">
+            <div className="admin-brand">
+              <div className="admin-page-title">{activeTabConfig?.label}</div>
+            </div>
+            {activeTab === 'pickups' && (
+              <button
+                className="export-button"
+                type="button"
+                onClick={handleExportDownload}
+                disabled={dataLoading}
+              >
+                Export PDF
+              </button>
+            )}
           </div>
           {activeTab === 'search' && (
             <div className="admin-search">
@@ -717,15 +1068,28 @@ export default function Admin() {
               />
             </div>
           )}
+          <nav className="admin-tabs" aria-label="Admin sections">
+            {TAB_CONFIG.map((tab) => (
+              <button
+                key={tab.key}
+                className={`admin-tab-button ${activeTab === tab.key ? 'active' : ''}`}
+                onClick={() => handleTabChange(tab.key)}
+                type="button"
+                aria-current={activeTab === tab.key ? 'page' : undefined}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </nav>
         </header>
-        <main className="admin-main">
+        <main className={`admin-main ${activeTab === 'pickups' ? 'admin-main-pickups' : ''}`}>
           {renderNotice()}
           {activeTab === 'pickups' && renderPickupsPage()}
           {activeTab === 'stock' && renderStockPage()}
           {activeTab === 'search' && renderSearchPage()}
           {activeTab === 'email' && renderEmailPage()}
         </main>
-        <nav className="admin-nav">
+        <nav className="admin-nav admin-nav-mobile">
           {TAB_CONFIG.map((tab) => (
             <button
               key={tab.key}
@@ -789,6 +1153,31 @@ export default function Admin() {
                     <div className="history-total">{formatCurrency(order.totalAmount)}</div>
                   </div>
                 ))}
+            </div>
+          </div>
+        </div>
+      )}
+      {pickupConfirm && (
+        <div className="admin-confirm-backdrop" role="dialog" aria-modal="true">
+          <div className="admin-confirm">
+            <div className="admin-confirm-title">
+              Mark {pickupConfirm.customerName} as picked up?
+            </div>
+            <div className="admin-confirm-actions">
+              <button
+                type="button"
+                className="admin-button ghost"
+                onClick={() => setPickupConfirm(null)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="admin-button"
+                onClick={handlePickupConfirmSubmit}
+              >
+                Picked Up
+              </button>
             </div>
           </div>
         </div>

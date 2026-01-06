@@ -1,0 +1,96 @@
+.prices-container {
+  max-width: 1024px;
+  margin: 40px auto;
+  padding: 0 20px;
+}
+
+.prices-title {
+  text-align: center;
+  margin-bottom: 40px;
+  font-size: 2rem;
+  letter-spacing: 2px;
+}
+
+.pickup-box {
+  border: 1px solid black;
+  padding: 30px;
+  margin-bottom: 50px;
+  text-align: center;
+  background-color: white;
+}
+
+.pickup-header {
+  text-transform: uppercase;
+  margin: 0 0 30px 0;
+  font-size: 1.4rem;
+}
+
+.locations-container {
+  display: flex;
+  justify-content: center;
+  gap: 60px;
+  flex-wrap: wrap;
+  text-align: left;
+}
+
+.location-item strong {
+  font-size: 1.4rem;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.location-item span {
+  font-size: 1.1rem;
+}
+
+.tables-container {
+  display: flex;
+  justify-content: center;
+  gap: 40px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+
+.price-table-container {
+  flex: 1;
+  min-width: 300px;
+  max-width: 450px;
+}
+
+.price-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid black;
+}
+
+.price-table th,
+.price-table td {
+  text-align: center;
+  border: 1px solid black;
+  padding: 10px;
+}
+
+.price-table thead th {
+  background: black;
+  color: white;
+  padding: 12px;
+}
+
+.price-table thead tr:nth-child(2) th {
+  font-size: 0.9rem;
+  padding: 10px;
+  background: #f4f4f4;
+  color: black;
+}
+
+.price-table tbody tr:nth-child(odd) {
+  background: #f9f9f9;
+}
+
+.meat-footer {
+  text-align: center;
+  font-style: italic;
+  margin-top: 15px;
+  font-size: 0.9rem;
+  color: #444;
+}

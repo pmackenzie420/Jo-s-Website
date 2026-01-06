@@ -55,6 +55,11 @@ export default function SiteHeader({ lang, setLang }) {
                             FR
                         </span>
                     </div>
+                    <div className="mobile-contact">
+                        <Link to="/contact" className="mobile-contact-link">
+                            Contact us
+                        </Link>
+                    </div>
                 </div>
             </div>
 

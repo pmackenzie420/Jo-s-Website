@@ -1,3 +1,5 @@
+import './../styles/pages/Prices.css';
+
 export default function Prices({ lang }) {
   // --- CONTENT DICTIONARY ---
   const content = {
@@ -46,137 +48,81 @@ export default function Prices({ lang }) {
   const t = content[lang];
 
   return (
-    <div className="container" style={{ maxWidth: '1024px', margin: '40px auto', padding: '0 20px' }}>
+    <div className="container prices-container">
 
-      <h2 style={{ textAlign: 'center', marginBottom: '40px', fontSize: '2rem', letterSpacing: '2px' }}>
+      <h2 className="prices-title">
         {t.title}
       </h2>
 
       {/* --- PART A: PICKUP LOCATIONS BOX --- */}
-      <div style={{
-        border: '1px solid black',
-        padding: '30px',
-        marginBottom: '50px',
-        textAlign: 'center',
-        backgroundColor: 'white'
-      }}>
-        <h3 style={{ textTransform: 'uppercase', margin: '0 0 30px 0', fontSize: '1.4rem' }}>
+      <div className="pickup-box">
+        <h3 className="pickup-header">
           {t.pickup_header}
         </h3>
 
-        <div style={{
-          display: 'flex',
-          justifyContent: 'center',
-          gap: '60px',
-          flexWrap: 'wrap',
-          textAlign: 'left'
-        }}>
-          <div>
-            <strong style={{ fontSize: '1.4rem', display: 'block', marginBottom: '8px' }}>Montérégie</strong>
-            <span style={{ fontSize: '1.1rem' }}>315 Back Bush, Hemmingford, Qc J0L 1H0</span>
+        <div className="locations-container">
+          <div className="location-item">
+            <strong>Montérégie</strong>
+            <span>315 Back Bush, Hemmingford, Qc J0L 1H0</span>
           </div>
-          <div>
-            <strong style={{ fontSize: '1.4rem', display: 'block', marginBottom: '8px' }}>Outaouais</strong>
-            <span style={{ fontSize: '1.1rem' }}>84 Rte 148, Bristol, Qc J0X 1G0</span>
+          <div className="location-item">
+            <strong>Outaouais</strong>
+            <span>84 Rte 148, Bristol, Qc J0X 1G0</span>
           </div>
         </div>
       </div>
 
       {/* --- PART B & C: TABLES CONTAINER --- */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'center',
-        gap: '40px',
-        flexWrap: 'wrap',
-        alignItems: 'flex-start'
-      }}>
+      <div className="tables-container">
 
         {/* TABLE 1: HENS (LEFT) */}
-        <div style={{ flex: 1, minWidth: '300px', maxWidth: '450px' }}>
-          <table className="price-table" style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid black' }}>
+        <div className="price-table-container">
+          <table className="price-table">
             <thead>
               <tr>
-                <th colSpan="2" style={{
-                  textAlign: 'center',
-                  background: 'black',
-                  color: 'white',
-                  padding: '12px',
-                  border: '1px solid black'
-                }}>
-                  {t.hen_title}
-                </th>
+                <th colSpan="2">{t.hen_title}</th>
               </tr>
               <tr>
-                <th colSpan="2" style={{
-                  textAlign: 'center',
-                  fontSize: '0.9rem',
-                  padding: '10px',
-                  background: '#f4f4f4',
-                  border: '1px solid black'
-                }}>
-                  {t.hen_sub}
-                </th>
+                <th colSpan="2">{t.hen_sub}</th>
               </tr>
               <tr>
-                <th style={{ textAlign: 'center', width: '50%', border: '1px solid black', padding: '10px' }}>{t.col_qty}</th>
-                <th style={{ textAlign: 'center', width: '50%', border: '1px solid black', padding: '10px' }}>{t.col_price}</th>
+                <th>{t.col_qty}</th>
+                <th>{t.col_price}</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>50+</td><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>$14.00 {t.unit}</td></tr>
-              <tr><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>13 - 49</td><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>$15.25 {t.unit}</td></tr>
-              <tr><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>6 - 12</td><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>$17.00 {t.unit}</td></tr>
-              <tr style={{ background: '#f9f9f9' }}><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>1 - 5</td><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>$17.50 {t.unit}</td></tr>
+              <tr><td>50+</td><td>$14.00 {t.unit}</td></tr>
+              <tr><td>13 - 49</td><td>$15.25 {t.unit}</td></tr>
+              <tr><td>6 - 12</td><td>$17.00 {t.unit}</td></tr>
+              <tr><td>1 - 5</td><td>$17.50 {t.unit}</td></tr>
             </tbody>
           </table>
         </div>
 
         {/* TABLE 2: MEAT (RIGHT) */}
-        <div style={{ flex: 1, minWidth: '300px', maxWidth: '450px' }}>
-          <table className="price-table" style={{ width: '100%', borderCollapse: 'collapse', border: '1px solid black' }}>
+        <div className="price-table-container">
+          <table className="price-table">
             <thead>
               <tr>
-                <th colSpan="2" style={{
-                  textAlign: 'center',
-                  background: 'black',
-                  color: 'white',
-                  padding: '12px',
-                  border: '1px solid black'
-                }}>
-                  {t.meat_title}
-                </th>
+                <th colSpan="2">{t.meat_title}</th>
               </tr>
               <tr>
-                <th colSpan="2" style={{
-                  textAlign: 'center',
-                  fontSize: '0.9rem',
-                  padding: '10px',
-                  background: '#f4f4f4',
-                  border: '1px solid black'
-                }}>
-                  {t.meat_sub}
-                </th>
+                <th colSpan="2">{t.meat_sub}</th>
               </tr>
               <tr>
-                <th style={{ textAlign: 'center', width: '50%', border: '1px solid black', padding: '10px' }}>{t.meat_col_qty}</th>
-                <th style={{ textAlign: 'center', width: '50%', border: '1px solid black', padding: '10px' }}>{t.meat_col_price}</th>
+                <th>{t.meat_col_qty}</th>
+                <th>{t.meat_col_price}</th>
               </tr>
             </thead>
             <tbody>
-              <tr><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>300+</td><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>$2.15 {t.unit}</td></tr>
-              <tr><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>100 - 299</td><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>$2.30 {t.unit}</td></tr>
-              <tr><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>49 - 99</td><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>$2.50 {t.unit}</td></tr>
-              <tr style={{ background: '#f9f9f9' }}><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>25 - 49</td><td style={{ textAlign: 'center', border: '1px solid black', padding: '10px' }}>$2.60 {t.unit}</td></tr>
+              <tr><td>300+</td><td>$2.15 {t.unit}</td></tr>
+              <tr><td>100 - 299</td><td>$2.30 {t.unit}</td></tr>
+              <tr><td>49 - 99</td><td>$2.50 {t.unit}</td></tr>
+              <tr><td>25 - 49</td><td>$2.60 {t.unit}</td></tr>
             </tbody>
           </table>
 
-          <p style={{
-            textAlign: 'center',
-            fontStyle: 'italic',
-            marginTop: '15px',
-            fontSize: '0.9rem',
-            color: '#444'
-          }}>
+          <p className="meat-footer">
             {t.meat_footer}
           </p>
         </div>

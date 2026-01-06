@@ -11,11 +11,8 @@ export default function Checkout({ lang }) {
     setFormData,
     availableDateValues,
     loading,
-    lookupLoading,
     errors,
     setErrors,
-    addressInputRef,
-    placesReady,
     pickupOptions,
     formatPickupDate,
     handlePhoneBlur,
@@ -24,7 +21,6 @@ export default function Checkout({ lang }) {
     formatPhone,
     normalizePhone,
     isValidEmail,
-    setAddressSelected,
   } = useCheckoutController(lang);
 
   if (!hasCart) {
@@ -42,7 +38,7 @@ export default function Checkout({ lang }) {
         {lang === 'en' ? 'Checkout Details' : 'Détails de la commande'}
       </h1>
 
-      <form onSubmit={handleSubmit} className="checkout-grid">
+      <form onSubmit={handleSubmit} className="checkout-grid" autoComplete="off">
         <div className="checkout-main">
           <section className="checkout-section">
             <h2 className="checkout-section-title">
@@ -59,6 +55,7 @@ export default function Checkout({ lang }) {
                   placeholder="(555) 123-4567"
                   className={`checkout-input ${errors.phone ? 'error' : ''}`}
                   value={formData.phone}
+                  autoComplete="off"
                   inputMode="tel"
                   onChange={(e) => {
                     const nextValue = e.target.value;
@@ -70,11 +67,6 @@ export default function Checkout({ lang }) {
                   onBlur={handlePhoneBlur}
                 />
                 {errors.phone && <p className="error-text">{errors.phone}</p>}
-                {lookupLoading && (
-                  <p className="helper-text">
-                    {lang === 'en' ? 'Looking up customer...' : 'Recherche du client...'}
-                  </p>
-                )}
               </div>
 
               <div className="checkout-field">
@@ -86,8 +78,8 @@ export default function Checkout({ lang }) {
                   required
                   className="checkout-input"
                   value={formData.name}
+                  autoComplete="off"
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  autoComplete="name"
                 />
               </div>
 
@@ -98,6 +90,7 @@ export default function Checkout({ lang }) {
                   required
                   className={`checkout-input ${errors.email ? 'error' : ''}`}
                   value={formData.email}
+                  autoComplete="off"
                   onChange={(e) => {
                     const nextEmail = e.target.value;
                     setFormData({ ...formData, email: nextEmail });
@@ -106,7 +99,6 @@ export default function Checkout({ lang }) {
                     }
                   }}
                   onBlur={handleEmailBlur}
-                  autoComplete="email"
                 />
                 {errors.email && <p className="error-text">{errors.email}</p>}
               </div>
@@ -118,22 +110,13 @@ export default function Checkout({ lang }) {
                   required
                   className={`checkout-input ${errors.address ? 'error' : ''}`}
                   value={formData.address}
+                  autoComplete="off"
                   onChange={(e) => {
                     setFormData({ ...formData, address: e.target.value });
-                    setAddressSelected(false);
                   }}
-                  ref={addressInputRef}
-                  placeholder={placesReady ? 'Start typing your address' : 'Enter your address'}
-                  autoComplete="off"
+                  placeholder="Enter your address"
                 />
                 {errors.address && <p className="error-text">{errors.address}</p>}
-                {placesReady && !errors.address && (
-                  <p className="helper-text">
-                    {lang === 'en'
-                      ? 'Choose an address from the dropdown suggestions.'
-                      : 'Choisissez une adresse dans la liste déroulante.'}
-                  </p>
-                )}
               </div>
             </div>
           </section>
@@ -152,14 +135,22 @@ export default function Checkout({ lang }) {
                     className={`pickup-button ${
                       formData.pickupLocation === option.value ? 'active' : ''
                     }`}
-                    onClick={() =>
-                      setFormData({ ...formData, pickupLocation: option.value })
-                    }
+                    onClick={() => {
+                      setFormData({
+                        ...formData,
+                        pickupLocation: option.value,
+                        pickupDate: ''
+                      });
+                      if (errors.pickupLocation) {
+                        setErrors((prev) => ({ ...prev, pickupLocation: null }));
+                      }
+                    }}
                   >
                     {option.label}
                   </button>
                 ))}
               </div>
+              {errors.pickupLocation && <p className="error-text">{errors.pickupLocation}</p>}
             </div>
 
             <div className="checkout-field pickup-date-field">
@@ -176,16 +167,20 @@ export default function Checkout({ lang }) {
                   }
                 }}
                 required
-                disabled={availableDateValues.length === 0}
+                disabled={!formData.pickupLocation || availableDateValues.length === 0}
               >
                 <option value="" disabled>
-                  {availableDateValues.length === 0
+                  {!formData.pickupLocation
                     ? lang === 'en'
-                      ? 'No dates available'
-                      : 'Aucune date disponible'
-                    : lang === 'en'
-                      ? 'Select a pickup date'
-                      : 'Choisir une date'}
+                      ? 'Select a location first'
+                      : 'Choisissez un lieu'
+                    : availableDateValues.length === 0
+                      ? lang === 'en'
+                        ? 'No dates available'
+                        : 'Aucune date disponible'
+                      : lang === 'en'
+                        ? 'Select a pickup date'
+                        : 'Choisir une date'}
                 </option>
                 {availableDateValues.map((dateValue) => (
                   <option key={dateValue} value={dateValue}>

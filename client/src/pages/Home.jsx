@@ -1,11 +1,12 @@
 import { Link } from 'react-router-dom';
+import useMediaQuery from '../hooks/useMediaQuery';
+import './../styles/pages/Home.css';
 
 export default function Home({ lang }) {
+  const isMobile = useMediaQuery('(max-width: 800px)');
+
   return (
     <>
-      {/* Solid White Bar between header and hero - extends into side padding */}
-
-
       {/* Hero Image with Green Overlay Banner */}
       <div className="home-hero">
         <img
@@ -25,14 +26,14 @@ export default function Home({ lang }) {
       <div className="home-content">
         <div className="container home-content-inner">
 
-          <div className="home-cta">
+          <div className="cta-container">
             <Link to="/order">
-              <button className="btn-checkout home-cta-button home-cta-primary">
+              <button className="cta-primary">
                 {lang === 'en' ? "Order Online" : "Commander en Ligne"}
               </button>
             </Link>
             <Link to="/prices">
-              <button className="btn-checkout home-cta-button home-cta-secondary">
+              <button className="cta-secondary">
                 {lang === 'en' ? "View Prices" : "Voir les Prix"}
               </button>
             </Link>

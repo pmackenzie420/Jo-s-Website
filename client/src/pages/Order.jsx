@@ -1,4 +1,5 @@
 import useOrderController from '../hooks/useOrderController';
+import './../styles/pages/Order.css';
 
 export default function Order({ lang }) {
   const {
@@ -30,7 +31,7 @@ export default function Order({ lang }) {
     <div className="order-layout">
       {/* Left Column */}
       <div className="product-list">
-        <h2 style={{ borderBottom: '1px solid black', paddingBottom: '10px' }}>{t.title}</h2>
+        <h2>{t.title}</h2>
         {hens.map((hen) => {
           const qtyRaw = cart[hen.id];
           const qty = (qtyRaw === "" || qtyRaw === undefined) ? 0 : qtyRaw;
@@ -44,11 +45,11 @@ export default function Order({ lang }) {
             : (lang === 'en' ? `Stock: ${maxStock}` : `Stock: ${maxStock}`);
 
           return (
-            <div key={hen.id}>
+            <div key={hen.id} className="product-card-container">
               <div className={`product-card${isOutOfStock ? ' product-card--disabled' : ''}`}>
                 <img src={hen.image_url} alt={hen.name} className="product-img" />
                 <div className="product-info">
-                  <h3 style={{ marginTop: 0 }}>{getBilingualText(hen.name)}</h3>
+                  <h3>{getBilingualText(hen.name)}</h3>
                   <div className="product-price">
                     ${unitPrice.toFixed(2)} / {t.unit}
                   </div>
@@ -57,18 +58,13 @@ export default function Order({ lang }) {
                   </div>
                   {/* Minimum order note for meat chickens - show when qty is 1-24 */}
                   {isMeatChicken && safeQty > 0 && safeQty < 25 && (
-                    <div style={{
-                      padding: '8px 0',
-                      marginBottom: '8px',
-                      fontSize: '0.85rem',
-                      color: '#666'
-                    }}>
+                    <div className="minimum-order-note">
                       {lang === 'en'
                         ? "Minimum order: 25 meat birds"
                         : "Commande minimum de 25 poulets à chair"}
                     </div>
                   )}
-                  <div style={{ marginTop: 'auto' }}>
+                  <div className="stepper-container">
                     <div className="stepper">
                       <button onClick={() => decrement(hen.id)} disabled={isOutOfStock}>-</button>
                       <input
@@ -90,7 +86,7 @@ export default function Order({ lang }) {
 
       {/* Right Column */}
       <div className="order-summary">
-        <h3 style={{ marginTop: 0, borderBottom: '1px solid #ddd', paddingBottom: '10px' }}>{t.summary}</h3>
+        <h3>{t.summary}</h3>
         {cartItems.map(item => (
           <div key={item.id} className="summary-row">
             <span><strong>{item.qty}</strong> x {getBilingualText(item.name).split(' / ')[0]}</span>
