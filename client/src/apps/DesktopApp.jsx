@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Layout from '../layouts/BoxedLayout';
+import MainGate from '../components/MainGate';
 import Home from '../pages/Home';
 import Prices from '../pages/Prices';
 import Contact from '../pages/Contact';
@@ -15,7 +16,11 @@ export default function DesktopApp() {
 
   return (
     <Routes>
-      <Route element={<Layout lang={lang} setLang={setLang} />}>
+      <Route element={(
+        <MainGate>
+          <Layout lang={lang} setLang={setLang} />
+        </MainGate>
+      )}>
         <Route path="/" element={<Home lang={lang} />} />
         <Route path="/prices" element={<Prices lang={lang} />} />
         <Route path="/contact" element={<Contact />} />

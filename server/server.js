@@ -1,4 +1,6 @@
-require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const crypto = require('crypto');
 const express = require('express');
 const cors = require('cors');
@@ -8,6 +10,7 @@ const EMAIL_API_KEY = process.env.EMAIL_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM;
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Les Fermes Soulard';
 const PAID_STATUSES = new Set(['paid', 'fulfilled', 'picked_up']);
+const MAIN_PASSWORD = process.env.MAIN_PASSWORD;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET;
 const ADMIN_SESSION_COOKIE = 'admin_session';
@@ -15,6 +18,12 @@ const ADMIN_SESSION_DAYS = Number(process.env.ADMIN_SESSION_DAYS || 30);
 const ADMIN_SESSION_TTL_MS = Number.isFinite(ADMIN_SESSION_DAYS)
     ? ADMIN_SESSION_DAYS * 24 * 60 * 60 * 1000
     : 30 * 24 * 60 * 60 * 1000;
+const MAIN_SESSION_SECRET = process.env.MAIN_SESSION_SECRET || MAIN_PASSWORD || ADMIN_SESSION_SECRET;
+const MAIN_SESSION_COOKIE = 'main_session';
+const MAIN_SESSION_DAYS = Number(process.env.MAIN_SESSION_DAYS || 7);
+const MAIN_SESSION_TTL_MS = Number.isFinite(MAIN_SESSION_DAYS)
+    ? MAIN_SESSION_DAYS * 24 * 60 * 60 * 1000
+    : 7 * 24 * 60 * 60 * 1000;
 const ORDER_CONFIRM_SECRET = process.env.ORDER_CONFIRM_SECRET;
 const ORDER_CONFIRM_COOKIE = 'order_confirm';
 const ORDER_CONFIRM_TTL_MINUTES = Number(process.env.ORDER_CONFIRM_TTL_MINUTES || 120);
@@ -49,7 +58,11 @@ const parseOriginList = (value) => (value || '')
     .map((entry) => entry.trim().replace(/\/+$/, ''))
     .filter(Boolean);
 
+const isProduction = process.env.NODE_ENV === 'production';
 const corsOrigins = parseOriginList(process.env.CORS_ORIGINS || process.env.CLIENT_URL);
+if (!isProduction && corsOrigins.length === 0) {
+    corsOrigins.push('http://localhost:5173', 'http://127.0.0.1:5173');
+}
 const corsOptions = {
     origin: (origin, callback) => {
         if (!origin) {
@@ -72,9 +85,27 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 const shouldUseDatabaseSsl = String(process.env.DATABASE_SSL || 'true').toLowerCase() !== 'false';
+const rejectUnauthorized = String(process.env.DATABASE_SSL_REJECT_UNAUTHORIZED || 'true')
+    .toLowerCase() !== 'false';
+const databaseSslCaPath = process.env.DATABASE_SSL_CA || process.env.DATABASE_SSL_CA_PATH;
+let databaseSslConfig = false;
+
+if (shouldUseDatabaseSsl) {
+    let ca;
+    if (databaseSslCaPath) {
+        try {
+            ca = fs.readFileSync(databaseSslCaPath, 'utf8');
+        } catch (error) {
+            console.error('Failed to read DATABASE_SSL_CA file:', error.message);
+            process.exit(1);
+        }
+    }
+    databaseSslConfig = { rejectUnauthorized, ...(ca ? { ca } : {}) };
+}
+
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: shouldUseDatabaseSsl ? { rejectUnauthorized: true } : false
+    ssl: databaseSslConfig
 });
 
 const parseOrderItems = (items) => {
@@ -104,10 +135,6 @@ const getRequestBaseUrl = (req) => {
         return sanitizedOrigin;
     }
 
-    if (corsOrigins.length === 0) {
-        return null;
-    }
-
     const forwardedProto = req.headers['x-forwarded-proto'];
     const forwardedHost = req.headers['x-forwarded-host'];
     const proto = typeof forwardedProto === 'string'
@@ -117,6 +144,9 @@ const getRequestBaseUrl = (req) => {
         ? forwardedHost.split(',')[0]
         : req.get('host');
     const candidate = `${proto}://${host}`;
+    if (!isProduction && corsOrigins.length === 0) {
+        return candidate;
+    }
     if (corsOrigins.includes(candidate)) {
         return candidate;
     }
@@ -278,6 +308,14 @@ const getAdminSessionCookieOptions = () => ({
     path: '/api'
 });
 
+const getMainSessionCookieOptions = () => ({
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: MAIN_SESSION_TTL_MS,
+    path: '/api'
+});
+
 const getOrderConfirmCookieOptions = () => ({
     httpOnly: true,
     sameSite: 'lax',
@@ -290,6 +328,12 @@ const adminLoginLimiter = createRateLimiter({
     windowMs: 15 * 60 * 1000,
     max: 10,
     keyPrefix: 'admin-login'
+});
+
+const mainLoginLimiter = createRateLimiter({
+    windowMs: 15 * 60 * 1000,
+    max: 20,
+    keyPrefix: 'main-login'
 });
 
 const orderConfirmLimiter = createRateLimiter({
@@ -916,6 +960,38 @@ app.get('/api/orders/confirm', orderConfirmLimiter, async (req, res) => {
 });
 
 // --- ADMIN ROUTES ---
+
+// --- MAIN SITE GATE ---
+app.post('/api/main/login', mainLoginLimiter, (req, res) => {
+    const { password } = req.body;
+    if (!MAIN_PASSWORD || !MAIN_SESSION_SECRET) {
+        return res.status(500).json({ error: 'Main site auth not configured.' });
+    }
+    if (password !== MAIN_PASSWORD) {
+        return res.status(401).send('Wrong password');
+    }
+    const now = Date.now();
+    const token = signToken({
+        sub: 'main',
+        iat: now,
+        exp: now + MAIN_SESSION_TTL_MS
+    }, MAIN_SESSION_SECRET);
+    res.cookie(MAIN_SESSION_COOKIE, token, getMainSessionCookieOptions());
+    return res.json({ success: true });
+});
+
+app.get('/api/main/session', (req, res) => {
+    if (!MAIN_PASSWORD || !MAIN_SESSION_SECRET) {
+        return res.status(500).json({ error: 'Main site auth not configured.' });
+    }
+    const cookies = parseCookies(req.headers.cookie);
+    const token = cookies[MAIN_SESSION_COOKIE];
+    const session = verifyToken(token, MAIN_SESSION_SECRET);
+    if (!session || session.sub !== 'main') {
+        return res.status(401).send('Unauthorized');
+    }
+    return res.json({ success: true });
+});
 
 // Middleware for Admin Auth
 const checkAuth = (req, res, next) => {

@@ -1,0 +1,58 @@
+.main-gate {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #f6f4ef;
+  color: #222;
+}
+
+.main-gate-card {
+  width: 100%;
+  max-width: 360px;
+  background: #fff;
+  border: 1px solid #e2dfd8;
+  border-radius: 10px;
+  padding: 24px;
+  box-shadow: 0 12px 30px rgba(20, 20, 20, 0.08);
+  text-align: center;
+}
+
+.main-gate-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.main-gate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.main-gate-input {
+  width: 100%;
+  border: 1px solid #c9c4b9;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 16px;
+}
+
+.main-gate-button {
+  width: 100%;
+  border: none;
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 16px;
+  font-weight: 700;
+  background: var(--color-accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.main-gate-error {
+  margin-top: 12px;
+  color: #c62828;
+  font-size: 14px;
+}
