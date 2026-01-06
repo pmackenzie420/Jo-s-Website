@@ -1,10 +1,6 @@
-<<<<<<< HEAD
 node_modules/
-.env
 .DS_Store
 
-
-=======
 # Logs
 logs
 *.log
@@ -91,7 +87,7 @@ dist
 
 # Gatsby files
 .cache/
-# Comment in the public line in if your project uses Gatsby and not Next.js
+# Comment in the public line if your project uses Gatsby and not Next.js
 # https://nextjs.org/blog/next-9-1#public-directory-support
 # public
 
@@ -144,4 +140,3 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
->>>>>>> 03f698905a260bdb6cb02788ba809cc2afd1b3b0
