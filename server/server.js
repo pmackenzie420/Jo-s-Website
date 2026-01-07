@@ -1,5 +1,4 @@
 const path = require('path');
-const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const crypto = require('crypto');
 const express = require('express');
@@ -85,27 +84,10 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 const shouldUseDatabaseSsl = String(process.env.DATABASE_SSL || 'true').toLowerCase() !== 'false';
-const rejectUnauthorized = String(process.env.DATABASE_SSL_REJECT_UNAUTHORIZED || 'true')
-    .toLowerCase() !== 'false';
-const databaseSslCaPath = process.env.DATABASE_SSL_CA || process.env.DATABASE_SSL_CA_PATH;
-let databaseSslConfig = false;
-
-if (shouldUseDatabaseSsl) {
-    let ca;
-    if (databaseSslCaPath) {
-        try {
-            ca = fs.readFileSync(databaseSslCaPath, 'utf8');
-        } catch (error) {
-            console.error('Failed to read DATABASE_SSL_CA file:', error.message);
-            process.exit(1);
-        }
-    }
-    databaseSslConfig = { rejectUnauthorized, ...(ca ? { ca } : {}) };
-}
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: databaseSslConfig
+    ssl: shouldUseDatabaseSsl ? { rejectUnauthorized: true } : false
 });
 
 const parseOrderItems = (items) => {
