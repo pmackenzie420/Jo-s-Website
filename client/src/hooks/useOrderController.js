@@ -1,8 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
-
-const API_URL = '/api';
+import { API_URL } from '../constants/api';
 
 const getBilingualText = (text, lang) => {
   if (!text) return '';

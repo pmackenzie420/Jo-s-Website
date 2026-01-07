@@ -4,8 +4,8 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import useMediaQuery from '../hooks/useMediaQuery';
 import '../styles/pages/Admin.css';
+import { API_URL } from '../constants/api';
 
-const API_URL = '/api';
 const LOCATION_LABELS = {
   hemmingford: 'Hemmingford',
   bristol: 'Bristol'

@@ -1,8 +1,7 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 import '../styles/components/MainGate.css';
-
-const API_URL = '/api';
+import { API_URL } from '../constants/api';
 
 export default function MainGate({ children }) {
   const [status, setStatus] = useState('loading');

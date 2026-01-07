@@ -1,8 +1,7 @@
 import { useEffect, useState, useMemo } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
-
-const API_URL = '/api';
+import { API_URL } from '../constants/api';
 
 export default function useCheckout(lang, formData, setFormData, cartItems, grandTotal) {
   const navigate = useNavigate();

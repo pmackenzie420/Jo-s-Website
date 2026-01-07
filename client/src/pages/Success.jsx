@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './../styles/pages/Success.css';
+import { API_URL } from '../constants/api';
 
 const LOCATION_DETAILS = {
     hemmingford: {
@@ -36,7 +37,7 @@ function Success() {
         setOrder(null);
         setLoading(true);
         setLoadError(false);
-        fetch(`/api/orders/confirm?session_id=${encodeURIComponent(sessionId)}`, {
+        fetch(`${API_URL}/orders/confirm?session_id=${encodeURIComponent(sessionId)}`, {
             signal: controller.signal,
             credentials: 'include'
         })
