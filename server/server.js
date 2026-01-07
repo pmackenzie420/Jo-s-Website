@@ -59,6 +59,12 @@ const parseOriginList = (value) => (value || '')
     .filter(Boolean);
 
 const isProduction = process.env.NODE_ENV === 'production';
+const hasHttpsOrigin = (value) => parseOriginList(value)
+    .some((origin) => origin.startsWith('https://'));
+const useSecureCookies = isProduction
+    || hasHttpsOrigin(process.env.CLIENT_URL)
+    || hasHttpsOrigin(process.env.CORS_ORIGINS);
+const cookieSameSite = useSecureCookies ? 'none' : 'lax';
 const corsOrigins = parseOriginList(process.env.CORS_ORIGINS || process.env.CLIENT_URL);
 if (!isProduction && corsOrigins.length === 0) {
     corsOrigins.push(
@@ -294,24 +300,24 @@ const verifyOrderConfirmToken = (token) => {
 
 const getAdminSessionCookieOptions = () => ({
     httpOnly: true,
-    sameSite: isProduction ? 'none' : 'lax',
-    secure: isProduction,
+    sameSite: cookieSameSite,
+    secure: useSecureCookies,
     maxAge: ADMIN_SESSION_TTL_MS,
     path: '/api'
 });
 
 const getMainSessionCookieOptions = () => ({
     httpOnly: true,
-    sameSite: isProduction ? 'none' : 'lax',
-    secure: isProduction,
+    sameSite: cookieSameSite,
+    secure: useSecureCookies,
     maxAge: MAIN_SESSION_TTL_MS,
     path: '/api'
 });
 
 const getOrderConfirmCookieOptions = () => ({
     httpOnly: true,
-    sameSite: isProduction ? 'none' : 'lax',
-    secure: isProduction,
+    sameSite: cookieSameSite,
+    secure: useSecureCookies,
     maxAge: ORDER_CONFIRM_TTL_MS,
     path: '/api'
 });
