@@ -61,7 +61,12 @@ const parseOriginList = (value) => (value || '')
 const isProduction = process.env.NODE_ENV === 'production';
 const corsOrigins = parseOriginList(process.env.CORS_ORIGINS || process.env.CLIENT_URL);
 if (!isProduction && corsOrigins.length === 0) {
-    corsOrigins.push('http://localhost:5173', 'http://127.0.0.1:5173');
+    corsOrigins.push(
+        'http://localhost:5173',
+        'http://127.0.0.1:5173',
+        'http://localhost:3000',
+        'http://127.0.0.1:3000'
+    );
 }
 const corsOptions = {
     origin: (origin, callback) => {
@@ -79,7 +84,8 @@ const corsOptions = {
         }
         callback(new Error('Not allowed by CORS'));
     },
-    credentials: true
+    credentials: true,
+    optionsSuccessStatus: 200
 };
 
 app.use(cors(corsOptions));
