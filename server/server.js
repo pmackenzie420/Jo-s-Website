@@ -1,4 +1,5 @@
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 const crypto = require('crypto');
 const express = require('express');
@@ -83,11 +84,14 @@ const corsOptions = {
 
 app.use(cors(corsOptions));
 
-const shouldUseDatabaseSsl = String(process.env.DATABASE_SSL || 'true').toLowerCase() !== 'false';
-
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
-    ssl: shouldUseDatabaseSsl ? { rejectUnauthorized: true } : false
+    ssl: {
+        rejectUnauthorized: true,
+        ca: isProduction
+            ? fs.readFileSync('/etc/secrets/supabase-ca.crt').toString()
+            : fs.readFileSync(path.join(__dirname, 'certs/supabase-ca.crt')).toString()
+    }
 });
 
 const parseOrderItems = (items) => {
