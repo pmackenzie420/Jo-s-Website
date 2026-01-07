@@ -294,24 +294,24 @@ const verifyOrderConfirmToken = (token) => {
 
 const getAdminSessionCookieOptions = () => ({
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: isProduction ? 'none' : 'lax',
+    secure: isProduction,
     maxAge: ADMIN_SESSION_TTL_MS,
     path: '/api'
 });
 
 const getMainSessionCookieOptions = () => ({
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: isProduction ? 'none' : 'lax',
+    secure: isProduction,
     maxAge: MAIN_SESSION_TTL_MS,
     path: '/api'
 });
 
 const getOrderConfirmCookieOptions = () => ({
     httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
+    sameSite: isProduction ? 'none' : 'lax',
+    secure: isProduction,
     maxAge: ORDER_CONFIRM_TTL_MS,
     path: '/api'
 });

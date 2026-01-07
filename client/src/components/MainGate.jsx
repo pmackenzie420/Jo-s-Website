@@ -1,14 +1,20 @@
 import { useEffect, useState } from 'react';
+import { useLocation } from 'react-router-dom';
 import axios from 'axios';
 import '../styles/components/MainGate.css';
 import { API_URL } from '../constants/api';
 
 export default function MainGate({ children }) {
+  const location = useLocation();
   const [status, setStatus] = useState('loading');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
+  const bypassGate = location.pathname.startsWith('/success');
 
   useEffect(() => {
+    if (bypassGate) {
+      return undefined;
+    }
     let active = true;
     axios
       .get(`${API_URL}/main/session`, { withCredentials: true })
@@ -25,7 +31,7 @@ export default function MainGate({ children }) {
     return () => {
       active = false;
     };
-  }, []);
+  }, [bypassGate]);
 
   const handleSubmit = async (event) => {
     event.preventDefault();
@@ -45,6 +51,10 @@ export default function MainGate({ children }) {
       }
     }
   };
+
+  if (bypassGate) {
+    return children;
+  }
 
   if (status === 'loading') {
     return (
