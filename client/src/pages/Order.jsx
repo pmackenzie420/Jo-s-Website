@@ -1,4 +1,5 @@
 import useOrderController from '../hooks/useOrderController';
+import lambImage from '../assets/lamb.png';
 import './../styles/pages/Order.css';
 
 export default function Order({ lang }) {
@@ -49,7 +50,7 @@ export default function Order({ lang }) {
           const lowerUrl = (hen.image_url || '').toLowerCase();
 
           if (lowerName.includes('lamb') || lowerName.includes('agneau') || lowerUrl.includes('lamb')) {
-            imageUrl = '/lamb.png';
+            imageUrl = lambImage;
           } else if (lowerName.includes('meat') || lowerName.includes('chair') || lowerUrl.includes('broiler')) {
             imageUrl = '/broiler.jpg';
           } else if (lowerName.includes('lohmann') || lowerUrl.includes('layer')) {
