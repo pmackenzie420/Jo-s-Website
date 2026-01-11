@@ -1,9 +1,27 @@
-import { Link, Outlet } from 'react-router-dom';
+import { Link, Outlet, useLocation } from 'react-router-dom';
+import { useEffect } from 'react';
 import SiteHeader from '../components/SiteHeader';
+import { CHECKOUT_STORAGE_KEYS } from '../constants/checkout';
 import { LINKS } from '../constants/links';
+import useHeartbeat from '../hooks/useHeartbeat';
 import '../styles/layouts/boxed.css';
 
 export default function BoxedLayout({ lang, setLang }) {
+  const location = useLocation();
+  useHeartbeat();
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    if (!location.pathname.startsWith('/checkout')) {
+      try {
+        window.sessionStorage.removeItem(CHECKOUT_STORAGE_KEYS.form);
+        window.sessionStorage.removeItem(CHECKOUT_STORAGE_KEYS.step);
+      } catch {
+        // Ignore storage clear issues (private mode, quota, etc).
+      }
+    }
+  }, [location.pathname]);
 
   return (
     <>
@@ -20,6 +38,14 @@ export default function BoxedLayout({ lang, setLang }) {
             <Outlet />
           </div>
 
+          <div className="page-questions-banner">
+            <span className="page-questions-question">
+              {lang === 'fr' ? 'Des questions?' : 'Questions?'}
+            </span>
+            <a className="page-questions-number-link" href="tel:+18197700070">
+              (819) 770-0070
+            </a>
+          </div>
         </div>
         {/* END OF WHITE PAPER */}
 
@@ -44,12 +70,12 @@ export default function BoxedLayout({ lang, setLang }) {
 
         <div style={{ marginTop: '35px', marginBottom: '20px', textAlign: 'center' }}>
           <a
-            href={LINKS.maps.hemmingford}
+            href={LINKS.maps.bristol}
             target="_blank"
             rel="noopener noreferrer"
             style={{ margin: '5px 0', fontSize: '0.9rem', color: '#fff', textDecoration: 'none', display: 'block' }}
           >
-            315 ch. Back Bush, Hemmingford, QC
+            84 Rte 148, Bristol, QC
           </a>
           <Link to="/privacy" className="footer-privacy-link">
             Privacy
