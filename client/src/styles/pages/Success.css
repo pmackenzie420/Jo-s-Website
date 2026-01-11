@@ -7,7 +7,8 @@
 }
 
 .success-title {
-  color: #2e7d32;
+  color: #2D5A3D; /* Fallback */
+  color: var(--color-accent);
   font-size: 28px;
   font-weight: 700;
   margin-bottom: 12px;
@@ -64,7 +65,8 @@
 .home-link {
   display: inline-block;
   margin-top: 24px;
-  background: var(--color-accent);
+  background-color: #2D5A3D; /* Fallback */
+  background-color: var(--color-accent);
   color: #ffffff;
   padding: 12px 24px;
   border-radius: 4px;
@@ -74,6 +76,6 @@
 
 @media (max-width: 720px) {
   .success-container {
-    padding: 20px;
+    padding: 16px;
   }
 }

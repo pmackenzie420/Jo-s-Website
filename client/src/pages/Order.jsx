@@ -44,10 +44,14 @@ export default function Order({ lang }) {
             ? (lang === 'en' ? 'Out of stock' : 'Rupture de stock')
             : (lang === 'en' ? `Stock: ${maxStock}` : `Stock: ${maxStock}`);
 
+          const imageUrl = hen.image_url 
+            ? (hen.image_url.startsWith('http') || hen.image_url.startsWith('/') ? hen.image_url : `/${hen.image_url}`)
+            : '';
+
           return (
             <div key={hen.id} className="product-card-container">
               <div className={`product-card${isOutOfStock ? ' product-card--disabled' : ''}`}>
-                <img src={hen.image_url} alt={hen.name} className="product-img" />
+                <img src={imageUrl} alt={hen.name} className="product-img" />
                 <div className="product-info">
                   <h3>{getBilingualText(hen.name)}</h3>
                   <div className="product-price">
