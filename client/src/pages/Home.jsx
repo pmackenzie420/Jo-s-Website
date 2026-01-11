@@ -72,6 +72,7 @@ export default function Home({ lang }) {
         </div>
 
         <section className="home-about">
+          <h2 className="home-about-title">{aboutContent.heading}</h2>
           <div className="home-about-inner">
             <div className="home-about-media">
               <img
@@ -81,7 +82,6 @@ export default function Home({ lang }) {
               />
             </div>
             <div className="home-about-text">
-              <h2 className="home-about-title">{aboutContent.heading}</h2>
               {aboutContent.paragraphs.map((paragraph, index) => {
                 const isSubheading = aboutSubheadings.has(paragraph);
                 return (
