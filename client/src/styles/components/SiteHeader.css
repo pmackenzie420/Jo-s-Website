@@ -18,6 +18,7 @@
 /* ==================== ROW 1: GREEN TOP BAR ==================== */
 /* ==================== ROW 1: GREEN TOP BAR ==================== */
 .green-top-bar {
+    background-color: #2D5A3D; /* Fallback */
     background-color: var(--color-accent);
     color: white;
     padding: 14px 0;
@@ -143,6 +144,7 @@
     left: 12px;
     right: 12px;
     top: 100%;
+    background-color: #2D5A3D; /* Fallback */
     background-color: var(--color-accent);
     border-radius: 0 0 10px 10px;
     overflow: hidden;
@@ -225,6 +227,7 @@
 /* ==================== ROW 3: GREEN NAVIGATION BAR ==================== */
 /* ==================== ROW 3: GREEN NAVIGATION BAR ==================== */
 .brown-nav-bar {
+    background-color: #2D5A3D; /* Fallback */
     background-color: var(--color-accent);
     padding: 15px 0;
     border-radius: 10px 10px 0 0;
