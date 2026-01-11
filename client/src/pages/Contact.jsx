@@ -1,10 +1,20 @@
 import { LINKS } from '../constants/links';
 import '../styles/pages/Contact.css';
 
-export default function Contact() {
+const COPY = {
+  en: {
+    title: 'Contact Us'
+  },
+  fr: {
+    title: 'Contactez-nous'
+  }
+};
+
+export default function Contact({ lang }) {
+  const copy = lang === 'fr' ? COPY.fr : COPY.en;
   return (
     <div className="contact-container">
-      <h1 className="contact-title">Contact Us</h1>
+      <h1 className="contact-title">{copy.title}</h1>
       <p className="contact-text">Les Fermes Soulard S.E.N.C.</p>
       <p className="contact-text">
         <a href="tel:8197700070" className="contact-link">
@@ -18,12 +28,12 @@ export default function Contact() {
       </p>
       <p className="contact-text">
         <a
-          href={LINKS.maps.hemmingford}
+          href={LINKS.maps.bristol}
           target="_blank"
           rel="noopener noreferrer"
           className="contact-link"
         >
-          315 ch. Back Bush, Hemmingford, Qc
+          84 Rte 148, Bristol, QC
         </a>
       </p>
     </div>

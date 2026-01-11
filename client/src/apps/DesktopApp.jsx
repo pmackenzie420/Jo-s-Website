@@ -30,14 +30,14 @@ export default function DesktopApp() {
   return (
     <Routes>
       <Route element={(
-        <MainGate>
+        <MainGate lang={lang}>
           <Layout lang={lang} setLang={setLang} />
         </MainGate>
       )}>
         <Route path="/" element={<Home lang={lang} />} />
         <Route path="/prices" element={<Prices lang={lang} />} />
-        <Route path="/contact" element={<Contact />} />
-        <Route path="/privacy" element={<Privacy />} />
+        <Route path="/contact" element={<Contact lang={lang} />} />
+        <Route path="/privacy" element={<Privacy lang={lang} />} />
         <Route path="/order" element={<Order lang={lang} />} />
         <Route path="/checkout" element={<Checkout lang={lang} />} />
         <Route path="/success" element={<Success lang={lang} />} />

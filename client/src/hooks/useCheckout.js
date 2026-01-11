@@ -80,8 +80,11 @@ export default function useCheckout(lang, formData, setFormData, cartItems, gran
       window.location.href = res.data.url;
     } catch (err) {
       console.error(err);
+      const fallbackMessage = effectiveLang === 'fr'
+        ? 'Erreur lors de la création de la session de paiement. Veuillez réessayer.'
+        : 'Error creating checkout session. Please try again.';
       const message =
-        err?.response?.data?.error || 'Error creating checkout session. Please try again.';
+        err?.response?.data?.error || fallbackMessage;
       alert(message);
       setLoading(false);
     }

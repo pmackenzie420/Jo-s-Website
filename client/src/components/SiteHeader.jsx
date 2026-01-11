@@ -10,12 +10,14 @@ const contentMap = {
         nav_home: "HOME",
         nav_prices: "PRICE LIST",
         nav_order: "ORDER ONLINE",
+        contact: "Contact us",
     },
     fr: {
         alert: "Réservation nécessaire pour tout achat.",
         nav_home: "ACCUEIL",
         nav_prices: "LISTE DE PRIX",
         nav_order: "COMMANDER",
+        contact: "Contactez-nous",
     }
 };
 
@@ -57,7 +59,7 @@ export default function SiteHeader({ lang, setLang }) {
                     </div>
                     <div className="mobile-contact">
                         <Link to="/contact" className="mobile-contact-link">
-                            Contact us
+                            {t.contact}
                         </Link>
                     </div>
                 </div>
@@ -90,13 +92,13 @@ export default function SiteHeader({ lang, setLang }) {
                             <a href="tel:8197700070" className="contact-phone">(819) 770-0070</a>
                             <a href="mailto:lesfermessoulard@gmail.com" className="contact-email">lesfermessoulard@gmail.com</a>
                             <a
-                                href={LINKS.maps.hemmingford}
+                                href={LINKS.maps.bristol}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="contact-address"
                                 style={{ textDecoration: 'none' }}
                             >
-                                315 ch. Back Bush, Hemmingford, Qc
+                                84 Rte 148, Bristol, QC
                             </a>
                         </div>
                         <a

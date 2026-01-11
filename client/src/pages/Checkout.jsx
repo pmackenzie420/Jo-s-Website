@@ -51,8 +51,10 @@ export default function Checkout({ lang }) {
   if (!hasCart) {
     return (
       <div style={{ padding: '40px', textAlign: 'center' }}>
-        <h2>Cart is empty</h2>
-        <button onClick={goToOrder}>Back to Order</button>
+        <h2>{lang === 'en' ? 'Cart is empty' : 'Panier vide'}</h2>
+        <button onClick={goToOrder}>
+          {lang === 'en' ? 'Back to Order' : 'Retour à la commande'}
+        </button>
       </div>
     );
   }
@@ -60,7 +62,7 @@ export default function Checkout({ lang }) {
   const formatCurrency = (cents) => `$${(Number(cents) / 100).toFixed(2)}`;
 
   const payButtonLabel = loading
-    ? 'Processing...'
+    ? (lang === 'en' ? 'Processing...' : 'Traitement...')
     : (lang === 'en' ? 'PAY' : 'PAYER');
     
   // Step Labels
@@ -160,7 +162,7 @@ export default function Checkout({ lang }) {
                 </div>
 
                 <div className="checkout-field">
-                  <label className="checkout-label">Email</label>
+                  <label className="checkout-label">{lang === 'en' ? 'Email' : 'Courriel'}</label>
                   <input
                     type="email"
                     required
@@ -194,7 +196,7 @@ export default function Checkout({ lang }) {
                         setErrors((prev) => ({ ...prev, address: null }));
                       }
                     }}
-                    placeholder="Enter your address"
+                    placeholder={lang === 'en' ? 'Enter your address' : 'Entrez votre adresse'}
                   />
                   {errors.address && <p className="error-text">{errors.address}</p>}
                 </div>

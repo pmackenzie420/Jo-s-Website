@@ -9,6 +9,7 @@ import '../styles/layouts/boxed.css';
 export default function BoxedLayout({ lang, setLang }) {
   const location = useLocation();
   useHeartbeat();
+  const privacyLabel = lang === 'fr' ? 'Confidentialité' : 'Privacy';
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
@@ -78,7 +79,7 @@ export default function BoxedLayout({ lang, setLang }) {
             84 Rte 148, Bristol, QC
           </a>
           <Link to="/privacy" className="footer-privacy-link">
-            Privacy
+            {privacyLabel}
           </Link>
         </div>
       </footer>
