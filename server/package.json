@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "render-build": "npm install",
     "test": "echo \"No tests configured\""
   },
   "keywords": [],
@@ -14,7 +15,9 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.16.3",
+    "postmark": "^4.0.5",
     "stripe": "^20.1.0"
   }
 }
