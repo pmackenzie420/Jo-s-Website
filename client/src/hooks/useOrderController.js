@@ -12,17 +12,21 @@ const getBilingualText = (text, lang) => {
 
 const getTierPrice = (henName, qty) => {
   const quantity = qty || 0;
-  if (henName.includes('Lohmann') || henName.includes('Ready-to-Lay')) {
+  const normalized = typeof henName === 'string' ? henName.toLowerCase() : '';
+  if (normalized.includes('lohmann') || normalized.includes('ready-to-lay')) {
     if (quantity >= 50) return 14.0;
     if (quantity >= 13) return 15.25;
     if (quantity >= 6) return 17.0;
     return 17.5;
   }
-  if (henName.includes('Meat') || henName.includes('Chair')) {
+  if (normalized.includes('meat') || normalized.includes('chair')) {
     if (quantity >= 300) return 2.15;
     if (quantity >= 100) return 2.3;
     if (quantity >= 49) return 2.5;
     return 2.6;
+  }
+  if (normalized.includes('lamb') || normalized.includes('agneau')) {
+    return 50.00;
   }
   return 0;
 };
@@ -104,7 +108,8 @@ export default function useOrderController(lang) {
 
   const hasMeatChickenMinimumError = useMemo(() => {
     return hens.some((hen) => {
-      const isMeatChicken = hen.name.includes('Meat') || hen.name.includes('Chair');
+      const normalized = (hen.name || '').toLowerCase();
+      const isMeatChicken = normalized.includes('meat') || normalized.includes('chair');
       const qtyRaw = cart[hen.id];
       const qty = qtyRaw === '' || qtyRaw === undefined ? 0 : qtyRaw;
       const maxStock = getStockForHen(hen);

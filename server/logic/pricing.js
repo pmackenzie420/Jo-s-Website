@@ -3,8 +3,9 @@ const { parseOrderItems } = require('../utils/helpers');
 
 // --- PRICING LOGIC ---
 const calculateItemPrice = (henName, qty) => {
+    const normalized = typeof henName === 'string' ? henName.toLowerCase() : '';
     // 1. Lohmann Brown (Layers)
-    if (henName.includes('Lohmann') || henName.includes('Ready-to-Lay')) {
+    if (normalized.includes('lohmann') || normalized.includes('ready-to-lay')) {
         if (qty >= 50) return 1400; // $14.00
         if (qty >= 13) return 1525; // $15.25
         if (qty >= 6) return 1700; // $17.00
@@ -12,7 +13,7 @@ const calculateItemPrice = (henName, qty) => {
     }
 
     // 2. Ross (Meat Birds)
-    if (henName.includes('Meat') || henName.includes('Chair')) {
+    if (normalized.includes('meat') || normalized.includes('chair')) {
         if (qty >= 300) return 215; // $2.15
         if (qty >= 100) return 230; // $2.30
         if (qty >= 49) return 250; // $2.50
@@ -20,7 +21,7 @@ const calculateItemPrice = (henName, qty) => {
     }
 
     // 3. Lamb (Agneau) - Deposit Only
-    if (henName.includes('Lamb') || henName.includes('Agneau')) {
+    if (normalized.includes('lamb') || normalized.includes('agneau')) {
         return 5000; // $50.00 Deposit per lamb
     }
 
