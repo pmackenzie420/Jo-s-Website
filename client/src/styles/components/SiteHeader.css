@@ -330,3 +330,10 @@
         display: block;
     }
 }
+
+@media (min-width: 851px) {
+    .green-top-bar {
+        padding: 8px 0;
+        min-height: 36px;
+    }
+}

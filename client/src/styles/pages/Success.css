@@ -63,8 +63,9 @@
 }
 
 .home-link {
-  display: inline-block;
-  margin-top: 24px;
+  display: block;
+  width: fit-content;
+  margin: 24px auto 0;
   background-color: #2D5A3D; /* Fallback */
   background-color: var(--color-accent);
   color: #ffffff;
