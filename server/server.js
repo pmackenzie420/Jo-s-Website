@@ -261,8 +261,9 @@ app.get('/api/hens', async (req, res) => {
 // --- CHECKOUT ROUTES ---
 
 app.post('/api/checkout', async (req, res) => {
-    const { customer, items, pickup, paymentOption, language } = req.body;
-    const orderLanguage = normalizeLanguage(language);
+    const { customer, items, pickup, paymentOption, language, lang } = req.body || {};
+    const headerLanguage = req.get('accept-language') || '';
+    const orderLanguage = normalizeLanguage(language || lang || headerLanguage);
 
     try {
         if (!pickup?.date || !pickup?.location) {

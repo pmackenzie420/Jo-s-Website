@@ -3,7 +3,20 @@ import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../constants/api';
 
+const resolveLanguage = (value) => {
+  if (value === 'fr' || value === 'en') return value;
+  if (typeof window !== 'undefined') {
+    const stored = window.localStorage.getItem('site-lang');
+    if (stored === 'fr' || stored === 'en') return stored;
+    const browser = (navigator.language || '').toLowerCase();
+    if (browser.startsWith('fr')) return 'fr';
+    if (browser.startsWith('en')) return 'en';
+  }
+  return 'en';
+};
+
 export default function useCheckout(lang, formData, setFormData, cartItems, grandTotal) {
+  const effectiveLang = resolveLanguage(lang);
   const navigate = useNavigate();
   const [availableDates, setAvailableDates] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -47,6 +60,7 @@ export default function useCheckout(lang, formData, setFormData, cartItems, gran
     setLoading(true);
 
     const payload = {
+      language: effectiveLang,
       customer: {
         name: formData.name,
         phone: formData.phone,
@@ -57,6 +71,7 @@ export default function useCheckout(lang, formData, setFormData, cartItems, gran
         date: formData.pickupDate,
         location: formData.pickupLocation,
       },
+      paymentOption: formData.paymentOption,
       items: cartItems.map((item) => ({ id: item.id, quantity: item.qty })),
     };
 
@@ -83,7 +98,7 @@ export default function useCheckout(lang, formData, setFormData, cartItems, gran
     const dateString = typeof dateValue === 'string' ? dateValue : String(dateValue);
     const date = dateString.length === 10 ? new Date(`${dateString}T00:00:00`) : new Date(dateValue);
     if (Number.isNaN(date.getTime())) return dateValue;
-    return new Intl.DateTimeFormat(lang === 'fr' ? 'fr-CA' : 'en-CA', {
+    return new Intl.DateTimeFormat(effectiveLang === 'fr' ? 'fr-CA' : 'en-CA', {
       month: 'long',
       day: 'numeric',
       year: 'numeric',
