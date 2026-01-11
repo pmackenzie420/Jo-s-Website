@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Layout from '../layouts/BoxedLayout';
 import MainGate from '../components/MainGate';
@@ -12,7 +12,20 @@ import Admin from '../pages/Admin';
 import Success from '../pages/Success';
 
 export default function DesktopApp() {
-  const [lang, setLang] = useState('fr');
+  const [lang, setLang] = useState(() => {
+    if (typeof window === 'undefined') {
+      return 'fr';
+    }
+    const stored = window.localStorage.getItem('site-lang');
+    return stored === 'en' || stored === 'fr' ? stored : 'fr';
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    window.localStorage.setItem('site-lang', lang);
+  }, [lang]);
 
   return (
     <Routes>
@@ -27,7 +40,7 @@ export default function DesktopApp() {
         <Route path="/privacy" element={<Privacy />} />
         <Route path="/order" element={<Order lang={lang} />} />
         <Route path="/checkout" element={<Checkout lang={lang} />} />
-        <Route path="/success" element={<Success />} />
+        <Route path="/success" element={<Success lang={lang} />} />
       </Route>
 
       <Route path="/admin" element={<Admin />} />

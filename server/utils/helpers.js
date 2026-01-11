@@ -33,7 +33,17 @@ const formatCurrency = (cents) => {
     return `$${(numeric / 100).toFixed(2)}`;
 };
 
-const normalizeLanguage = (value) => (value === 'fr' ? 'fr' : 'en');
+const normalizeLanguage = (value) => {
+    if (typeof value !== 'string') return 'en';
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'fr' || normalized.startsWith('fr-') || normalized.startsWith('fr_')) {
+        return 'fr';
+    }
+    if (normalized === 'en' || normalized.startsWith('en-') || normalized.startsWith('en_')) {
+        return 'en';
+    }
+    return 'en';
+};
 
 const escapeHtml = (value) => String(value ?? '')
     .replace(/&/g, '&amp;')

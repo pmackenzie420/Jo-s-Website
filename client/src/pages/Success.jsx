@@ -63,6 +63,18 @@ const COPY = {
     }
 };
 
+const normalizeLanguage = (value) => {
+    if (typeof value !== 'string') return null;
+    const normalized = value.trim().toLowerCase();
+    if (normalized === 'fr' || normalized.startsWith('fr-') || normalized.startsWith('fr_')) {
+        return 'fr';
+    }
+    if (normalized === 'en' || normalized.startsWith('en-') || normalized.startsWith('en_')) {
+        return 'en';
+    }
+    return null;
+};
+
 function Success({ lang }) {
     const location = useLocation();
     const [order, setOrder] = useState(null);
@@ -114,11 +126,7 @@ function Success({ lang }) {
         return () => controller.abort();
     }, [sessionId]);
 
-    const normalizedOrderLanguage = order?.language === 'fr'
-        ? 'fr'
-        : order?.language === 'en'
-            ? 'en'
-            : null;
+    const normalizedOrderLanguage = normalizeLanguage(order?.language);
     const language = normalizedOrderLanguage || (lang === 'fr' ? 'fr' : 'en');
     const copy = COPY[language];
     const pickupDate = order?.pickup_date
