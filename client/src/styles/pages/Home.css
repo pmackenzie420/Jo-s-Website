@@ -59,7 +59,7 @@
   margin: 0 auto;
   display: flex;
   gap: 60px;
-  align-items: center;
+  align-items: flex-start;
 }
 
 .home-about-media,
