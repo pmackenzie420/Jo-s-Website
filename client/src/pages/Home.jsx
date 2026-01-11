@@ -1,9 +1,40 @@
 import { Link } from 'react-router-dom';
-import useMediaQuery from '../hooks/useMediaQuery';
+import aboutImage from '../assets/about_us.jpg';
 import './../styles/pages/Home.css';
 
 export default function Home({ lang }) {
-  const isMobile = useMediaQuery('(max-width: 800px)');
+  const aboutContent = lang === 'en'
+    ? {
+      heading: 'ABOUT US',
+      alt: 'Farm with hens',
+      paragraphs: [
+        `Welcome to Les Fermes Soulard, where we're in the business of raising poultry and lambs who are living their best life right up until they're not.`,
+        'Our Mission',
+        `We believe every animal deserves fresh air, good food, and absolutely zero knowledge of what "farm to table" actually means.`,
+        'What We Offer',
+        'Laying Hens - Judgmental ladies who produce eggs and opinions in equal measure.',
+        "Meat Chicks - Cute now, delicious later. It's called the circle of life, Simba.",
+        "Lambs - So fluffy you'll feel bad about how good they taste. That's our problem now.",
+        'Come visit! Nothing builds an appetite quite like making eye contact with your future dinner.'
+      ]
+    }
+    : {
+      heading: 'À PROPOS DE NOUS',
+      alt: 'Ferme familiale avec des poules',
+      paragraphs: [
+        `Bienvenue aux Fermes Soulard, où nous élevons des volailles et des agneaux qui vivent leur meilleure vie... jusqu'à ce que ce ne soit plus le cas.`,
+        'Notre mission',
+        `Nous croyons que chaque animal mérite l'air frais, de la bonne nourriture et absolument aucune idée de ce que signifie vraiment "de la ferme à la table".`,
+        'Ce que nous offrons',
+        "Poules pondeuses - Des dames jugeantes qui produisent des oeufs et des opinions en parts égales.",
+        "Poulets de chair - Mignons maintenant, délicieux plus tard. C'est le cercle de la vie, Simba.",
+        "Agneaux - Si duveteux que vous vous sentirez mal d'apprécier à quel point ils sont bons. C'est notre problème maintenant.",
+        "Venez nous voir ! Rien n'ouvre l'appétit comme croiser le regard de votre futur repas."
+      ]
+    };
+  const aboutSubheadings = lang === 'en'
+    ? new Set(['Our Mission', 'What We Offer'])
+    : new Set(['Notre mission', 'Ce que nous offrons']);
 
   return (
     <>
@@ -38,21 +69,50 @@ export default function Home({ lang }) {
               </button>
             </Link>
           </div>
+        </div>
+
+        <section className="home-about">
+          <div className="home-about-inner">
+            <div className="home-about-media">
+              <img
+                src={aboutImage}
+                alt={aboutContent.alt}
+                className="home-about-image"
+              />
+            </div>
+            <div className="home-about-text">
+              <h2 className="home-about-title">{aboutContent.heading}</h2>
+              {aboutContent.paragraphs.map((paragraph, index) => {
+                const isSubheading = aboutSubheadings.has(paragraph);
+                return (
+                  <p
+                    key={index}
+                    className={`home-about-paragraph${isSubheading ? ' home-about-subtitle' : ''}`}
+                  >
+                    {paragraph}
+                  </p>
+                );
+              })}
+            </div>
+          </div>
+        </section>
+
+        <div className="container home-content-inner">
 
           {/* Locations Section */}
-          <div style={{ marginTop: '60px', paddingBottom: '40px' }}>
-            <h3 style={{ textTransform: 'uppercase', marginBottom: '40px', fontSize: '1.8rem', color: 'black' }}>
+          <div className="home-locations">
+            <h3 className="home-locations-title">
               {lang === 'en' ? "Two locations to serve you" : "Deux adresses pour vous servir"}
             </h3>
 
-            <div style={{ display: 'flex', justifyContent: 'center', gap: '100px', flexWrap: 'wrap' }}>
-              <div style={{ textAlign: 'center' }}>
-                <strong style={{ display: 'block', fontSize: '1.6rem', marginBottom: '15px', color: 'black' }}>Montérégie</strong>
-                <span style={{ fontSize: '1.3rem', color: 'black' }}>315 Back Bush, Hemmingford, QC</span>
+            <div className="home-locations-grid">
+              <div className="home-location">
+                <strong className="home-location-title">Outaouais</strong>
+                <span className="home-location-address">84 Rte 148, Bristol, QC</span>
               </div>
-              <div style={{ textAlign: 'center' }}>
-                <strong style={{ display: 'block', fontSize: '1.6rem', marginBottom: '15px', color: 'black' }}>Outaouais</strong>
-                <span style={{ fontSize: '1.3rem', color: 'black' }}>84 Rte 148, Bristol, QC</span>
+              <div className="home-location">
+                <strong className="home-location-title">Montérégie</strong>
+                <span className="home-location-address">315 Back Bush, Hemmingford, QC</span>
               </div>
             </div>
           </div>

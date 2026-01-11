@@ -44,6 +44,16 @@ const formatDateLong = (value) => {
   }).format(date);
 };
 
+const formatDateShort = (value) => {
+  if (!value) return 'Unknown';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric'
+  }).format(date);
+};
+
 const formatCurrency = (amount) => `$${amount.toFixed(2)}`;
 
 const formatPhoneLink = (phone) => {
@@ -67,6 +77,30 @@ const getDisplayName = (name) => {
   if (!name) return 'Item';
   return name.split(' / ')[0];
 };
+
+const formatLocationShort = (label) => {
+  if (!label) return 'Unknown';
+  if (/hemmingford/i.test(label)) return 'Hemm.';
+  return label;
+};
+
+const shortenItemLabel = (label) => {
+  if (!label) return 'Item';
+  let updated = label;
+  updated = updated.replace(/ready[-\s]?to[-\s]?lay hens?/gi, 'hens');
+  updated = updated.replace(/meat chickens?/gi, 'chicks');
+  updated = updated.replace(/meat chicks?/gi, 'chicks');
+  return updated;
+};
+
+const normalizePaymentType = (paymentType, amountDue) => {
+  if (paymentType === 'deposit') return 'deposit';
+  if (paymentType === 'full') return 'full';
+  return amountDue > 0 ? 'deposit' : 'full';
+};
+
+const getPaymentLabel = (paymentType, amountDue) =>
+  normalizePaymentType(paymentType, amountDue) === 'deposit' ? 'Deposit' : 'Paid';
 
 const parseItems = (items) => {
   if (!items) return [];
@@ -225,20 +259,22 @@ export default function Admin() {
       group.locations.forEach((locationGroup) => {
         locationGroup.orders.forEach((order) => {
           rows.push([
-            formatDateLong(group.date),
-            locationGroup.locationLabel,
+            formatDateShort(group.date),
+            formatLocationShort(locationGroup.locationLabel),
             order.customerName,
             formatPhoneDisplay(order.customerPhone || ''),
             order.customerEmail || '',
-            order.itemSummary || `${order.itemCount} items`,
-            formatCurrency(order.totalAmount)
+            order.itemSummaryCompact || `${order.itemCount} items`,
+            formatCurrency(order.totalAmount),
+            order.paymentLabel,
+            order.amountDue > 0 ? formatCurrency(order.amountDue) : '$0.00'
           ]);
         });
       });
     });
 
     if (rows.length === 0) {
-      rows.push(['No orders', '', '', '', '', '', '', '']);
+      rows.push(['No orders', '', '', '', '', '', '', '', '']);
     }
 
     return rows;
@@ -266,19 +302,29 @@ export default function Admin() {
     autoTable(doc, {
       startY: 50,
       head: [[
-        'Pickup Date',
-        'Pickup Location',
+        'Date',
+        'Loc',
         'Customer',
         'Phone',
         'Email',
         'Items',
-        'Order Total'
+        'Total',
+        'Pay',
+        'Due'
       ]],
       body: rows,
-      styles: { fontSize: 9, cellPadding: 4 },
+      styles: { fontSize: 8.5, cellPadding: 3, overflow: 'linebreak' },
       headStyles: { fillColor: [47, 107, 63], textColor: 255 },
       columnStyles: {
-        5: { cellWidth: 220 }
+        0: { cellWidth: 55 },
+        1: { cellWidth: 45 },
+        2: { cellWidth: 110 },
+        3: { cellWidth: 80 },
+        4: { cellWidth: 140 },
+        5: { cellWidth: 160 },
+        6: { cellWidth: 60 },
+        7: { cellWidth: 50 },
+        8: { cellWidth: 70 }
       }
     });
 
@@ -351,7 +397,24 @@ export default function Admin() {
       const itemSummary = orderItems
         .map((item) => `${item.quantity} x ${item.displayName}`)
         .join(', ');
+      const itemSummaryCompact = orderItems
+        .map((item) => `${item.quantity} x ${shortenItemLabel(item.displayName)}`)
+        .join(', ');
       const itemSummaryShort = buildShortSummary(orderItems, itemCount);
+      const totalCents = Number(order.total_cents || 0);
+      const paidCentsRaw = Number(order.amount_paid_cents);
+      const dueCentsRaw = Number(order.amount_due_cents);
+      const paidCents = Number.isFinite(paidCentsRaw) ? paidCentsRaw : totalCents;
+      const dueCents = Number.isFinite(dueCentsRaw)
+        ? dueCentsRaw
+        : Math.max(totalCents - paidCents, 0);
+      const amountPaid = paidCents / 100;
+      const amountDue = dueCents / 100;
+      const paymentType = normalizePaymentType(order.payment_type, dueCents);
+      const paymentLabel = getPaymentLabel(paymentType, dueCents);
+      const paymentSummary = amountDue > 0
+        ? `Deposit: Due ${formatCurrency(amountDue)}`
+        : 'Paid';
       return {
         ...order,
         pickupDate: normalizeDate(order.pickup_date || order.created_at),
@@ -364,8 +427,14 @@ export default function Admin() {
         customerEmail: order.customer_email || '',
         customerAddress: order.customer_address || '',
         totalAmount: (order.total_cents || 0) / 100,
+        amountPaid,
+        amountDue,
+        paymentType,
+        paymentLabel,
+        paymentSummary,
         itemCount,
         itemSummary,
+        itemSummaryCompact,
         itemSummaryShort
       };
     });
@@ -720,6 +789,7 @@ export default function Admin() {
                         <div className="order-info">
                           <div className="customer-name">{order.customerName}</div>
                           <div className="product-summary">{order.itemSummaryShort}</div>
+                          <div className="payment-summary">{order.paymentSummary}</div>
                         </div>
                         <span className={`status-badge ${status}`}>{getStatusLabel(order.status)}</span>
                       </button>
@@ -738,6 +808,7 @@ export default function Admin() {
                             <div className="pickup-summary">
                               {pickupSummary} - {order.pickupLocationLabel}
                             </div>
+                            <div className="pickup-payment">{order.paymentSummary}</div>
                             {phoneDisplay && <div className="pickup-phone">{phoneDisplay}</div>}
                           </div>
                         </div>
@@ -1149,6 +1220,7 @@ export default function Admin() {
                       <div className="history-meta">
                         {order.itemSummary || `${order.itemCount} items`}
                       </div>
+                      <div className="history-payment">{order.paymentSummary}</div>
                     </div>
                     <div className="history-total">{formatCurrency(order.totalAmount)}</div>
                   </div>
