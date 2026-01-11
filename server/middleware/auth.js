@@ -1,4 +1,12 @@
-const jwt = require('jsonwebtoken');
+let jwt;
+try {
+    jwt = require('jsonwebtoken');
+} catch (err) {
+    console.error('FATAL: Could not load jsonwebtoken');
+    console.error('Current directory:', process.cwd());
+    console.error('Module paths:', module.paths);
+    throw err;
+}
 const { getClientIp, parseCookies } = require('../utils/helpers');
 
 // --- CONSTANTS ---
