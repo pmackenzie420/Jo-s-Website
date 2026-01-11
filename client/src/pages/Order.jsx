@@ -44,9 +44,22 @@ export default function Order({ lang }) {
             ? (lang === 'en' ? 'Out of stock' : 'Rupture de stock')
             : (lang === 'en' ? `Stock: ${maxStock}` : `Stock: ${maxStock}`);
 
-          const imageUrl = hen.image_url 
-            ? (hen.image_url.startsWith('http') || hen.image_url.startsWith('/') ? hen.image_url : `/${hen.image_url}`)
-            : '';
+          let imageUrl = '';
+          if (hen.image_url) {
+            const lower = hen.image_url.toLowerCase();
+            if (lower.includes('lamb')) {
+              imageUrl = '/lamb.png';
+            } else if (lower.includes('broiler') || lower.includes('meat')) {
+               // Fallback to broiler.jpg if the name implies meat bird, or use the db value if it matches known patterns
+               imageUrl = '/broiler.jpg';
+            } else if (lower.includes('layer') || lower.includes('lohmann')) {
+               imageUrl = '/layer.jpg';
+            } else {
+               imageUrl = hen.image_url.startsWith('http') || hen.image_url.startsWith('/') 
+                 ? hen.image_url 
+                 : `/${hen.image_url}`;
+            }
+          }
 
           return (
             <div key={hen.id} className="product-card-container">
