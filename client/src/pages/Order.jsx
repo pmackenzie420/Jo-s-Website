@@ -1,6 +1,4 @@
 import useOrderController from '../hooks/useOrderController';
-import lambImage from '../assets/lamb.jpg';
-import lambImageSmall from '../assets/lamb-420.jpg';
 import { getMinOrderQuantity } from '../utils/catalog';
 import './../styles/pages/Order.css';
 
@@ -144,14 +142,11 @@ export default function Order({ lang }) {
           const lowerUrl = (hen.image_url || '').toLowerCase();
 
           if (lowerName.includes('lamb') || lowerName.includes('agneau') || lowerUrl.includes('lamb')) {
-            imageUrl = lambImage;
-            imageSrcSet = `${lambImageSmall} 420w, ${lambImage} 700w`;
+            imageUrl = '/photos/lamb_cropped.jpg';
           } else if (lowerName.includes('meat') || lowerName.includes('chair') || lowerUrl.includes('broiler')) {
-            imageUrl = '/broiler-720.jpg';
-            imageSrcSet = '/broiler-360.jpg 360w, /broiler-720.jpg 720w';
+            imageUrl = '/photos/chicks_cropped.jpg';
           } else if (lowerName.includes('lohmann') || lowerUrl.includes('layer')) {
-            imageUrl = '/layer-640.jpg';
-            imageSrcSet = '/layer-320.jpg 320w, /layer-640.jpg 640w';
+            imageUrl = '/photos/hens_cropped.jpg';
           } else {
              imageUrl = hen.image_url 
                ? (hen.image_url.startsWith('http') || hen.image_url.startsWith('/') ? hen.image_url : `/${hen.image_url}`)
