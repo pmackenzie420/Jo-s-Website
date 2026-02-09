@@ -2,7 +2,7 @@
   "name": "jowebsite",
   "private": true,
   "scripts": {
-    "render-build": "npm install && cd server && npm install",
-    "postinstall": "cd server && npm install"
+    "render-build": "npm run postinstall",
+    "postinstall": "npm install --prefix server"
   }
 }

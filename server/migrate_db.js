@@ -87,6 +87,55 @@ async function migrate() {
             END $$;
         `);
 
+        // Add payment_type
+        await pool.query(`
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='payment_type') THEN
+                    ALTER TABLE orders ADD COLUMN payment_type TEXT DEFAULT 'full';
+                END IF;
+            END $$;
+        `);
+
+        // Add amount_paid_cents
+        await pool.query(`
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='amount_paid_cents') THEN
+                    ALTER TABLE orders ADD COLUMN amount_paid_cents INTEGER;
+                END IF;
+            END $$;
+        `);
+
+        // Add amount_due_cents
+        await pool.query(`
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='amount_due_cents') THEN
+                    ALTER TABLE orders ADD COLUMN amount_due_cents INTEGER;
+                END IF;
+            END $$;
+        `);
+
+        // Add language
+        await pool.query(`
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='language') THEN
+                    ALTER TABLE orders ADD COLUMN language TEXT DEFAULT 'en';
+                END IF;
+            END $$;
+        `);
+
+        await pool.query(`
+            UPDATE orders
+            SET
+                payment_type = COALESCE(payment_type, 'full'),
+                amount_paid_cents = COALESCE(amount_paid_cents, total_cents),
+                amount_due_cents = COALESCE(amount_due_cents, 0),
+                language = COALESCE(language, 'en')
+        `);
+
         console.log("Migration Complete!");
         pool.end();
     } catch (err) {

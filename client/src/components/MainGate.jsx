@@ -1,5 +1,4 @@
 import { useEffect, useState } from 'react';
-import { useLocation } from 'react-router-dom';
 import axios from 'axios';
 import '../styles/components/MainGate.css';
 import { API_URL } from '../constants/api';
@@ -26,13 +25,12 @@ const COPY = {
 };
 
 export default function MainGate({ children, lang }) {
-  const location = useLocation();
   const copy = lang === 'fr' ? COPY.fr : COPY.en;
   const [status, setStatus] = useState('loading');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
   const devBypass = import.meta.env.DEV || import.meta.env.VITE_DISABLE_MAIN_GATE === 'true';
-  const bypassGate = devBypass || location.pathname.startsWith('/success');
+  const bypassGate = devBypass;
 
   useEffect(() => {
     if (bypassGate) {
@@ -46,7 +44,7 @@ export default function MainGate({ children, lang }) {
           setStatus('unlocked');
         }
       })
-      .catch((err) => {
+      .catch(() => {
         if (active) {
           setStatus('locked');
         }

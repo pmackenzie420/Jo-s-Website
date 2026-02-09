@@ -1,0 +1,45 @@
+import axios from 'axios';
+import { API_URL } from '../constants/api';
+
+const withAuth = { withCredentials: true };
+
+const login = (password, otp = '') =>
+  axios.post(`${API_URL}/admin/login`, { password, otp }, withAuth);
+
+const checkSession = () => axios.get(`${API_URL}/admin/session`, withAuth);
+
+const fetchAdminMeta = () => axios.get(`${API_URL}/admin/meta`, withAuth);
+
+const fetchOrdersPage = ({ limit = 500, offset = 0 } = {}) =>
+  axios.get(`${API_URL}/admin/orders-page`, { ...withAuth, params: { limit, offset } });
+
+const updatePickupStock = ({ date, location, items }) =>
+  axios.put(`${API_URL}/admin/pickup-stock`, { date, location, items }, withAuth);
+
+const addPickupDate = ({ dateValue, location }) =>
+  axios.post(
+    `${API_URL}/admin/pickup-dates`,
+    { date_value: dateValue, location },
+    withAuth
+  );
+
+const deletePickupDate = (dateId) =>
+  axios.delete(`${API_URL}/admin/pickup-dates/${dateId}`, withAuth);
+
+const updateOrdersStatus = ({ ids, status }) =>
+  axios.put(`${API_URL}/admin/orders/status`, { ids, status }, withAuth);
+
+const sendGroupEmail = ({ messages }) =>
+  axios.post(`${API_URL}/admin/email`, { messages }, withAuth);
+
+export {
+  login,
+  checkSession,
+  fetchAdminMeta,
+  fetchOrdersPage,
+  updatePickupStock,
+  addPickupDate,
+  deletePickupDate,
+  updateOrdersStatus,
+  sendGroupEmail
+};

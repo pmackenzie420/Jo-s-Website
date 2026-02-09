@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LINKS } from '../constants/links';
 import '../styles/components/SiteHeader.css';
@@ -29,10 +29,6 @@ export default function SiteHeader({ lang, setLang }) {
     // Check if link is active
     const isActive = (path) => location.pathname === path ? 'active' : '';
 
-    useEffect(() => {
-        setIsMenuOpen(false);
-    }, [location.pathname]);
-
     const handleNavClick = () => {
         setIsMenuOpen(false);
     };
@@ -43,19 +39,23 @@ export default function SiteHeader({ lang, setLang }) {
             <div className="green-top-bar">
                 <div className="green-bar-content">
                     <div className="lang-toggle">
-                        <span
+                        <button
+                            type="button"
                             onClick={() => setLang('en')}
-                            className={lang === 'en' ? 'active' : ''}
+                            className={`lang-toggle-button ${lang === 'en' ? 'active' : ''}`}
+                            aria-pressed={lang === 'en'}
                         >
                             EN
-                        </span>
+                        </button>
                         {' | '}
-                        <span
+                        <button
+                            type="button"
                             onClick={() => setLang('fr')}
-                            className={lang === 'fr' ? 'active' : ''}
+                            className={`lang-toggle-button ${lang === 'fr' ? 'active' : ''}`}
+                            aria-pressed={lang === 'fr'}
                         >
                             FR
-                        </span>
+                        </button>
                     </div>
                     <div className="mobile-contact">
                         <Link to="/contact" className="mobile-contact-link">
@@ -96,7 +96,6 @@ export default function SiteHeader({ lang, setLang }) {
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="contact-address"
-                                style={{ textDecoration: 'none' }}
                             >
                                 84 Rte 148, Bristol, QC
                             </a>

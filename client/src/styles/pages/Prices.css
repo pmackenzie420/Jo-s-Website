@@ -1,5 +1,5 @@
 .prices-container {
-  max-width: 1024px;
+  max-width: var(--content-width);
   margin: 40px auto;
   padding: 0 20px;
 }
@@ -7,22 +7,23 @@
 .prices-title {
   text-align: center;
   margin-bottom: 40px;
-  font-size: 2rem;
+  font-size: 32px;
   letter-spacing: 2px;
 }
 
 .pickup-box {
-  border: 1px solid black;
+  border: var(--border-default);
+  border-radius: var(--radius-md);
   padding: 30px;
   margin-bottom: 50px;
   text-align: center;
-  background-color: white;
+  background-color: var(--color-white);
 }
 
 .pickup-header {
   text-transform: uppercase;
   margin: 0 0 30px 0;
-  font-size: 1.4rem;
+  font-size: 22px;
 }
 
 .locations-container {
@@ -34,13 +35,13 @@
 }
 
 .location-item strong {
-  font-size: 1.4rem;
+  font-size: 22px;
   display: block;
   margin-bottom: 8px;
 }
 
 .location-item span {
-  font-size: 1.1rem;
+  font-size: 18px;
 }
 
 .tables-container {
@@ -60,37 +61,91 @@
 .price-table {
   width: 100%;
   border-collapse: collapse;
-  border: 1px solid black;
+  border: var(--border-standard);
 }
 
 .price-table th,
 .price-table td {
   text-align: center;
-  border: 1px solid black;
+  border: var(--border-standard);
   padding: 10px;
 }
 
 .price-table thead th {
-  background: black;
-  color: white;
+  background: var(--color-black);
+  color: #ffffff;
   padding: 12px;
 }
 
 .price-table thead tr:nth-child(2) th {
-  font-size: 0.9rem;
+  font-size: 14px;
   padding: 10px;
-  background: #f4f4f4;
-  color: black;
+  background: var(--color-surface-subtle);
+  color: var(--color-black);
 }
 
 .price-table tbody tr:nth-child(odd) {
-  background: #f9f9f9;
+  background: var(--color-surface-subtle);
 }
 
 .meat-footer {
   text-align: center;
   font-style: italic;
   margin-top: 15px;
-  font-size: 0.9rem;
-  color: #444;
+  font-size: 14px;
+  color: var(--color-text-muted);
+}
+
+@media (max-width: 800px) {
+  .prices-container {
+    margin: 24px auto;
+    padding: 0 16px;
+  }
+
+  .prices-title {
+    margin-bottom: 24px;
+    font-size: 24px;
+    letter-spacing: 1px;
+  }
+
+  .pickup-box {
+    padding: 18px;
+    margin-bottom: 28px;
+  }
+
+  .pickup-header {
+    margin-bottom: 18px;
+    font-size: 18px;
+  }
+
+  .locations-container {
+    gap: 28px;
+  }
+
+  .location-item strong {
+    font-size: 19px;
+    margin-bottom: 6px;
+  }
+
+  .location-item span {
+    font-size: 16px;
+  }
+
+  .tables-container {
+    gap: 24px;
+  }
+
+  .price-table th,
+  .price-table td {
+    padding: 8px;
+    font-size: 15px;
+  }
+
+  .price-table thead th {
+    padding: 10px;
+  }
+
+  .meat-footer {
+    margin-top: 10px;
+  }
 }

@@ -2,10 +2,12 @@
   "name": "client",
   "private": true,
   "version": "0.0.0",
+  "type": "module",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
+    "test": "jest --passWithNoTests",
     "preview": "vite preview"
   },
   "dependencies": {

@@ -1,22 +1,22 @@
 .success-container {
   text-align: left;
   padding: 32px;
-  max-width: 720px;
+  max-width: var(--content-width-prose);
   margin: 0 auto;
-  color: #333;
+  color: var(--color-text-muted);
 }
 
 .success-title {
-  color: #2D5A3D; /* Fallback */
   color: var(--color-accent);
-  font-size: 28px;
+  font-size: 32px;
   font-weight: 700;
   margin-bottom: 12px;
+  text-align: center;
 }
 
 .success-message {
   font-size: 16px;
-  color: #333;
+  color: var(--color-text-muted);
   margin: 0 0 12px;
 }
 
@@ -27,7 +27,7 @@
 .success-section-title {
   font-size: 16px;
   font-weight: 700;
-  color: #1a1a1a;
+  color: var(--color-text-strong);
   margin-bottom: 8px;
 }
 
@@ -39,7 +39,7 @@
 
 .success-label {
   font-weight: 600;
-  color: #333;
+  color: var(--color-text-strong);
 }
 
 .success-items {
@@ -66,16 +66,15 @@
   display: block;
   width: fit-content;
   margin: 24px auto 0;
-  background-color: #2D5A3D; /* Fallback */
   background-color: var(--color-accent);
   color: #ffffff;
   padding: 12px 24px;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   text-decoration: none;
   font-weight: 600;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 800px) {
   .success-container {
     padding: 16px;
   }

@@ -48,7 +48,7 @@ export default function Prices({ lang }) {
   const t = content[lang];
 
   return (
-    <div className="container prices-container">
+    <div className="prices-container">
 
       <h2 className="prices-title">
         {t.title}
@@ -62,12 +62,12 @@ export default function Prices({ lang }) {
 
         <div className="locations-container">
           <div className="location-item">
-            <strong>Montérégie</strong>
-            <span>315 Back Bush, Hemmingford, Qc J0L 1H0</span>
-          </div>
-          <div className="location-item">
             <strong>Outaouais</strong>
             <span>84 Rte 148, Bristol, Qc J0X 1G0</span>
+          </div>
+          <div className="location-item">
+            <strong>Montérégie</strong>
+            <span>315 Back Bush, Hemmingford, Qc J0L 1H0</span>
           </div>
         </div>
       </div>

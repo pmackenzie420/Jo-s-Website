@@ -1,0 +1,34 @@
+{
+  "categories": [
+    {
+      "key": "layer",
+      "keywords": ["lohmann", "ready-to-lay"],
+      "tiers": [
+        { "minQty": 50, "unitCents": 1400 },
+        { "minQty": 13, "unitCents": 1525 },
+        { "minQty": 6, "unitCents": 1700 },
+        { "minQty": 1, "unitCents": 1750 }
+      ],
+      "depositEligibleMinQty": 13
+    },
+    {
+      "key": "meat",
+      "keywords": ["meat", "chair"],
+      "tiers": [
+        { "minQty": 300, "unitCents": 215 },
+        { "minQty": 100, "unitCents": 230 },
+        { "minQty": 49, "unitCents": 250 },
+        { "minQty": 1, "unitCents": 260 }
+      ],
+      "minOrderQty": 25
+    },
+    {
+      "key": "lamb",
+      "keywords": ["lamb", "agneau"],
+      "tiers": [
+        { "minQty": 1, "unitCents": 5000 }
+      ],
+      "depositOnly": true
+    }
+  ]
+}

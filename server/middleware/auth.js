@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const { getClientIp, parseCookies } = require('../utils/helpers');
+const { logError } = require('../utils/logger');
 
 // --- CONSTANTS ---
 const ADMIN_SESSION_SECRET = process.env.ADMIN_SESSION_SECRET;
@@ -27,22 +28,128 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 // --- RATE LIMITER ---
 const rateLimitStore = new Map();
+let lastRateLimitPruneAt = 0;
+const RATE_LIMIT_PRUNE_INTERVAL_MS = 60 * 1000;
+const RATE_LIMIT_TABLE_NAME = 'rate_limit_entries';
+let rateLimitTableReadyPromise = null;
 
-const createRateLimiter = ({ windowMs, max, keyPrefix }) => (req, res, next) => {
-    const key = `${keyPrefix}:${getClientIp(req)}`;
-    const now = Date.now();
+const ensureRateLimitTable = async (pool) => {
+    if (!pool) return;
+    if (rateLimitTableReadyPromise) {
+        await rateLimitTableReadyPromise;
+        return;
+    }
+    rateLimitTableReadyPromise = (async () => {
+        await pool.query(
+            `
+            CREATE TABLE IF NOT EXISTS ${RATE_LIMIT_TABLE_NAME} (
+                key TEXT PRIMARY KEY,
+                count INTEGER NOT NULL,
+                reset_at TIMESTAMP WITH TIME ZONE NOT NULL
+            )
+            `
+        );
+        await pool.query(
+            `CREATE INDEX IF NOT EXISTS rate_limit_entries_reset_at_idx
+             ON ${RATE_LIMIT_TABLE_NAME} (reset_at)`
+        );
+    })();
+    await rateLimitTableReadyPromise;
+};
+
+const applyMemoryRateLimit = ({ key, now, windowMs, max, res, next }) => {
+    if (now - lastRateLimitPruneAt >= RATE_LIMIT_PRUNE_INTERVAL_MS) {
+        for (const [storedKey, storedValue] of rateLimitStore.entries()) {
+            if (!storedValue || storedValue.resetAt <= now) {
+                rateLimitStore.delete(storedKey);
+            }
+        }
+        lastRateLimitPruneAt = now;
+    }
     const entry = rateLimitStore.get(key);
     if (!entry || entry.resetAt <= now) {
         rateLimitStore.set(key, { count: 1, resetAt: now + windowMs });
         return next();
     }
-    if (entry.count >= max) {
+    entry.count += 1;
+    if (entry.count > max) {
         const retryAfter = Math.ceil((entry.resetAt - now) / 1000);
-        res.set('Retry-After', String(retryAfter));
+        res.set('Retry-After', String(Math.max(retryAfter, 1)));
         return res.status(429).json({ error: 'Too many requests. Please try again later.' });
     }
-    entry.count += 1;
     return next();
+};
+
+const applyDatabaseRateLimit = async ({ key, now, windowMs, max, pool, res, next }) => {
+    await ensureRateLimitTable(pool);
+    const nowDate = new Date(now);
+    const nextResetAt = new Date(now + windowMs);
+    const result = await pool.query(
+        `
+        INSERT INTO ${RATE_LIMIT_TABLE_NAME} (key, count, reset_at)
+        VALUES ($1, 1, $2)
+        ON CONFLICT (key) DO UPDATE
+        SET
+            count = CASE
+                WHEN ${RATE_LIMIT_TABLE_NAME}.reset_at <= $3 THEN 1
+                ELSE ${RATE_LIMIT_TABLE_NAME}.count + 1
+            END,
+            reset_at = CASE
+                WHEN ${RATE_LIMIT_TABLE_NAME}.reset_at <= $3 THEN $2
+                ELSE ${RATE_LIMIT_TABLE_NAME}.reset_at
+            END
+        RETURNING count, reset_at
+        `,
+        [key, nextResetAt, nowDate]
+    );
+
+    if (now - lastRateLimitPruneAt >= RATE_LIMIT_PRUNE_INTERVAL_MS) {
+        await pool.query(
+            `DELETE FROM ${RATE_LIMIT_TABLE_NAME} WHERE reset_at <= $1`,
+            [nowDate]
+        );
+        lastRateLimitPruneAt = now;
+    }
+
+    const row = result.rows[0];
+    const count = Number(row?.count || 0);
+    const resetAtMs = row?.reset_at ? new Date(row.reset_at).getTime() : now + windowMs;
+    if (count > max) {
+        const retryAfter = Math.ceil((resetAtMs - now) / 1000);
+        res.set('Retry-After', String(Math.max(retryAfter, 1)));
+        return res.status(429).json({ error: 'Too many requests. Please try again later.' });
+    }
+    return next();
+};
+
+const createRateLimiter = ({ windowMs, max, keyPrefix, pool }) => {
+    if (!pool) {
+        return (req, res, next) => {
+            const key = `${keyPrefix}:${getClientIp(req)}`;
+            const now = Date.now();
+            return applyMemoryRateLimit({ key, now, windowMs, max, res, next });
+        };
+    }
+
+    return async (req, res, next) => {
+        const key = `${keyPrefix}:${getClientIp(req)}`;
+        const now = Date.now();
+        try {
+            return await applyDatabaseRateLimit({
+                key,
+                now,
+                windowMs,
+                max,
+                pool,
+                res,
+                next
+            });
+        } catch (err) {
+            // Fail open for auth availability if limiter store is unavailable.
+            logError('Rate limiter storage failed, falling back to memory', err);
+            return applyMemoryRateLimit({ key, now, windowMs, max, res, next });
+        }
+    };
 };
 
 // --- JWT HELPERS ---
@@ -74,13 +181,17 @@ const signOrderConfirmToken = (sessionId) => {
 const verifyOrderConfirmToken = (token) => verifyToken(token, ORDER_CONFIRM_SECRET);
 
 // --- COOKIE OPTIONS ---
-const getCookieOptions = (maxAge) => ({
+const baseCookieOptions = {
     httpOnly: true,
     sameSite: isProduction ? 'none' : 'lax',
     secure: isProduction, // simplified for now, assuming standard prod env
-    maxAge,
     path: '/api'
+};
+const getCookieOptions = (maxAge) => ({
+    ...baseCookieOptions,
+    maxAge
 });
+const getClearCookieOptions = () => ({ ...baseCookieOptions });
 
 // --- MIDDLEWARE ---
 const checkAuth = (req, res, next) => {
@@ -90,7 +201,7 @@ const checkAuth = (req, res, next) => {
     const cookies = parseCookies(req.headers.cookie);
     const token = cookies[ADMIN_SESSION_COOKIE];
     const session = verifyAdminSession(token);
-    if (!session) {
+    if (!session || session.sub !== 'admin') {
         return res.status(401).send('Unauthorized');
     }
     req.adminSession = session;
@@ -107,6 +218,7 @@ module.exports = {
     verifyOrderConfirmToken,
     checkAuth,
     getCookieOptions,
+    getClearCookieOptions,
     ADMIN_SESSION_COOKIE,
     ADMIN_SESSION_TTL_MS,
     MAIN_SESSION_COOKIE,

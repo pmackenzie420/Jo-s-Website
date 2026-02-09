@@ -5,7 +5,10 @@
   "main": "index.js",
   "scripts": {
     "render-build": "npm install",
-    "test": "echo \"No tests configured\""
+    "test": "node --test",
+    "check:db": "node scripts/check_db.js",
+    "check:data": "node scripts/check_data.js",
+    "auth:hash": "node scripts/hash_password.js"
   },
   "keywords": [],
   "author": "",

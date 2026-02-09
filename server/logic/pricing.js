@@ -1,44 +1,58 @@
 const pool = require('../db');
 const { parseOrderItems } = require('../utils/helpers');
+const PRICING_RULES = require('../../shared/pricing-rules.json');
 
-// --- PRICING LOGIC ---
+const CATEGORY_LIST = Array.isArray(PRICING_RULES?.categories)
+    ? PRICING_RULES.categories
+    : [];
+
+const normalizeName = (value) => {
+    if (typeof value !== 'string') return '';
+    return value.toLowerCase();
+};
+
+const findCategoryByName = (name) => {
+    const normalized = normalizeName(name);
+    if (!normalized) return null;
+    return CATEGORY_LIST.find((category) =>
+        (category?.keywords || []).some((keyword) =>
+            normalized.includes(String(keyword).toLowerCase())
+        )
+    ) || null;
+};
+
+const getUnitCentsFromCategory = (category, quantity) => {
+    const qty = Number(quantity);
+    if (!category || !Number.isFinite(qty) || qty <= 0) return 0;
+    const tiers = Array.isArray(category.tiers) ? category.tiers : [];
+    const sorted = [...tiers].sort((first, second) =>
+        Number(second.minQty || 0) - Number(first.minQty || 0)
+    );
+    const match = sorted.find((tier) => qty >= Number(tier.minQty || 0));
+    return Number(match?.unitCents || 0);
+};
+
 const calculateItemPrice = (henName, qty) => {
-    const normalized = typeof henName === 'string' ? henName.toLowerCase() : '';
-    // 1. Lohmann Brown (Layers)
-    if (normalized.includes('lohmann') || normalized.includes('ready-to-lay')) {
-        if (qty >= 50) return 1400; // $14.00
-        if (qty >= 13) return 1525; // $15.25
-        if (qty >= 6) return 1700; // $17.00
-        return 1750;                // $17.50 (Base)
-    }
-
-    // 2. Ross (Meat Birds)
-    if (normalized.includes('meat') || normalized.includes('chair')) {
-        if (qty >= 300) return 215; // $2.15
-        if (qty >= 100) return 230; // $2.30
-        if (qty >= 49) return 250; // $2.50
-        return 260;                 // $2.60 (Base for 25-49, and small orders)
-    }
-
-    // 3. Lamb (Agneau) - Deposit Only
-    if (normalized.includes('lamb') || normalized.includes('agneau')) {
-        return 5000; // $50.00 Deposit per lamb
-    }
-
-    // Fallback
-    return 0;
+    const category = findCategoryByName(henName);
+    return getUnitCentsFromCategory(category, qty);
 };
 
-const isLohmannHenName = (name) => {
-    if (typeof name !== 'string') return false;
-    const normalized = name.toLowerCase();
-    return normalized.includes('lohmann') || normalized.includes('ready-to-lay');
-};
+const isCategory = (name, key) => findCategoryByName(name)?.key === key;
+const isLohmannHenName = (name) => isCategory(name, 'layer');
+const isMeatHenName = (name) => isCategory(name, 'meat');
+const isLambName = (name) => isCategory(name, 'lamb');
+const getMinimumOrderQuantity = (name) =>
+    Number(findCategoryByName(name)?.minOrderQty || 0);
+const getDepositEligibleMinQty = () =>
+    Number(CATEGORY_LIST.find((category) => category?.key === 'layer')?.depositEligibleMinQty || 0);
 
-const isLambName = (name) => {
-    if (typeof name !== 'string') return false;
-    const normalized = name.toLowerCase();
-    return normalized.includes('lamb') || normalized.includes('agneau');
+const isPickupLocationRestricted = (name, pickupLocation) => {
+    const normalizedLocation = normalizeName(pickupLocation);
+    if (!normalizedLocation) return false;
+    const restricted = findCategoryByName(name)?.restrictedPickupLocations || [];
+    return restricted.some(
+        (location) => String(location).toLowerCase() === normalizedLocation
+    );
 };
 
 const getPaymentDetails = (order) => {
@@ -105,7 +119,11 @@ const getOrderSummary = async (orderId) => {
 module.exports = {
     calculateItemPrice,
     isLohmannHenName,
+    isMeatHenName,
     isLambName,
+    getMinimumOrderQuantity,
+    getDepositEligibleMinQty,
+    isPickupLocationRestricted,
     getPaymentDetails,
     getOrderSummary
 };

@@ -1,21 +1,7 @@
-/* boxed.css — Safari-proof “boxed page over fixed wallpaper” layout */
-
-/* =========================
-   CONFIG
-========================= */
 :root {
-  /* Target ~1" side margins on ~1440px wide laptop -> paper ~1248px */
-  --paper-target: 1248px;
-  --paper-max: 1320px;
-  /* safety cap for bigger monitors */
-  --paper-border: #ccc;
-  --fallback-green: var(--color-accent);
+  --paper-max: 1250px;
 }
 
-/* =========================
-   GLOBAL RESET + TRANSPARENCY
-   (Prevents html/body/root from painting white over the wallpaper)
-========================= */
 html,
 body {
   height: 100%;
@@ -33,52 +19,40 @@ html::before {
   position: fixed;
   inset: 0;
   background:
-    /* BLACK FILM - darker overlay */
     linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)),
-    url("/wallpaper.jpg") center/cover no-repeat;
+    url('/photos/9e869d7c436ddfb125c2a74b2225d7c8.jpeg') center/cover no-repeat;
   z-index: 0;
   pointer-events: none;
   transform: translateZ(0);
 }
 
+@media (min-width: 801px) {
+  html::before {
+    background:
+      linear-gradient(rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.45)),
+      url('/photos/9e869d7c436ddfb125c2a74b2225d7c8.jpeg') center/cover no-repeat;
+  }
+}
 
 #root {
   min-height: 100%;
   position: relative;
   z-index: 1;
-  background: transparent !important;
+  background: transparent;
 }
 
-/* OPTIONAL but recommended:
-   If your app uses any top-level wrappers that might paint white,
-   you can apply this class to them: <div className="app-shell">...</div>
-   (Avoid globally forcing all divs to transparent.)
-*/
-.app-shell {
-  background: transparent !important;
-}
-
-/* =========================
-   BOXED LAYOUT STRUCTURE
-========================= */
-/* PAPER WIDTH: margins on sides to show grass */
 .page-wrapper {
   width: calc(100% - 40px);
-  max-width: 1250px;
+  max-width: var(--paper-max);
   margin: 0 auto;
-  background: #fff;
+  background: var(--color-white);
   padding: 0 12px;
   display: flex;
   flex-direction: column;
 }
 
-.boxed-container {
-  width: 100%;
-  max-width: var(--content-width);
-  margin: 0 auto;
-  padding: 0 20px;
-  display: flex;
-  flex-direction: column;
+.page-wrapper--order {
+  padding: 0;
 }
 
 .white-paper {
@@ -90,8 +64,17 @@ html::before {
   flex-direction: column;
 }
 
+.white-paper--order {
+  --order-gap: 24px;
+  gap: var(--order-gap);
+  padding: var(--order-gap);
+}
+
+.white-paper--order .page-questions-banner {
+  margin-bottom: 0;
+}
+
 .page-questions-banner {
-  background-color: #2D5A3D; /* Fallback for var(--color-accent) */
   background-color: var(--color-accent);
   padding: 16px;
   margin-bottom: 16px;
@@ -100,14 +83,14 @@ html::before {
   align-items: center;
   justify-content: center;
   gap: 14px;
-  color: #ffffff; /* Explicitly white */
+  color: #ffffff;
   text-transform: uppercase;
   letter-spacing: 1.2px;
   line-height: 1.1;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
-  width: 100%; /* Ensure full width */
+  width: 100%;
 }
 
 .page-questions-question,
@@ -133,41 +116,44 @@ html::before {
   filter: brightness(0.92);
 }
 
-@media (max-width: 600px) {
-  .page-questions-banner {
-    flex-direction: column;
-    gap: 6px;
-    padding: 8px 16px;
-    min-height: 0;
-    margin-bottom: 8px;
-  }
-}
-
-/* Optional: add rounded corners if you want the “sheet” look */
-.white-paper.rounded {
-  border-radius: 6px;
-}
-
-/* Footer that floats over wallpaper */
 .boxed-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
   padding: 40px 20px;
   margin-top: 20px;
-  background: transparent !important;
-  color: #fff;
+  background: transparent;
+  color: #ffffff;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
 }
 
-.boxed-footer p {
-  font-size: 1.1rem;
-  margin: 6px 0;
-  font-weight: 700;
+.boxed-footer-logo {
+  height: 160px;
+  margin-bottom: 35px;
+}
+
+.boxed-footer-locations {
+  margin: 35px 0 20px;
+  text-align: center;
+}
+
+.boxed-footer-location-link {
+  margin: 5px 0;
+  font-size: 14px;
+  color: #ffffff;
+  text-decoration: none;
+  display: block;
+}
+
+.boxed-footer-location-link:hover {
+  text-decoration: underline;
 }
 
 .footer-privacy-link {
   display: inline-block;
   margin-top: 6px;
-  font-size: 0.6rem;
+  font-size: 12px;
   color: rgba(255, 255, 255, 0.85);
   text-decoration: none;
   letter-spacing: 0.5px;
@@ -177,14 +163,6 @@ html::before {
 .footer-privacy-link:hover {
   color: #ffffff;
   text-decoration: underline;
-}
-
-.footer-logo-text {
-  text-transform: uppercase;
-  font-size: 1.8rem;
-  font-weight: 900;
-  margin-bottom: 14px;
-  letter-spacing: 1px;
 }
 
 .footer-fb-link {
@@ -198,28 +176,11 @@ html::before {
   opacity: 0.7;
 }
 
-/* =========================
-   IMPORTANT: COMMON “MARGINS NOT SHOWING” GOTCHA
-   If you still don’t see wallpaper in the margins, it means some layout wrapper
-   in your app is painting a solid background (often white).
-   Make sure ONLY .white-paper is white.
-========================= */
-/* Example helper (use selectively if needed):
-.main-layout,
-.site-layout,
-.layout,
-.container,
-main {
-  background: transparent !important;
-}
-*/
-
-/* =========================
-   MOBILE OVERRIDES
-   (Remove the boxed margins, use full width; make footer readable)
-========================= */
-/* Mobile: full width */
 @media (max-width: 800px) {
+  .white-paper--order {
+    --order-gap: 16px;
+  }
+
   .page-wrapper {
     width: calc(100% - 24px);
     max-width: 100%;
@@ -227,17 +188,37 @@ main {
     padding: 0 8px;
   }
 
+  .page-wrapper--order {
+    padding: 0;
+  }
+
   .white-paper {
     box-shadow: none;
     border: none;
-    border-bottom: 1px solid #ccc;
+    border-bottom: var(--border-default);
   }
 
   .boxed-footer {
-    background: transparent !important;
-    color: #fff;
-    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.9);
     margin-top: 0;
     padding: 40px 20px;
+  }
+
+  .boxed-footer-logo {
+    height: 130px;
+    margin-bottom: 24px;
+  }
+}
+
+@media (max-width: 600px) {
+  .white-paper--order .page-questions-banner {
+    margin-bottom: 0;
+  }
+
+  .page-questions-banner {
+    flex-direction: column;
+    gap: 6px;
+    padding: 8px 16px;
+    min-height: 0;
+    margin-bottom: 8px;
   }
 }

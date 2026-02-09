@@ -1,16 +1,15 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
-
 :root {
   --admin-bg: #ffffff;
   --admin-surface: #ffffff;
   --admin-ink: #1a1a1a;
   --admin-muted: #4a4a4a;
-  --admin-border: #e0e0e0;
+  --admin-border: var(--color-border-default);
   --admin-brand: var(--color-accent);
   --admin-brand-soft: var(--color-accent-soft-strong);
   --admin-accent: #e65100;
   --admin-danger: #c62828;
   --admin-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --admin-radius: var(--radius-xs);
   --admin-font-body: 'IBM Plex Sans', 'Segoe UI', sans-serif;
   --admin-font-display: 'IBM Plex Sans', 'Segoe UI', sans-serif;
 }
@@ -70,6 +69,7 @@ body.admin-active #root {
   overflow: hidden;
 }
 
+
 @supports (height: 100dvh) {
   html.admin-active,
   body.admin-active,
@@ -89,7 +89,7 @@ body.admin-active #root {
   top: 0;
   z-index: 10;
   padding: calc(16px + env(safe-area-inset-top)) 20px 12px;
-  background: #ffffff;
+  background: var(--admin-surface);
   border-bottom: 1px solid var(--admin-border);
   display: flex;
   flex-direction: column;
@@ -99,14 +99,15 @@ body.admin-active #root {
 .admin-topbar-row {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: center;
   gap: 16px;
+  text-align: center;
 }
-
 .admin-brand {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  align-items: center;
 }
 
 .admin-kicker {
@@ -157,7 +158,7 @@ body.admin-modal-open .admin-main {
 .admin-panel,
 .pickup-day {
   background: var(--admin-surface);
-  border-radius: 4px;
+  border-radius: var(--admin-radius);
   border: 1px solid var(--admin-border);
   box-shadow: none;
   padding: 24px;
@@ -166,6 +167,55 @@ body.admin-modal-open .admin-main {
 .pickup-day {
   margin-bottom: 24px;
   box-shadow: var(--admin-shadow);
+}
+
+.pickup-card-grid {
+  display: grid;
+  gap: 16px;
+}
+
+.pickup-card {
+  background: var(--admin-surface);
+  border-radius: var(--admin-radius);
+  border: 1px solid var(--admin-border);
+  box-shadow: none;
+  padding: 18px;
+}
+
+.pickup-card-header {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: nowrap;
+  margin-bottom: 18px;
+}
+
+.pickup-card-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--admin-ink);
+}
+
+.pickup-card-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  width: auto;
+}
+
+.pickup-card-actions .admin-button {
+  width: 40px;
+  height: 40px;
+  min-height: 0;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  border-radius: var(--admin-radius);
 }
 
 .panel-header {
@@ -199,11 +249,11 @@ body.admin-modal-open .admin-main {
 .admin-input,
 .admin-textarea {
   width: 100%;
-  border-radius: 4px;
+  border-radius: var(--admin-radius);
   border: 1px solid var(--admin-border);
   padding: 10px 12px;
   font-size: 14px;
-  background: #ffffff;
+  background: var(--admin-surface);
   color: var(--admin-ink);
 }
 
@@ -215,7 +265,7 @@ body.admin-modal-open .admin-main {
 
 .admin-button {
   min-height: 44px;
-  border-radius: 4px;
+  border-radius: var(--admin-radius);
   border: 1px solid var(--admin-brand);
   background: var(--admin-brand);
   color: #ffffff;
@@ -224,6 +274,13 @@ body.admin-modal-open .admin-main {
   cursor: pointer;
   padding: 0 16px;
   width: 100%;
+}
+
+.admin-button.small {
+  min-height: 36px;
+  padding: 0 12px;
+  font-size: 12px;
+  width: auto;
 }
 
 .admin-button .sr-only {
@@ -252,7 +309,7 @@ body.admin-modal-open .admin-main {
   background: var(--admin-brand);
   color: #ffffff;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--admin-radius);
   font-weight: 600;
   cursor: pointer;
   padding: 10px 20px;
@@ -268,163 +325,180 @@ body.admin-modal-open .admin-main {
 
 .pickup-day-header {
   margin-bottom: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .pickup-day-title {
   font-family: var(--admin-font-display);
-  font-size: 18px;
-  font-weight: 600;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--admin-ink);
 }
 
 .pickup-day-subtitle {
   font-size: 13px;
-  color: var(--admin-muted);
+  color: var(--admin-ink);
+  font-weight: 500;
 }
 
 .pickup-location {
   margin-top: 12px;
 }
 
-.pickup-location-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--admin-muted);
+.pickup-location-header {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 8px;
   margin-bottom: 10px;
+  flex-wrap: wrap;
+  background: var(--admin-surface);
+}
+
+.pickup-location-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--admin-ink);
+  margin-bottom: 0;
+}
+
+.pickup-location-actions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
 }
 
 .pickup-list {
   display: flex;
   flex-direction: column;
   gap: 0;
+  background: var(--admin-surface);
 }
 
-.pickup-row {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 0;
-  border-bottom: 1px solid var(--admin-border);
-  background: transparent;
-  cursor: pointer;
-  transition: background 0.2s ease;
+.pickup-row-shell {
   position: relative;
+  overflow: hidden;
+  border-bottom: 1px solid var(--admin-border);
+  background: var(--admin-surface);
 }
 
-.pickup-row:last-child {
+.pickup-row-shell:last-child {
   border-bottom: none;
 }
 
-.pickup-row:hover:not(.cancelled) {
-  background: #f5f5f5;
+.pickup-row-surface {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  background: var(--admin-surface);
+  cursor: pointer;
+  transition: background 0.2s ease;
 }
 
-.pickup-row input {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
+.pickup-row-shell:not(.cancelled) .pickup-row-surface:hover {
+  background: var(--color-surface-subtle);
 }
 
-.pickup-check {
-  width: 18px;
-  height: 18px;
-  border-radius: 3px;
-  border: 2px solid var(--admin-brand);
-  display: grid;
-  place-items: center;
-  background: #ffffff;
-  flex-shrink: 0;
+.pickup-row-shell.picked_up {
+  opacity: 0.45;
 }
 
-.pickup-row input:checked + .pickup-check {
-  background: var(--admin-brand);
-  border-color: var(--admin-brand);
+.pickup-row-shell.picked_up .pickup-row-surface {
+  background: var(--color-surface-subtle);
+  color: var(--admin-muted);
 }
 
-.pickup-row input:checked + .pickup-check::after {
-  content: '';
-  width: 8px;
-  height: 4px;
-  border-left: 2px solid #ffffff;
-  border-bottom: 2px solid #ffffff;
-  transform: rotate(-45deg);
-  margin-top: -1px;
-}
-
-.pickup-row.pending {
-  border-color: var(--admin-border);
-}
-
-.pickup-row.picked_up {
-  border-color: var(--admin-border);
-}
-
-.pickup-row.cancelled {
+.pickup-row-shell.cancelled {
   opacity: 0.55;
-  cursor: not-allowed;
 }
 
 .pickup-info {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+  flex: 1;
+}
+
+.pickup-row-surface:active {
+  background: transparent;
+}
+
+.order-row:active {
+  background: transparent;
 }
 
 .pickup-name {
   font-weight: 600;
-  font-size: 16px;
+  font-size: 17px;
 }
 
-.pickup-meta {
+.pickup-row-line {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: 12px;
+  align-items: baseline;
+}
+
+.pickup-row-line > :last-child {
+  text-align: right;
+  justify-self: end;
+}
+
+.pickup-summary {
   font-size: 13px;
+  font-weight: 400;
   color: var(--admin-muted);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 
-.pickup-phone {
-  font-size: 13px;
+.pickup-payment {
+  font-size: 12px;
+  color: var(--admin-ink);
 }
 
-.pickup-pill {
-  font-size: 11px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  padding: 4px 12px;
-  border-radius: 3px;
-  background: #f5f5f5;
-  color: var(--admin-muted);
-  text-align: center;
-  min-width: 90px;
-}
-
-.pickup-pill.cancelled {
-  background: #eeeeee;
-  color: #757575;
-}
-
-.pickup-pill.pending {
-  background: #fff3e0;
-  color: #e65100;
-}
-
-.pickup-pill.picked_up {
-  background: #e3f2fd;
-  color: #1565c0;
-}
 
 .stock-grid {
   display: grid;
   gap: 12px;
 }
 
+.pickup-stock-panel {
+  display: grid;
+  gap: 14px;
+}
+
+.pickup-stock-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.pickup-stock-row {
+  display: grid;
+  grid-template-columns: 1fr 120px;
+  gap: 12px;
+  align-items: center;
+}
+
+.pickup-stock-name {
+  font-weight: 600;
+  color: var(--admin-ink);
+  font-size: 14px;
+}
+
 .stock-card {
   padding: 16px;
-  border-radius: 4px;
+  border-radius: var(--admin-radius);
   border: 1px solid var(--admin-border);
-  background: #ffffff;
+  background: var(--admin-surface);
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -450,6 +524,19 @@ body.admin-modal-open .admin-main {
 .stock-actions {
   display: grid;
   gap: 10px;
+}
+
+.admin-action-grid {
+  display: grid;
+  gap: 10px;
+}
+
+.pickup-day-body {
+  padding: 16px;
+}
+
+.pickup-stock-save {
+  margin-top: 16px;
 }
 
 .date-list {
@@ -494,6 +581,15 @@ body.admin-modal-open .admin-main {
   gap: 10px;
 }
 
+.date-actions-row {
+  display: flex;
+  gap: 10px;
+}
+
+.date-actions-row--offset {
+  margin-top: 12px;
+}
+
 .date-input {
   font-size: 14px;
 }
@@ -515,6 +611,10 @@ body.admin-modal-open .admin-main {
   display: flex;
   flex-direction: column;
   gap: 0;
+}
+
+.customer-list-footer {
+  padding: 10px 0;
 }
 
 .customer-row {
@@ -568,6 +668,28 @@ body.admin-modal-open .admin-main {
   color: var(--admin-muted);
 }
 
+.detail-flag {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--admin-brand);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+.detail-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.detail-section-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--admin-muted);
+}
+
 .detail-links {
   display: flex;
   gap: 10px;
@@ -612,22 +734,32 @@ body.admin-modal-open .admin-main {
   color: var(--admin-muted);
 }
 
+.history-payment {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
 .history-total {
   font-weight: 600;
 }
 
 .admin-toast {
-  position: sticky;
-  top: 12px;
-  align-self: center;
-  margin-top: 4px;
-  background: #ffffff;
-  border-radius: 4px;
+  position: fixed;
+  top: 20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--admin-surface);
+  border-radius: var(--admin-radius);
   padding: 10px 18px;
   border: 1px solid var(--admin-border);
   font-size: 13px;
   font-weight: 600;
-  z-index: 60;
+  z-index: 100;
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
 }
 
 .admin-toast.success {
@@ -636,6 +768,16 @@ body.admin-modal-open .admin-main {
 
 .admin-toast.error {
   color: var(--admin-danger);
+}
+
+.admin-toast-action {
+  border: none;
+  background: transparent;
+  color: var(--admin-brand);
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 2px 4px;
 }
 
 .empty-state {
@@ -650,9 +792,9 @@ body.admin-modal-open .admin-main {
 
 .email-group-card {
   width: 100%;
-  border-radius: 4px;
+  border-radius: var(--admin-radius);
   border: 1px solid var(--admin-border);
-  background: #ffffff;
+  background: var(--admin-surface);
   padding: 14px 16px;
   display: flex;
   align-items: center;
@@ -701,7 +843,7 @@ body.admin-modal-open .admin-main {
   max-width: 360px;
   background: var(--admin-surface);
   border: 1px solid var(--admin-border);
-  border-radius: 4px;
+  border-radius: var(--admin-radius);
   padding: 24px;
   box-shadow: none;
 }
@@ -735,6 +877,7 @@ body.admin-modal-open .admin-main {
   gap: 20px;
   border-bottom: 1px solid var(--admin-border);
   padding-bottom: 8px;
+  justify-content: center;
 }
 
 .admin-tab-button {
@@ -755,10 +898,11 @@ body.admin-modal-open .admin-main {
 
 .admin-nav {
   position: relative;
-  background: #ffffff;
+  background: var(--admin-surface);
   border-top: 1px solid var(--admin-border);
   display: flex;
-  justify-content: space-around;
+  justify-content: center;
+  gap: 15px;
   padding: 8px 10px calc(12px + env(safe-area-inset-bottom));
   z-index: 20;
   flex-shrink: 0;
@@ -804,9 +948,9 @@ body.admin-modal-open .admin-main {
 .admin-confirm {
   width: 100%;
   max-width: 320px;
-  background: #ffffff;
+  background: var(--admin-surface);
   border: 1px solid var(--admin-border);
-  border-radius: 4px;
+  border-radius: var(--admin-radius);
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -816,7 +960,7 @@ body.admin-modal-open .admin-main {
 .admin-confirm-title {
   font-size: 16px;
   font-weight: 600;
-  color: #1a1a1a;
+  color: var(--admin-ink);
 }
 
 .admin-confirm-actions {
@@ -846,7 +990,7 @@ body.admin-modal-open .admin-main {
   max-width: 520px;
   background: var(--admin-surface);
   border: 1px solid var(--admin-border);
-  border-radius: 4px;
+  border-radius: var(--admin-radius);
   padding: 16px 18px;
   box-shadow: none;
   display: flex;
@@ -870,7 +1014,7 @@ body.admin-modal-open .admin-main {
 
 .stagger-item {
   animation: riseIn 0.45s ease both;
-  animation-delay: calc(var(--stagger, 0) * 0.08s);
+  animation-delay: 0s;
 }
 
 @keyframes riseIn {
@@ -886,13 +1030,18 @@ body.admin-modal-open .admin-main {
 
 @media (max-width: 767px) {
   .admin-main-pickups {
-    padding: 0;
+    padding: 12px 0;
     gap: 0;
+    background-color: #f4f4f7;
   }
 
   .admin-topbar-row {
     flex-direction: column;
     align-items: stretch;
+  }
+
+  .admin-topbar-pickups .admin-topbar-row {
+    align-items: center;
   }
 
   .admin-input,
@@ -911,7 +1060,7 @@ body.admin-modal-open .admin-main {
     border-radius: 0;
     border-left: none;
     border-right: none;
-    background: #ffffff;
+    background: var(--admin-surface);
     box-shadow: none;
   }
 
@@ -919,52 +1068,89 @@ body.admin-modal-open .admin-main {
     gap: 0;
   }
 
-  .pickup-day {
+  .pickup-day,
+  .admin-action-card {
     padding: 0;
-    border-radius: 0;
-    border: none;
-    background: #ffffff;
-    box-shadow: none;
-    margin: 0;
+    border-radius: 8px;
+    border: 1px solid var(--admin-border);
+    background: var(--admin-surface);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    margin: 0 12px 24px;
+    overflow: hidden;
   }
 
-  .pickup-day + .pickup-day {
-    border-top: 1px solid var(--admin-border);
+  .admin-action-card {
+    padding: 12px;
+    margin-bottom: 24px;
   }
 
   .pickup-day-header {
-    padding: 16px;
-    background: #ffffff;
+    padding: 16px 16px 14px;
+    background: var(--admin-surface);
     border-bottom: 1px solid var(--admin-border);
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
   }
 
   .pickup-day-title {
     font-size: 20px;
     font-weight: 700;
-    color: #1a1a1a;
+    color: var(--admin-ink);
   }
 
   .pickup-location {
     margin-top: 0;
   }
 
-  .pickup-location-title {
-    padding: 8px 16px;
-    background: #f9f9f9;
+  .pickup-location-header {
+    padding: 16px 16px 14px;
+    background: var(--admin-surface);
     border-bottom: 1px solid var(--admin-border);
-    font-size: 14px;
-    font-weight: 600;
-    color: #666666;
+    gap: 12px;
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
+  .pickup-location-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--admin-ink);
     letter-spacing: 0;
+    flex: 1;
+    line-height: 1.1;
+  }
+
+  .pickup-location-actions {
+    width: auto;
+    flex-direction: row;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .pickup-location-actions .admin-button {
+    width: 40px;
+    height: 40px;
+    min-height: 0;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    border-radius: var(--admin-radius);
   }
 
   .pickup-list {
-    background: #ffffff;
+    background: var(--admin-surface);
+    border: none;
+    border-radius: 0;
   }
 
   .order-row {
     padding: 14px 16px;
-    background: #ffffff;
+    background: var(--admin-surface);
     border: none;
     border-bottom: 1px solid var(--admin-border);
     border-radius: 0;
@@ -983,7 +1169,7 @@ body.admin-modal-open .admin-main {
   }
 
   .order-row:active {
-    background: #f5f5f5;
+    background: var(--color-surface-subtle);
   }
 
   .order-row:disabled {
@@ -994,42 +1180,26 @@ body.admin-modal-open .admin-main {
     flex: 1;
   }
 
+  .pickup-stock-row {
+    grid-template-columns: 1fr;
+  }
+
   .customer-name {
     font-size: 17px;
     font-weight: 600;
-    color: #000000;
+    color: var(--admin-ink);
     margin-bottom: 2px;
   }
 
   .product-summary {
     font-size: 15px;
-    color: #666666;
+    color: var(--admin-muted);
   }
 
-  .status-badge {
-    position: absolute;
-    top: 14px;
-    right: 16px;
-    font-size: 9px;
-    padding: 2px 6px;
-    border-radius: 2px;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .status-badge.pending {
-    background: #fff3e0;
-    color: #e65100;
-  }
-
-  .status-badge.picked_up {
-    background: #e3f2fd;
-    color: #1565c0;
-  }
-
-  .status-badge.cancelled {
-    background: #eeeeee;
-    color: #757575;
+  .payment-summary {
+    font-size: 13px;
+    color: var(--admin-muted);
+    margin-top: 4px;
   }
 
   .customer-modal-backdrop {
@@ -1057,6 +1227,8 @@ body.admin-modal-open .admin-main {
     font-size: 24px;
   }
 
+
+
   .admin-tabs {
     display: flex;
   }
@@ -1069,22 +1241,12 @@ body.admin-modal-open .admin-main {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
-  .pickup-list {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    column-gap: 24px;
-  }
-
-  .pickup-row {
-    padding: 16px 12px;
+  .pickup-row-surface {
+    padding: 16px 18px;
   }
 }
 
 @media (min-width: 1024px) {
-  .pickup-list {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
   .search-layout {
     display: grid;
     grid-template-columns: 1.1fr 1fr;

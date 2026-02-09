@@ -1,5 +1,5 @@
 .contact-container {
-  max-width: 800px;
+  max-width: var(--content-width-prose);
   margin: 0 auto;
   padding: 60px 24px 80px;
   text-align: left;
@@ -9,6 +9,7 @@
   margin: 0 0 16px;
   font-size: 32px;
   font-weight: 800;
+  text-align: center;
 }
 
 .contact-text {
@@ -29,10 +30,14 @@
 
 @media (max-width: 800px) {
   .contact-container {
-    padding: 40px 20px 60px;
+    padding: 28px 16px 40px;
   }
 
   .contact-title {
     font-size: 26px;
+  }
+
+  .contact-text {
+    line-height: 1.45;
   }
 }

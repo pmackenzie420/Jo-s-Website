@@ -1,7 +1,13 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { API_URL } from '../constants/api';
+import { CHECKOUT_STORAGE_KEYS } from '../constants/checkout';
+import {
+  getTierPrice,
+  getMinOrderQuantity,
+  isPickupRestricted,
+} from '../utils/catalog';
 
 const getBilingualText = (text, lang) => {
   if (!text) return '';
@@ -10,33 +16,26 @@ const getBilingualText = (text, lang) => {
   return lang === 'en' ? parts[0] : parts[1];
 };
 
-const getTierPrice = (henName, qty) => {
-  const quantity = qty || 0;
-  const normalized = typeof henName === 'string' ? henName.toLowerCase() : '';
-  if (normalized.includes('lohmann') || normalized.includes('ready-to-lay')) {
-    if (quantity >= 50) return 14.0;
-    if (quantity >= 13) return 15.25;
-    if (quantity >= 6) return 17.0;
-    return 17.5;
-  }
-  if (normalized.includes('meat') || normalized.includes('chair')) {
-    if (quantity >= 300) return 2.15;
-    if (quantity >= 100) return 2.3;
-    if (quantity >= 49) return 2.5;
-    return 2.6;
-  }
-  if (normalized.includes('lamb') || normalized.includes('agneau')) {
-    return 50.00;
-  }
-  return 0;
+const { form: FORM_STORAGE_KEY } = CHECKOUT_STORAGE_KEYS;
+
+const formatPickupDate = (value, lang) => {
+  if (!value) return '';
+  const dateString = typeof value === 'string' ? value : String(value);
+  const date = dateString.length === 10 ? new Date(`${dateString}T00:00:00`) : new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat(lang === 'fr' ? 'fr-CA' : 'en-CA', {
+    month: 'long',
+    day: 'numeric',
+    year: 'numeric'
+  }).format(date);
 };
 
-const getStockForHen = (hen) => {
+const getRawStockForHen = (hen) => {
   const stockValue = Number(hen?.stock);
   return Number.isFinite(stockValue) ? stockValue : 0;
 };
 
-const buildCartItems = (hens, cart) => {
+const buildCartItems = (hens, cart, getStockForHen) => {
   return Object.keys(cart)
     .filter((id) => cart[id] > 0)
     .map((id) => {
@@ -45,30 +44,184 @@ const buildCartItems = (hens, cart) => {
       const qty = cart[id];
       const maxStock = getStockForHen(hen);
       const safeQty = Math.min(qty, maxStock);
+      if (safeQty <= 0) return null;
       const unitPrice = getTierPrice(hen.name, safeQty);
       return { ...hen, qty: safeQty, unitPrice, lineTotal: safeQty * unitPrice };
     })
     .filter(Boolean);
 };
 
+const CART_STORAGE_KEY = 'hen_cart_data';
+
 export default function useOrderController(lang) {
   const [hens, setHens] = useState([]);
-  const [cart, setCart] = useState({});
+  const [cart, setCart] = useState(() => {
+    if (typeof window === 'undefined') return {};
+    try {
+      const saved = sessionStorage.getItem(CART_STORAGE_KEY);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
   const [loading, setLoading] = useState(false);
+  const [pickupLocation, setPickupLocation] = useState('');
+  const [pickupDate, setPickupDate] = useState('');
+  const [availableDates, setAvailableDates] = useState([]);
+  const [pickupDatesLoading, setPickupDatesLoading] = useState(false);
+  const [pickupError, setPickupError] = useState(null);
+  const networkErrorMessage =
+    lang === 'en'
+      ? 'Unable to load live inventory right now. Please try again.'
+      : "Impossible de charger l'inventaire en ce moment. Veuillez réessayer.";
   const navigate = useNavigate();
 
   useEffect(() => {
-    axios
-      .get(`${API_URL}/hens`)
-      .then((res) => setHens(Array.isArray(res.data) ? res.data : []))
-      .catch((err) => {
-        console.error('Error fetching hens:', err);
-        setHens([]);
-      });
+    if (typeof window !== 'undefined') {
+      try {
+        sessionStorage.setItem(CART_STORAGE_KEY, JSON.stringify(cart));
+      } catch {
+        // Ignore storage write issues.
+      }
+    }
+  }, [cart]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      const stored = window.sessionStorage.getItem(FORM_STORAGE_KEY);
+      if (!stored) return;
+      const parsed = JSON.parse(stored);
+      if (!parsed || typeof parsed !== 'object') return;
+      if (parsed.pickupLocation) setPickupLocation(parsed.pickupLocation);
+      if (parsed.pickupDate) setPickupDate(parsed.pickupDate);
+    } catch {
+      // Ignore storage read issues.
+    }
   }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') {
+      return;
+    }
+    try {
+      const stored = window.sessionStorage.getItem(FORM_STORAGE_KEY);
+      const parsed = stored ? JSON.parse(stored) : {};
+      const next = { ...(parsed || {}), pickupLocation, pickupDate };
+      window.sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(next));
+    } catch {
+      // Ignore storage write issues.
+    }
+  }, [pickupLocation, pickupDate]);
+
+  useEffect(() => {
+    let isActive = true;
+    const params =
+      pickupLocation && pickupDate
+        ? { pickup_location: pickupLocation, pickup_date: pickupDate }
+        : {};
+    setLoading(true);
+    axios
+      .get(`${API_URL}/hens`, { params })
+      .then((res) => {
+        if (!isActive) return;
+        setHens(Array.isArray(res.data) ? res.data : []);
+        setPickupError(null);
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setHens([]);
+        setPickupError(networkErrorMessage);
+      })
+      .finally(() => {
+        if (!isActive) return;
+        setLoading(false);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [pickupLocation, pickupDate, networkErrorMessage]);
+
+  useEffect(() => {
+    let isActive = true;
+    if (!pickupLocation) {
+      setAvailableDates([]);
+      setPickupDatesLoading(false);
+      return () => {
+        isActive = false;
+      };
+    }
+    setPickupDatesLoading(true);
+    axios
+      .get(`${API_URL}/pickup-dates`, { params: { location: pickupLocation } })
+      .then((res) => {
+        if (!isActive) return;
+        const nextDates = Array.isArray(res.data) ? res.data : [];
+        setAvailableDates(nextDates);
+        setPickupError(null);
+        const nextValues = nextDates
+          .map((dateItem) =>
+            typeof dateItem.date_value === 'string'
+              ? dateItem.date_value.split('T')[0]
+              : dateItem.date_value
+          )
+          .filter(Boolean);
+        if (pickupDate && !nextValues.includes(pickupDate)) {
+          setPickupDate('');
+        }
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setAvailableDates([]);
+        setPickupError(networkErrorMessage);
+      })
+      .finally(() => {
+        if (!isActive) return;
+        setPickupDatesLoading(false);
+      });
+    return () => {
+      isActive = false;
+    };
+  }, [pickupLocation, pickupDate, networkErrorMessage]);
+
+  const availableDateValues = useMemo(() => {
+    const values = availableDates
+      .map((dateItem) =>
+        typeof dateItem.date_value === 'string'
+          ? dateItem.date_value.split('T')[0]
+          : dateItem.date_value
+      )
+      .filter(Boolean);
+    return values.sort();
+  }, [availableDates]);
+
+  const pickupReady = Boolean(pickupLocation && pickupDate);
+  const pickupSelectionMessage =
+    lang === 'en'
+      ? 'Select a pickup date and location first.'
+      : 'Veuillez d’abord choisir une date et un lieu de ramassage.';
+
+  const isHenBlocked = useCallback((hen) => {
+    return isPickupRestricted(hen?.name, pickupLocation);
+  }, [pickupLocation]);
+
+  const getStockForHen = useCallback((hen) => {
+    if (!pickupReady) return 0;
+    if (isHenBlocked(hen)) return 0;
+    return getRawStockForHen(hen);
+  }, [pickupReady, isHenBlocked]);
 
   const updateQty = (id, val) => {
     const hen = hens.find((henItem) => henItem.id === id);
+    if (!pickupReady) {
+      setPickupError(pickupSelectionMessage);
+      return;
+    }
+    if (pickupError) {
+      setPickupError(null);
+    }
     const maxStock = getStockForHen(hen);
     if (maxStock <= 0) {
       return;
@@ -85,6 +238,13 @@ export default function useOrderController(lang) {
 
   const increment = (id) => {
     const hen = hens.find((henItem) => henItem.id === id);
+    if (!pickupReady) {
+      setPickupError(pickupSelectionMessage);
+      return;
+    }
+    if (pickupError) {
+      setPickupError(null);
+    }
     const maxStock = getStockForHen(hen);
     const current = cart[id] === '' || cart[id] === undefined ? 0 : cart[id];
     if (current < maxStock) {
@@ -99,7 +259,10 @@ export default function useOrderController(lang) {
     }
   };
 
-  const cartItems = useMemo(() => buildCartItems(hens, cart), [hens, cart]);
+  const cartItems = useMemo(
+    () => buildCartItems(hens, cart, getStockForHen),
+    [hens, cart, getStockForHen]
+  );
 
   const grandTotal = useMemo(
     () => cartItems.reduce((acc, item) => acc + item.lineTotal, 0),
@@ -108,18 +271,46 @@ export default function useOrderController(lang) {
 
   const hasMeatChickenMinimumError = useMemo(() => {
     return hens.some((hen) => {
-      const normalized = (hen.name || '').toLowerCase();
-      const isMeatChicken = normalized.includes('meat') || normalized.includes('chair');
+      const minQty = getMinOrderQuantity(hen.name);
       const qtyRaw = cart[hen.id];
       const qty = qtyRaw === '' || qtyRaw === undefined ? 0 : qtyRaw;
       const maxStock = getStockForHen(hen);
       const safeQty = Math.min(qty, maxStock);
-      return isMeatChicken && safeQty > 0 && safeQty < 25;
+      return minQty > 0 && safeQty > 0 && safeQty < minQty;
     });
-  }, [hens, cart]);
+  }, [hens, cart, getStockForHen]);
+
+  useEffect(() => {
+    if (!pickupReady) {
+      return;
+    }
+    setCart((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      hens.forEach((hen) => {
+        const maxStock = getStockForHen(hen);
+        const current = next[hen.id];
+        if (current === '' || current === undefined) return;
+        const currentValue = Number(current);
+        if (!Number.isFinite(currentValue)) return;
+        if (currentValue > maxStock) {
+          next[hen.id] = Math.max(maxStock, 0);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [hens, pickupReady, getStockForHen]);
 
   const handleCheckout = () => {
-    const items = buildCartItems(hens, cart).map((item) => ({
+    if (!pickupReady) {
+      setPickupError(pickupSelectionMessage);
+      return;
+    }
+    if (pickupError) {
+      setPickupError(null);
+    }
+    const items = buildCartItems(hens, cart, getStockForHen).map((item) => ({
       ...item,
       id: Number(item.id),
     }));
@@ -135,6 +326,16 @@ export default function useOrderController(lang) {
     cart,
     loading,
     setLoading,
+    pickupLocation,
+    setPickupLocation,
+    pickupDate,
+    setPickupDate,
+    availableDateValues,
+    pickupDatesLoading,
+    pickupError,
+    pickupReady,
+    isHenBlocked,
+    formatPickupDate: (value) => formatPickupDate(value, lang),
     updateQty,
     increment,
     decrement,

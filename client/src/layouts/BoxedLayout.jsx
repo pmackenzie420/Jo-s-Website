@@ -9,15 +9,18 @@ import '../styles/layouts/boxed.css';
 export default function BoxedLayout({ lang, setLang }) {
   const location = useLocation();
   useHeartbeat();
+  const isOrderPage = location.pathname.startsWith('/order');
   const privacyLabel = lang === 'fr' ? 'Confidentialité' : 'Privacy';
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
-    if (!location.pathname.startsWith('/checkout')) {
+    const isOrderOrCheckout = location.pathname.startsWith('/order') || location.pathname.startsWith('/checkout');
+    if (!isOrderOrCheckout) {
       try {
         window.sessionStorage.removeItem(CHECKOUT_STORAGE_KEYS.form);
         window.sessionStorage.removeItem(CHECKOUT_STORAGE_KEYS.step);
+        window.sessionStorage.removeItem('hen_cart_data');
       } catch {
         // Ignore storage clear issues (private mode, quota, etc).
       }
@@ -29,10 +32,10 @@ export default function BoxedLayout({ lang, setLang }) {
       <SiteHeader lang={lang} setLang={setLang} />
 
       {/* 1. MAIN WRAPPER */}
-      <div className="page-wrapper">
+      <div className={`page-wrapper${isOrderPage ? ' page-wrapper--order' : ''}`}>
 
         {/* 2. WHITE PAPER CONTAINER (Header + Content) */}
-        <div className="white-paper">
+        <div className={`white-paper${isOrderPage ? ' white-paper--order' : ''}`}>
 
           {/* --- Main Content (Outlet) --- */}
           <div>
@@ -53,8 +56,8 @@ export default function BoxedLayout({ lang, setLang }) {
       </div>
 
       {/* 3. TRANSPARENT FOOTER (Outside page-wrapper, directly on wallpaper) */}
-      <footer className="boxed-footer" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center' }}>
-        <img src="/logo_white.png" alt="Les Fermes Soulard Logo" style={{ height: '160px', marginBottom: '35px' }} />
+      <footer className="boxed-footer">
+        <img src="/logo_white.png" alt="Les Fermes Soulard Logo" className="boxed-footer-logo" />
 
         <a
           href={LINKS.facebook}
@@ -69,12 +72,12 @@ export default function BoxedLayout({ lang, setLang }) {
           </svg>
         </a>
 
-        <div style={{ marginTop: '35px', marginBottom: '20px', textAlign: 'center' }}>
+        <div className="boxed-footer-locations">
           <a
             href={LINKS.maps.bristol}
             target="_blank"
             rel="noopener noreferrer"
-            style={{ margin: '5px 0', fontSize: '0.9rem', color: '#fff', textDecoration: 'none', display: 'block' }}
+            className="boxed-footer-location-link"
           >
             84 Rte 148, Bristol, QC
           </a>

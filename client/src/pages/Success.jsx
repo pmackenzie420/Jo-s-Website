@@ -2,20 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import './../styles/pages/Success.css';
 import { API_URL } from '../constants/api';
-
-const LOCATION_DETAILS = {
-    hemmingford: {
-        label: 'Hemmingford',
-        address: '315 ch. Back Bush, Hemmingford, QC'
-    },
-    bristol: {
-        label: 'Bristol',
-        address: '84 Rte 148, Bristol, QC'
-    }
-};
+import LOCATION_DETAILS from '../../../shared/locations.json';
 
 const COPY = {
     en: {
+        loadingTitle: 'Loading order...',
+        loadingMessage: 'We are checking your payment confirmation.',
+        unverifiedTitle: 'Order status unavailable',
+        unverifiedMessage: 'We could not verify this order from this link.',
         title: '✓ Order Confirmed',
         thanks: 'Thank you for your order.',
         emailSent: (email) => `We've sent a confirmation email to ${email}.`,
@@ -39,6 +33,10 @@ const COPY = {
         returnHome: 'Return to Home'
     },
     fr: {
+        loadingTitle: 'Chargement de la commande...',
+        loadingMessage: 'Nous vérifions votre confirmation de paiement.',
+        unverifiedTitle: 'Statut de commande indisponible',
+        unverifiedMessage: 'Nous ne pouvons pas vérifier cette commande depuis ce lien.',
         title: '✓ Commande confirmée',
         thanks: 'Merci pour votre commande.',
         emailSent: (email) => `Un courriel de confirmation a été envoyé à ${email}.`,
@@ -126,6 +124,16 @@ function Success({ lang }) {
         return () => controller.abort();
     }, [sessionId]);
 
+    useEffect(() => {
+        if (order) {
+            try {
+                sessionStorage.removeItem('hen_cart_data');
+            } catch {
+                // Ignore
+            }
+        }
+    }, [order]);
+
     const normalizedOrderLanguage = normalizeLanguage(order?.language);
     const language = normalizedOrderLanguage || (lang === 'fr' ? 'fr' : 'en');
     const copy = COPY[language];
@@ -161,18 +169,31 @@ function Success({ lang }) {
         : null;
     const paymentType = order?.payment_type || (Number(dueCents) > 0 ? 'deposit' : 'full');
     const paymentLabel = paymentType === 'deposit' ? copy.depositPaid : copy.paidInFull;
+    const hasVerifiedOrder = Boolean(order);
+    const titleText = loading
+        ? copy.loadingTitle
+        : hasVerifiedOrder
+            ? copy.title
+            : copy.unverifiedTitle;
+    const introText = loading
+        ? copy.loadingMessage
+        : hasVerifiedOrder
+            ? copy.thanks
+            : copy.unverifiedMessage;
 
     return (
         <div className="success-container">
-            <h1 className="success-title">{copy.title}</h1>
-            <p className="success-message">{copy.thanks}</p>
-            <p className="success-message">
-                {order?.customer_email
-                    ? copy.emailSent(order.customer_email)
-                    : copy.emailSentFallback}
-            </p>
+            <h1 className="success-title">{titleText}</h1>
+            <p className="success-message">{introText}</p>
+            {hasVerifiedOrder && (
+                <p className="success-message">
+                    {order?.customer_email
+                        ? copy.emailSent(order.customer_email)
+                        : copy.emailSentFallback}
+                </p>
+            )}
 
-            {!loading && order && (
+            {!loading && hasVerifiedOrder && (
                 <>
                     <div className="success-section">
                         <div className="success-section-title">{copy.pickupDetails}</div>
@@ -265,7 +286,7 @@ function Success({ lang }) {
                 </>
             )}
 
-            {loadError && !order && (
+            {loadError && !hasVerifiedOrder && (
                 <p className="success-message">
                     {copy.pickupEmailFallback}
                 </p>

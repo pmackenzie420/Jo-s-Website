@@ -2,7 +2,7 @@
 const fs = require('fs');
 const path = require('path');
 const { Pool } = require('pg');
-require('dotenv').config();
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
 const isProduction = process.env.NODE_ENV === 'production';
 
@@ -12,7 +12,7 @@ const pool = new Pool({
         rejectUnauthorized: true,
         ca: isProduction
             ? fs.readFileSync('/etc/secrets/supabase-ca.crt').toString()
-            : fs.readFileSync(path.join(__dirname, 'certs/supabase-ca.crt')).toString()
+            : fs.readFileSync(path.join(__dirname, '..', 'certs/supabase-ca.crt')).toString()
     }
 });
 

@@ -17,128 +17,162 @@
   bottom: 0;
   left: 0;
   right: 0;
-  background-color: #2D5A3D; /* Fallback */
   background-color: var(--color-accent);
   padding: 12px 16px;
-  min-height: 60px;
+  min-height: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .home-hero-title {
-  font-size: clamp(20px, 3.2vw, 36px);
+  font-size: clamp(14px, 4.2vw, 36px);
   margin: 0;
-  color: white;
-  font-weight: bold;
+  color: #ffffff;
+  font-weight: 700;
   letter-spacing: 1.5px;
-  line-height: 1.1;
   text-transform: uppercase;
   text-align: center;
-  width: 100%;
+  white-space: nowrap;
 }
 
-.home-content {
-  padding: 0;
-}
-
-.home-content-inner {
-  text-align: center;
-  max-width: 800px;
-  margin: 0 auto;
-  padding: 12px 20px 18px;
-}
-
-.home-about {
-  background: #ffffff;
-  padding: 40px 40px;
-}
-
-.home-about-inner {
-  max-width: 1200px;
-  margin: 0 auto;
+/* CONTENT FLOW */
+.home-content-flow {
+  background: var(--color-white);
+  padding: 16px 24px 48px;
   display: flex;
-  gap: 60px;
-  align-items: flex-start;
+  flex-direction: column;
+  align-items: center;
 }
 
-.home-about-media,
-.home-about-text {
-  flex: 1;
+/* 1. BUTTONS */
+.home-cta-row {
+  display: flex;
+  gap: 16px;
+  justify-content: center;
+  flex-wrap: wrap;
+  width: 100%;
+  margin: 0;
 }
 
-.home-about-image {
+/* 2. INTRO TEXT */
+.home-intro-text {
+  font-size: clamp(17px, 1.8vw, 21px);
+  line-height: 1.6;
+  color: var(--color-text-muted);
+  max-width: 800px;
+  margin: 48px 0 24px;
+  font-weight: 500;
+  text-align: center;
+}
+
+/* 3. SECTION TITLE (What We Offer) */
+.home-section-title {
+  font-size: clamp(24px, 3vw, 32px);
+  font-weight: 700;
+  color: var(--color-black);
+  margin: 24px 0;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  text-align: center;
+}
+
+/* 4. OFFERINGS GRID */
+.home-offerings-list {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 24px;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0;
+}
+
+.home-offering-card {
+  background: var(--color-surface-subtle);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.home-offering-image {
   width: 100%;
   height: auto;
   display: block;
+  object-fit: cover;
+  aspect-ratio: 1 / 1;
 }
 
-.home-about-title {
-  font-size: 40px;
+.home-offering-body {
+  padding: 20px;
+}
+
+.home-offering-title {
+  display: block;
+  font-size: 20px;
   font-weight: 700;
-  color: var(--color-accent);
-  margin: 0 0 30px;
-  text-align: center;
-}
-
-.home-about-paragraph {
-  font-size: 18px;
-  line-height: 1.4;
-  color: #222;
-  margin: 0 0 4px;
-  text-align: left;
-}
-
-.home-about-subtitle {
-  font-size: 1.8rem;
-  font-weight: 700;
-  color: #000;
-  margin: 12px 0 4px;
+  margin-bottom: 8px;
+  color: var(--color-black);
   text-transform: uppercase;
 }
 
-.home-about-paragraph:last-child {
-  margin-bottom: 0;
+.home-offering-description {
+  font-size: 16px;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+  margin: 0;
 }
 
-.cta-container {
-  display: flex;
-  gap: 20px;
-  justify-content: center;
-  margin: 12px auto 16px;
-  padding: 0 20px;
-  flex-wrap: wrap;
+/* 5. HISTORY SECTION */
+.home-history {
+  width: 100%;
+  max-width: var(--content-width-reading);
+  margin: 48px auto 0;
 }
 
-.cta-primary,
-.cta-secondary {
-  font-size: 18px;
+.home-history-title {
+  font-size: 28px;
   font-weight: 700;
-  padding: 16px 32px;
-  width: 260px;
-  border-radius: 4px;
+  color: var(--color-black);
+  margin: 0 0 24px;
   text-transform: uppercase;
-  letter-spacing: 0.5px;
-  white-space: nowrap;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   text-align: center;
-  cursor: pointer;
-  transition: all 0.2s ease;
-  box-sizing: border-box;
 }
 
+.home-history-paragraph {
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+  margin-bottom: 24px;
+}
+
+.home-history-image-container {
+  margin: 24px 0;
+  width: 100%;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  box-shadow: var(--shadow-card);
+}
+
+.home-history-image {
+  width: 100%;
+  height: 300px;
+  display: block;
+  object-fit: cover;
+}
+
+
+/* 6. LOCATIONS */
 .home-locations {
-  margin-top: 40px;
-  padding-bottom: 32px;
+  width: 100%;
+  max-width: 1100px;
+  margin-top: 48px;
 }
 
 .home-locations-title {
   text-transform: uppercase;
-  margin: 0 0 28px;
-  font-size: 1.8rem;
-  color: #000;
+  margin: 0 0 24px;
+  font-size: 22px;
+  color: var(--color-black);
+  text-align: center;
 }
 
 .home-locations-grid {
@@ -146,128 +180,80 @@
   justify-content: center;
   gap: 80px;
   flex-wrap: wrap;
-}
-
-.home-location {
   text-align: center;
 }
 
 .home-location-title {
   display: block;
-  font-size: 1.6rem;
-  margin-bottom: 12px;
-  color: #000;
+  font-size: 19px;
+  margin-bottom: 8px;
+  color: var(--color-black);
 }
 
 .home-location-address {
-  font-size: 1.3rem;
-  color: #000;
+  font-size: 18px;
+  color: var(--color-black);
+}
+
+/* GLOBAL BUTTON STYLES */
+.cta-primary,
+.cta-secondary {
+  font-size: 18px;
+  font-weight: 700;
+  padding: 12px 32px;
+  white-space: nowrap;
+  width: 260px;
+  border-radius: var(--radius-md);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+  line-height: 1.4;
+  text-align: center;
+  text-decoration: none;
 }
 
 .cta-primary {
   background: var(--color-accent);
   color: #ffffff;
   border: 2px solid transparent;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
-}
-
-.cta-primary:hover {
-  background: var(--color-accent);
-  transform: scale(1.02);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
 .cta-secondary {
-  background: #ffffff;
+  background: var(--color-white);
   color: var(--color-accent);
   border: 2px solid var(--color-accent);
+}
+
+.cta-primary:hover {
+  filter: brightness(1.1);
+  transform: translateY(-2px);
 }
 
 .cta-secondary:hover {
   background: var(--color-accent-soft);
 }
 
+/* MOBILE RESPONSIVE */
 @media (max-width: 800px) {
-  .home-hero {
-    height: 260px;
-  }
+  .home-hero { height: 256px; }
+  .home-content-flow { padding: 16px 16px 48px; }
 
-  .home-hero-title {
-    letter-spacing: 1px;
-  }
+  .home-cta-row { flex-direction: column; align-items: center; gap: 16px; }
+  .cta-primary, .cta-secondary { width: 100%; }
 
-  .home-content-inner {
-    padding: 10px 16px 14px;
-  }
+  .home-intro-text { margin-top: 48px; font-size: 17px; }
+  .home-section-title { font-size: 22px; }
 
-  .home-about {
-    padding: 28px 16px;
-  }
+  .home-offerings-list { grid-template-columns: 1fr; gap: 24px; }
+  .home-offering-title { font-size: 20px; }
+  .home-offering-description { font-size: 16px; }
 
-  .home-about-inner {
-    flex-direction: column;
-    gap: 24px;
-  }
+  .home-history-paragraph { font-size: 16px; }
 
-  .home-about-media {
-    width: 100%;
-  }
-
-  .home-about-title {
-    text-align: center;
-  }
-
-  .home-about-title {
-    font-size: 28px;
-    margin-bottom: 20px;
-  }
-
-  .home-about-paragraph {
-    font-size: 17px;
-    line-height: 1.35;
-    margin-bottom: 4px;
-    text-align: left;
-  }
-
-  .home-about-subtitle {
-    font-size: 1.35rem;
-    margin: 12px 0 4px;
-  }
-
-  .cta-container {
-    flex-direction: column;
-    align-items: center;
-    gap: 12px;
-    margin: 10px auto 14px;
-    padding: 0 16px;
-  }
-
-  .cta-primary,
-  .cta-secondary {
-    width: 100%;
-    padding: 10px 16px;
-  }
-
-  .home-locations {
-    margin-top: 28px;
-    padding-bottom: 20px;
-  }
-
-  .home-locations-title {
-    font-size: 1.35rem;
-    margin-bottom: 16px;
-  }
-
-  .home-locations-grid {
-    gap: 24px;
-  }
-
-  .home-location-title {
-    font-size: 1.25rem;
-    margin-bottom: 8px;
-  }
-
-  .home-location-address {
-    font-size: 1.05rem;
-  }
+  .home-locations-grid { gap: 32px; }
 }

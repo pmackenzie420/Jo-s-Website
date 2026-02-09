@@ -1,5 +1,5 @@
 .privacy-container {
-  max-width: 800px;
+  max-width: var(--content-width-prose);
   margin: 0 auto;
   padding: 60px 24px 80px;
   text-align: left;
@@ -9,6 +9,7 @@
   margin: 0 0 16px;
   font-size: 32px;
   font-weight: 800;
+  text-align: center;
 }
 
 .privacy-subtitle {
@@ -32,10 +33,20 @@
 
 @media (max-width: 800px) {
   .privacy-container {
-    padding: 40px 20px 60px;
+    padding: 28px 16px 40px;
   }
 
   .privacy-title {
     font-size: 26px;
+  }
+
+  .privacy-subtitle {
+    margin: 18px 0 6px;
+    font-size: 18px;
+  }
+
+  .privacy-text,
+  .privacy-list {
+    line-height: 1.45;
   }
 }

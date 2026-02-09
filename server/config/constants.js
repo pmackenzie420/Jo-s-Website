@@ -1,15 +1,6 @@
-const PAID_STATUSES = new Set(['paid', 'fulfilled', 'picked_up']);
+const LOCATION_DETAILS = require('../../shared/locations.json');
 
-const LOCATION_DETAILS = {
-    hemmingford: {
-        label: 'Hemmingford',
-        address: '315 ch. Back Bush, Hemmingford, QC'
-    },
-    bristol: {
-        label: 'Bristol',
-        address: '84 Rte 148, Bristol, QC'
-    }
-};
+const PAID_STATUSES = new Set(['paid', 'fulfilled', 'picked_up']);
 
 const COMPANY_CONTACT = {
     name: 'Les Fermes Soulard',

@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from 'react';
+import { useState } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 import { API_URL } from '../constants/api';
@@ -15,45 +15,29 @@ const resolveLanguage = (value) => {
   return 'en';
 };
 
-export default function useCheckout(lang, formData, setFormData, cartItems, grandTotal) {
+export default function useCheckout(lang, formData, cartItems) {
   const effectiveLang = resolveLanguage(lang);
   const navigate = useNavigate();
-  const [availableDates, setAvailableDates] = useState([]);
   const [loading, setLoading] = useState(false);
-
-  const availableDateValues = useMemo(() => {
-    const values = availableDates
-      .map((dateItem) =>
-        typeof dateItem.date_value === 'string'
-          ? dateItem.date_value.split('T')[0]
-          : dateItem.date_value
-      )
-      .filter(Boolean);
-    return values.sort();
-  }, [availableDates]);
-
-  useEffect(() => {
-    if (!formData.pickupLocation) {
-      setAvailableDates([]);
-      setFormData((prev) => ({ ...prev, pickupDate: '' }));
-      return;
-    }
-    setAvailableDates([]);
-    setFormData((prev) => ({ ...prev, pickupDate: '' }));
-    axios
-      .get(`${API_URL}/pickup-dates`, {
-        params: { location: formData.pickupLocation }
-      })
-      .then((res) => {
-        setAvailableDates(res.data);
-      })
-      .catch((err) => console.error('Error fetching dates:', err));
-  }, [formData.pickupLocation, setFormData]);
+  const [submitError, setSubmitError] = useState('');
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    setSubmitError('');
 
     if (!cartItems || cartItems.length === 0) {
+      setSubmitError(
+        effectiveLang === 'fr'
+          ? 'Votre panier est vide.'
+          : 'Your cart is empty.'
+      );
+      return;
+    }
+    if (!formData.pickupDate || !formData.pickupLocation) {
+      const message = effectiveLang === 'fr'
+        ? 'Veuillez sélectionner une date et un lieu de ramassage.'
+        : 'Please select a pickup date and location.';
+      setSubmitError(message);
       return;
     }
 
@@ -79,13 +63,12 @@ export default function useCheckout(lang, formData, setFormData, cartItems, gran
       const res = await axios.post(`${API_URL}/checkout`, payload);
       window.location.href = res.data.url;
     } catch (err) {
-      console.error(err);
       const fallbackMessage = effectiveLang === 'fr'
         ? 'Erreur lors de la création de la session de paiement. Veuillez réessayer.'
         : 'Error creating checkout session. Please try again.';
       const message =
         err?.response?.data?.error || fallbackMessage;
-      alert(message);
+      setSubmitError(message);
       setLoading(false);
     }
   };
@@ -109,11 +92,12 @@ export default function useCheckout(lang, formData, setFormData, cartItems, gran
   };
   
   return {
-    availableDateValues,
     loading,
     handleSubmit,
     hasCart,
     goToOrder,
     formatPickupDate,
+    submitError,
+    setSubmitError,
   };
 }

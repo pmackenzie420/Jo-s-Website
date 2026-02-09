@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import useMediaQuery from '../hooks/useMediaQuery';
 import useCheckoutController from '../hooks/useCheckoutController';
 import '../styles/pages/Checkout.css';
@@ -9,16 +9,14 @@ export default function Checkout({ lang }) {
 
   const {
     cartItems,
-    grandTotal,
     hasCart,
     goToOrder,
     formData,
     setFormData,
-    availableDateValues,
     loading,
+    submitError,
     errors,
     setErrors,
-    pickupOptions,
     formatPickupDate,
     handlePhoneBlur,
     handleEmailBlur,
@@ -26,6 +24,9 @@ export default function Checkout({ lang }) {
     formatPhone,
     normalizePhone,
     isValidEmail,
+    termsAccepted,
+    setTermsAccepted,
+    termsError,
     paymentOption,
     setPaymentOption,
     paymentSummary,
@@ -33,6 +34,20 @@ export default function Checkout({ lang }) {
     nextStep,
     prevStep
   } = useCheckoutController(lang);
+
+  const [showTerms, setShowTerms] = useState(false);
+
+  const handleTopBack = () => {
+    if (currentStep === 2) {
+      prevStep();
+    } else {
+      goToOrder();
+    }
+  };
+
+  const topBackLabel = currentStep === 2
+    ? (lang === 'en' ? 'Back to Information' : 'Retour aux informations')
+    : (lang === 'en' ? 'Back to Order' : 'Retour à la commande');
 
   useEffect(() => {
     if (isFirstRender.current) {
@@ -50,7 +65,7 @@ export default function Checkout({ lang }) {
 
   if (!hasCart) {
     return (
-      <div style={{ padding: '40px', textAlign: 'center' }}>
+      <div className="checkout-empty">
         <h2>{lang === 'en' ? 'Cart is empty' : 'Panier vide'}</h2>
         <button onClick={goToOrder}>
           {lang === 'en' ? 'Back to Order' : 'Retour à la commande'}
@@ -60,6 +75,15 @@ export default function Checkout({ lang }) {
   }
 
   const formatCurrency = (cents) => `$${(Number(cents) / 100).toFixed(2)}`;
+  const pickupLocationLabels = {
+    hemmingford: 'Hemmingford',
+    bristol: 'Bristol'
+  };
+  const pickupLocationLabel =
+    formData.pickupLocation && pickupLocationLabels[formData.pickupLocation]
+      ? pickupLocationLabels[formData.pickupLocation]
+      : formData.pickupLocation || '';
+  const pickupDateLabel = formData.pickupDate ? formatPickupDate(formData.pickupDate) : '';
 
   const payButtonLabel = loading
     ? (lang === 'en' ? 'Processing...' : 'Traitement...')
@@ -68,23 +92,27 @@ export default function Checkout({ lang }) {
   // Step Labels
   const steps = [
     { num: 1, label: lang === 'en' ? 'Information' : 'Informations' },
-    { num: 2, label: lang === 'en' ? 'Pickup' : 'Ramassage' },
-    { num: 3, label: lang === 'en' ? 'Payment' : 'Paiement' }
+    { num: 2, label: lang === 'en' ? 'Payment' : 'Paiement' }
   ];
   const hasDepositOption = paymentSummary.depositEligible;
-  const isSummaryOnly = currentStep === 3 && !hasDepositOption;
+  const isSummaryOnly = currentStep === 2 && !hasDepositOption;
+  const progressStep = Math.min(Math.max(currentStep, 1), steps.length);
+  const progressTrackClass = `progress-track progress-track--step-${progressStep}`;
 
   return (
     <div className="checkout-container">
+      <div className="checkout-top-back">
+        <button
+          onClick={handleTopBack}
+          className="checkout-top-back-button"
+        >
+          ← {topBackLabel}
+        </button>
+      </div>
+
       {/* Sticky Progress Bar */}
       <div className="checkout-progress-bar">
-        <div
-          className="progress-track"
-          style={{
-            '--progress': `${Math.min((currentStep / steps.length) * 100, 100)}%`,
-            '--progress-bump': `${currentStep === 1 ? 8 : 0}px`
-          }}
-        >
+        <div className={progressTrackClass}>
           <div
             className={`progress-fill ${currentStep === steps.length ? 'is-complete' : ''}`}
           />
@@ -104,7 +132,7 @@ export default function Checkout({ lang }) {
 
       <form
         onSubmit={handleSubmit}
-        className={`checkout-grid ${(currentStep < 3 || isSummaryOnly) ? 'single-column' : ''}`}
+        className={`checkout-grid ${(currentStep < 2 || isSummaryOnly) ? 'single-column' : ''}`}
         autoComplete="off"
       >
         <div className={`checkout-main${isSummaryOnly ? ' checkout-main--hidden' : ''}`}>
@@ -210,96 +238,8 @@ export default function Checkout({ lang }) {
             </section>
           )}
 
-          {/* STEP 2: PICKUP */}
-          {currentStep === 2 && (
-            <section className="checkout-section">
-              <h2 className="checkout-section-title">
-                {lang === 'en' ? 'Pickup Details' : 'Détails du ramassage'}
-              </h2>
-              <div className="checkout-field">
-                <label className="checkout-label">{lang === 'en' ? 'Location' : 'Succursale'}</label>
-                <div className="pickup-options">
-                  {pickupOptions.map((option) => (
-                    <label
-                      key={option.value}
-                      className={`pickup-option ${
-                        formData.pickupLocation === option.value ? 'active' : ''
-                      }`}
-                    >
-                      <input
-                        type="radio"
-                        name="pickupLocation"
-                        value={option.value}
-                        checked={formData.pickupLocation === option.value}
-                        onChange={() => {
-                          setFormData((prev) => ({
-                            ...prev,
-                            pickupLocation: option.value,
-                            pickupDate: ''
-                          }));
-                          if (errors.pickupLocation) {
-                            setErrors((prev) => ({ ...prev, pickupLocation: null }));
-                          }
-                        }}
-                      />
-                      <div className="pickup-option-title">{option.label}</div>
-                    </label>
-                  ))}
-                </div>
-                {errors.pickupLocation && <p className="error-text">{errors.pickupLocation}</p>}
-              </div>
-
-              <div className="checkout-field pickup-date-field">
-                <label className="checkout-label">
-                  {lang === 'en' ? 'Preferred Date' : 'Date préférée'}
-                </label>
-                <select
-                  className={`checkout-input pickup-select ${errors.pickupDate ? 'error' : ''}`}
-                  value={formData.pickupDate}
-                  onChange={(e) => {
-                    setFormData((prev) => ({ ...prev, pickupDate: e.target.value }));
-                    if (errors.pickupDate) {
-                      setErrors((prev) => ({ ...prev, pickupDate: null }));
-                    }
-                  }}
-                  required
-                  disabled={!formData.pickupLocation || availableDateValues.length === 0}
-                >
-                  <option value="" disabled>
-                    {!formData.pickupLocation
-                      ? lang === 'en'
-                        ? 'Select a location first'
-                        : 'Choisissez un lieu'
-                      : availableDateValues.length === 0
-                        ? lang === 'en'
-                          ? 'No dates available'
-                          : 'Aucune date disponible'
-                        : lang === 'en'
-                          ? 'Select a pickup date'
-                          : 'Choisir une date'}
-                  </option>
-                  {availableDateValues.map((dateValue) => (
-                    <option key={dateValue} value={dateValue}>
-                      {formatPickupDate(dateValue)}
-                    </option>
-                  ))}
-                </select>
-                {errors.pickupDate && <p className="error-text">{errors.pickupDate}</p>}
-              </div>
-              
-              <div className="step-actions">
-                <button type="button" className="btn-continue" onClick={nextStep}>
-                  {lang === 'en' ? 'Continue' : 'Continuer'}
-                </button>
-                <button type="button" className="btn-back btn-back--compact" onClick={prevStep}>
-                  {lang === 'en' ? 'Back' : 'Retour'}
-                </button>
-              </div>
-            </section>
-          )}
-
-          {/* STEP 3: PAYMENT */}
-          {currentStep === 3 && hasDepositOption && (
+          {/* STEP 2: PAYMENT */}
+          {currentStep === 2 && hasDepositOption && (
             <section className="checkout-section">
               <h2 className="checkout-section-title">
                 {lang === 'en' ? 'Payment' : 'Paiement'}
@@ -384,7 +324,7 @@ export default function Checkout({ lang }) {
                     <div className="lamb-deposit-details">
                       <div className="lamb-deposit-row">
                         <span>{paymentSummary.lambQty} x Lamb / Agneau</span>
-                        <span>{formatCurrency(paymentSummary.lambQty * 5000)} (dépôt)</span>
+                        <span>{formatCurrency(paymentSummary.lambDepositCents)} (dépôt)</span>
                       </div>
                       <p className="lamb-deposit-note">
                         {lang === 'en'
@@ -399,10 +339,20 @@ export default function Checkout({ lang }) {
           )}
         </div>
 
-        {currentStep === 3 && (
+        {currentStep === 2 && (
           <aside className="checkout-sidebar">
           <div className="summary-box">
             <h3 className="summary-title">{lang === 'en' ? 'Order Summary' : 'Résumé'}</h3>
+            {pickupDateLabel && pickupLocationLabel && (
+              <div className="summary-pickup">
+                <div className="summary-pickup-label">
+                  {lang === 'en' ? 'Pickup' : 'Ramassage'}
+                </div>
+                <div className="summary-pickup-value">
+                  {pickupDateLabel} · {pickupLocationLabel}
+                </div>
+              </div>
+            )}
             {cartItems.map((item, idx) => (
               <div key={idx} className="summary-item">
                 <span>
@@ -421,20 +371,20 @@ export default function Checkout({ lang }) {
 
             {/* Balance Due Breakdown */}
             {(paymentOption === 'deposit' || paymentSummary.hasLambs) && (
-              <div className="summary-subtotal" style={{ display: 'block', textAlign: 'left', marginTop: '10px' }}>
-                <div style={{ fontWeight: 'bold', marginBottom: '5px' }}>
+              <div className="summary-subtotal">
+                <div className="summary-subtotal-title">
                   {lang === 'en' ? 'Balance due at pickup:' : 'Solde à la cueillette :'}
                 </div>
                 
                 {paymentOption === 'deposit' && paymentSummary.lohmannDueCents > 0 && (
-                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9em', marginBottom: '4px' }}>
+                   <div className="summary-subtotal-row">
                      <span>• {lang === 'en' ? 'Hens' : 'Poules'}:</span>
                      <span>{formatCurrency(paymentSummary.lohmannDueCents)}</span>
                    </div>
                 )}
                 
                 {paymentSummary.hasLambs && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.9em' }}>
+                  <div className="summary-subtotal-row">
                      <span>• {lang === 'en' ? 'Lamb' : 'Agneau'}:</span>
                      <span>{lang === 'en' ? 'To be determined (weight)' : 'À déterminer (poids)'}</span>
                    </div>
@@ -443,10 +393,31 @@ export default function Checkout({ lang }) {
             )}
           </div>
           
+            <div className="checkout-terms">
+              <label className="terms-row">
+                <input
+                  type="checkbox"
+                  checked={termsAccepted}
+                  onChange={(event) => setTermsAccepted(event.target.checked)}
+                />
+                <span>
+                  {lang === 'en' ? 'I accept the ' : "J'accepte les "}
+                  <button
+                    type="button"
+                    className="terms-link"
+                    onClick={() => setShowTerms(true)}
+                  >
+                    {lang === 'en'
+                      ? 'conditions of sale and pickup.'
+                      : 'conditions de vente et de ramassage.'}
+                  </button>
+                </span>
+              </label>
+              {termsError && <p className="error-text">{termsError}</p>}
+              {submitError && <p className="error-text">{submitError}</p>}
+            </div>
+
             <div className="step-actions">
-              <button type="button" className="btn-back btn-back--compact-mobile" onClick={prevStep}>
-                  {lang === 'en' ? 'Back' : 'Retour'}
-              </button>
               <button type="submit" disabled={loading} className="pay-button checkout-submit">
                 {payButtonLabel}
               </button>
@@ -454,11 +425,21 @@ export default function Checkout({ lang }) {
           </aside>
         )}
       </form>
-      {currentStep === 3 && (
-        <div className="checkout-back-desktop">
-          <button type="button" className="btn-back" onClick={prevStep}>
-            {lang === 'en' ? 'Back' : 'Retour'}
-          </button>
+      {showTerms && (
+        <div className="terms-modal-backdrop" onClick={() => setShowTerms(false)}>
+          <div className="terms-modal" onClick={(e) => e.stopPropagation()}>
+            <h3>{lang === 'en' ? 'Terms & Conditions' : 'Conditions de vente'}</h3>
+            <div className="terms-content">
+              <p>
+                {lang === 'en'
+                  ? 'Please note that at pickup, we cannot split a single order among multiple people. Each order must be picked up in full by the purchaser.'
+                  : "Veuillez noter que lors du ramassage, nous ne pouvons pas diviser une même commande entre plusieurs personnes. Chaque commande doit être ramassée en entièreté par l'acheteur."}
+              </p>
+            </div>
+            <button className="btn-continue" onClick={() => setShowTerms(false)}>
+              {lang === 'en' ? 'I Understand' : 'Je comprends'}
+            </button>
+          </div>
         </div>
       )}
     </div>

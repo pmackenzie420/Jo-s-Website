@@ -24,8 +24,6 @@ export default function useMediaQuery(query) {
       mediaQueryList.addListener(handleChange);
     }
 
-    setMatches(mediaQueryList.matches);
-
     return () => {
       if (mediaQueryList.removeEventListener) {
         mediaQueryList.removeEventListener('change', handleChange);
