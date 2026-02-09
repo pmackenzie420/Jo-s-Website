@@ -37,21 +37,6 @@ const reserveStockForItems = async (client, { pickupDateId, items, orderId }) =>
                 );
             }
         }
-
-        const globalStockUpdate = await client.query(
-            `
-            UPDATE hens
-            SET stock = stock - $1
-            WHERE id = $2 AND stock >= $1
-            RETURNING id
-            `,
-            [quantity, itemId]
-        );
-        if (globalStockUpdate.rowCount === 0) {
-            throw new Error(
-                `Insufficient global stock while reserving order ${orderId} for hen ${itemId}.`
-            );
-        }
     }
 };
 
@@ -59,11 +44,6 @@ const releaseStockForItems = async (client, { pickupDateId, items }) => {
     for (const item of items) {
         const quantity = item.quantity;
         const itemId = item.id;
-
-        await client.query(
-            'UPDATE hens SET stock = stock + $1 WHERE id = $2',
-            [quantity, itemId]
-        );
 
         if (pickupDateId) {
             await client.query(
