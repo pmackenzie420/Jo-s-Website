@@ -4,6 +4,7 @@
   "description": "",
   "main": "index.js",
   "scripts": {
+    "start": "node server.js",
     "render-build": "npm install",
     "test": "node --test",
     "check:db": "node scripts/check_db.js",

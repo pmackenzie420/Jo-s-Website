@@ -2,6 +2,7 @@
   "name": "jowebsite",
   "private": true,
   "scripts": {
+    "start": "npm --prefix server start",
     "render-build": "npm run postinstall",
     "postinstall": "npm install --prefix server"
   }
