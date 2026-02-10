@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { LINKS } from '../constants/links';
 import '../styles/components/SiteHeader.css';
@@ -21,10 +21,118 @@ const contentMap = {
     }
 };
 
+const MOBILE_STICKY_HIDE_SCROLL_Y = 260;
+const MOBILE_STICKY_SLIDE_DISTANCE = 120;
+const MOBILE_STICKY_PROGRESS_EPSILON = 0.01;
+
 export default function SiteHeader({ lang, setLang }) {
     const t = contentMap[lang];
     const location = useLocation();
     const [isMenuOpen, setIsMenuOpen] = useState(false);
+    const [mobileStickyState, setMobileStickyState] = useState({
+        enabled: true,
+        progress: 0
+    });
+
+    useEffect(() => {
+        if (typeof window === 'undefined') {
+            return;
+        }
+
+        const mediaQuery = window.matchMedia('(max-width: 800px)');
+        const getDocumentScrollTop = () => {
+            const scrollingElement = document.scrollingElement;
+            return window.pageYOffset
+                || window.scrollY
+                || scrollingElement?.scrollTop
+                || document.documentElement.scrollTop
+                || document.body.scrollTop
+                || 0;
+        };
+
+        const updateMobileStickyState = (scrollTop = getDocumentScrollTop()) => {
+            if (!mediaQuery.matches) {
+                setMobileStickyState((previousState) => (
+                    previousState.enabled || previousState.progress !== 0
+                        ? { enabled: false, progress: 0 }
+                        : previousState
+                ));
+                return;
+            }
+            const slideProgress = Math.max(
+                0,
+                Math.min(
+                    1,
+                    (scrollTop - MOBILE_STICKY_HIDE_SCROLL_Y) / MOBILE_STICKY_SLIDE_DISTANCE
+                )
+            );
+            const shouldDisableSticky = scrollTop >= (MOBILE_STICKY_HIDE_SCROLL_Y + MOBILE_STICKY_SLIDE_DISTANCE);
+            const nextState = {
+                enabled: !shouldDisableSticky,
+                progress: slideProgress
+            };
+
+            setMobileStickyState((previousState) => {
+                if (
+                    previousState.enabled === nextState.enabled
+                    && Math.abs(previousState.progress - nextState.progress) < MOBILE_STICKY_PROGRESS_EPSILON
+                ) {
+                    return previousState;
+                }
+                return nextState;
+            });
+        };
+
+        const updateFromWindowScroll = () => {
+            updateMobileStickyState(getDocumentScrollTop());
+        };
+
+        const updateFromCapturedScroll = (event) => {
+            const target = event.target;
+            const targetScrollTop = (
+                target
+                && target !== document
+                && target !== document.documentElement
+                && target !== document.body
+                && typeof target.scrollTop === 'number'
+            ) ? target.scrollTop : 0;
+
+            updateMobileStickyState(Math.max(targetScrollTop, getDocumentScrollTop()));
+        };
+
+        updateFromWindowScroll();
+        window.addEventListener('scroll', updateFromWindowScroll, { passive: true });
+        document.addEventListener('scroll', updateFromCapturedScroll, true);
+        window.addEventListener('resize', updateFromWindowScroll);
+        window.addEventListener('orientationchange', updateFromWindowScroll);
+        const intervalId = window.setInterval(updateFromWindowScroll, 150);
+
+        const onMediaChange = () => updateFromWindowScroll();
+        if (typeof mediaQuery.addEventListener === 'function') {
+            mediaQuery.addEventListener('change', onMediaChange);
+        } else {
+            mediaQuery.addListener(onMediaChange);
+        }
+
+        return () => {
+            window.removeEventListener('scroll', updateFromWindowScroll);
+            document.removeEventListener('scroll', updateFromCapturedScroll, true);
+            window.removeEventListener('resize', updateFromWindowScroll);
+            window.removeEventListener('orientationchange', updateFromWindowScroll);
+            window.clearInterval(intervalId);
+            if (typeof mediaQuery.removeEventListener === 'function') {
+                mediaQuery.removeEventListener('change', onMediaChange);
+            } else {
+                mediaQuery.removeListener(onMediaChange);
+            }
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!mobileStickyState.enabled) {
+            setIsMenuOpen(false);
+        }
+    }, [mobileStickyState.enabled]);
 
     // Check if link is active
     const isActive = (path) => location.pathname === path ? 'active' : '';
@@ -34,7 +142,10 @@ export default function SiteHeader({ lang, setLang }) {
     };
 
     return (
-        <header className="site-header">
+        <header
+            className={`site-header ${mobileStickyState.enabled ? 'mobile-sticky-enabled' : ''}`}
+            style={{ '--mobile-sticky-progress': mobileStickyState.progress }}
+        >
             {/* ROW 1: GREEN BAR with Language Selector (Left) */}
             <div className="green-top-bar">
                 <div className="green-bar-content">

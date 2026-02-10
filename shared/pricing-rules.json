@@ -2,7 +2,7 @@
   "categories": [
     {
       "key": "layer",
-      "keywords": ["lohmann", "ready-to-lay"],
+      "keywords": ["lohmann", "ready-to-lay", "white ready"],
       "tiers": [
         { "minQty": 50, "unitCents": 1400 },
         { "minQty": 13, "unitCents": 1525 },

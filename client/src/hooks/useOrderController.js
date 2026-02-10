@@ -30,6 +30,15 @@ const formatPickupDate = (value, lang) => {
   }).format(date);
 };
 
+const getDisplayOrder = (name) => {
+  const lower = (name || '').toLowerCase();
+  if (lower.includes('brown') || lower.includes('brune') || (lower.includes('ready') && !lower.includes('white'))) return 0;
+  if (lower.includes('white')) return 1;
+  if (lower.includes('meat') || lower.includes('chair')) return 2;
+  if (lower.includes('lamb') || lower.includes('agneau')) return 3;
+  return 4;
+};
+
 const getRawStockForHen = (hen) => {
   const stockValue = Number(hen?.stock);
   return Number.isFinite(stockValue) ? stockValue : 0;
@@ -127,7 +136,9 @@ export default function useOrderController(lang) {
       .get(`${API_URL}/hens`, { params })
       .then((res) => {
         if (!isActive) return;
-        setHens(Array.isArray(res.data) ? res.data : []);
+        const rows = Array.isArray(res.data) ? res.data : [];
+        rows.sort((a, b) => getDisplayOrder(a.name) - getDisplayOrder(b.name));
+        setHens(rows);
         setPickupError(null);
       })
       .catch(() => {

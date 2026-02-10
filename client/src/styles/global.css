@@ -8,9 +8,9 @@
   --color-black: #111111;
   --color-text-strong: #1a1a1a;
   --color-text-muted: #55514a;
-  --color-border-strong: #111111;
-  --color-border-default: #d7d1c8;
-  --color-border-soft: #e8e2d9;
+  --color-border-strong: #444444;
+  --color-border-default: #b0b0b0;
+  --color-border-soft: #cccccc;
   --color-surface-subtle: #f8f6f1;
 
   --content-width: 1100px;
@@ -61,8 +61,8 @@ button:focus-visible,
 input:focus-visible,
 select:focus-visible,
 textarea:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+  outline: 2px solid var(--color-border-strong);
+  outline-offset: 1px;
 }
 
 #root {

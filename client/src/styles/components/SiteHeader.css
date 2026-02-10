@@ -255,6 +255,19 @@
 }
 
 @media (max-width: 800px) {
+  .site-header {
+    position: static;
+    z-index: 40;
+  }
+
+  .site-header.mobile-sticky-enabled {
+    position: sticky;
+    top: 0;
+    transform: translateY(calc(var(--mobile-sticky-progress, 0) * -108%));
+    transition: transform 0.28s cubic-bezier(0.22, 0.61, 0.36, 1);
+    will-change: transform;
+  }
+
   .green-bar-content {
     flex-direction: row;
     align-items: center;

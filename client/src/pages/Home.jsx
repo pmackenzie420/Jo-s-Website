@@ -9,7 +9,7 @@ const OFFERING_IMAGES = [
 ];
 
 const HISTORY_PHOTOS = [
-  { src: '/photos/IMG_0568.jpeg', alt: 'Farm poultry', width: 480, height: 360 },
+  { src: '/photos/IMG_9895.jpeg', alt: 'Farm poultry', width: 800, height: 600 },
   { src: '/photos/96f64fdc5db3d6a3d3142fae033ddfe9-800.jpeg', alt: 'Farm operations', width: 800, height: 600 },
   { src: '/photos/image000000-800.jpeg', alt: 'Farm fields', width: 800, height: 600 },
   { src: '/photos/IMG_7625-800.jpeg', alt: 'Laying hens', width: 800, height: 600 },
@@ -153,7 +153,30 @@ export default function Home({ lang }) {
           <h2 className="home-history-title">{aboutContent.historyTitle}</h2>
 
           <p className="home-history-paragraph">{aboutContent.historyParagraphs[0]}</p>
+
+          <div className="home-history-image-container">
+            <img
+              src="/photos/barn.jpeg"
+              alt="Farm barn"
+              className="home-history-image"
+              loading="eager"
+              decoding="async"
+            />
+          </div>
+
           <p className="home-history-paragraph">{aboutContent.historyParagraphs[1]}</p>
+
+          <div className="home-history-image-container">
+            <img
+              src="/photos/96f64fdc5db3d6a3d3142fae033ddfe9-800.jpeg"
+              alt="Farm operations"
+              className="home-history-image"
+              loading="eager"
+              decoding="async"
+            />
+          </div>
+
+          <p className="home-history-paragraph">{aboutContent.historyParagraphs[2]}</p>
 
           <div className="home-history-image-container">
             <img
@@ -167,7 +190,6 @@ export default function Home({ lang }) {
             />
           </div>
 
-          <p className="home-history-paragraph">{aboutContent.historyParagraphs[2]}</p>
           <p className="home-history-paragraph">{aboutContent.historyParagraphs[3]}</p>
 
           <div className="home-history-image-container">
@@ -175,7 +197,7 @@ export default function Home({ lang }) {
               src={HISTORY_PHOTOS[2].src}
               alt={HISTORY_PHOTOS[2].alt}
               className="home-history-image"
-              loading="lazy"
+              loading="eager"
               decoding="async"
               width={HISTORY_PHOTOS[2].width}
               height={HISTORY_PHOTOS[2].height}
@@ -183,6 +205,17 @@ export default function Home({ lang }) {
           </div>
 
           <p className="home-history-paragraph">{aboutContent.historyParagraphs[4]}</p>
+
+          <div className="home-history-image-container home-history-image-square">
+            <img
+              src="/photos/IMG_9834-800.jpeg"
+              alt="Family farm life"
+              className="home-history-image home-history-image--square"
+              loading="eager"
+              decoding="async"
+            />
+          </div>
+
           <p className="home-history-paragraph">{aboutContent.historyParagraphs[5]}</p>
         </div>
 

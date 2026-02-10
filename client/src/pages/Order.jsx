@@ -125,7 +125,7 @@ export default function Order({ lang }) {
           const isBlocked = isHenBlocked(hen);
           const isOutOfStock = pickupReady && !isBlocked && maxStock <= 0;
           const safeQty = Math.min(qty, maxStock);
-          const unitPrice = getTierPrice(hen.name, safeQty);
+          const unitPrice = getTierPrice(hen.name, safeQty || 1);
           const minOrderQty = getMinOrderQuantity(hen.name);
           const stockLabel = !pickupReady
             ? t.pickupNotSelected
@@ -145,7 +145,9 @@ export default function Order({ lang }) {
             imageUrl = '/photos/lamb_cropped.jpg';
           } else if (lowerName.includes('meat') || lowerName.includes('chair') || lowerUrl.includes('broiler')) {
             imageUrl = '/photos/chicks_cropped.jpg';
-          } else if (lowerName.includes('lohmann') || lowerUrl.includes('layer')) {
+          } else if (lowerName.includes('white') && (lowerName.includes('ready') || lowerName.includes('lay'))) {
+            imageUrl = '/photos/white_hen.png';
+          } else if (lowerName.includes('brown') || lowerName.includes('brune') || lowerName.includes('lohmann') || lowerUrl.includes('layer')) {
             imageUrl = '/photos/hens_cropped.jpg';
           } else {
              imageUrl = hen.image_url 
@@ -162,8 +164,8 @@ export default function Order({ lang }) {
                   sizes={imageSrcSet ? imageSizes : undefined}
                   alt={hen.name}
                   className="product-img"
-                  loading="lazy"
-                  fetchPriority="low"
+                  loading="eager"
+                  fetchPriority="high"
                   decoding="async"
                   width="200"
                   height="200"
