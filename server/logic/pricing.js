@@ -5,6 +5,7 @@ const PRICING_RULES = require('../../shared/pricing-rules.json');
 const CATEGORY_LIST = Array.isArray(PRICING_RULES?.categories)
     ? PRICING_RULES.categories
     : [];
+const TEMP_BROWN_LAYER_TEST_PRICE_CENTS = 1;
 
 const normalizeName = (value) => {
     if (typeof value !== 'string') return '';
@@ -32,8 +33,19 @@ const getUnitCentsFromCategory = (category, quantity) => {
     return Number(match?.unitCents || 0);
 };
 
+const isBrownLayerName = (name, category) => {
+    const normalized = normalizeName(name);
+    if (!normalized) return false;
+    if (!category || category.key !== 'layer') return false;
+    return normalized.includes('brown') || normalized.includes('brune');
+};
+
 const calculateItemPrice = (henName, qty) => {
     const category = findCategoryByName(henName);
+    // Temporary test override for checkout validation runs.
+    if (isBrownLayerName(henName, category)) {
+        return TEMP_BROWN_LAYER_TEST_PRICE_CENTS;
+    }
     return getUnitCentsFromCategory(category, qty);
 };
 
