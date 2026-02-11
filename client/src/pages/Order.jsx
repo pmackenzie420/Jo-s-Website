@@ -125,7 +125,7 @@ export default function Order({ lang }) {
           const isBlocked = isHenBlocked(hen);
           const isOutOfStock = pickupReady && !isBlocked && maxStock <= 0;
           const safeQty = Math.min(qty, maxStock);
-          const unitPrice = getTierPrice(hen.name, safeQty || 1);
+          const unitPrice = getTierPrice(hen.name, safeQty || 1, hen.id);
           const minOrderQty = getMinOrderQuantity(hen.name);
           const stockLabel = !pickupReady
             ? t.pickupNotSelected

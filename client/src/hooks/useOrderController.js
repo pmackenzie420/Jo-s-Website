@@ -54,7 +54,7 @@ const buildCartItems = (hens, cart, getStockForHen) => {
       const maxStock = getStockForHen(hen);
       const safeQty = Math.min(qty, maxStock);
       if (safeQty <= 0) return null;
-      const unitPrice = getTierPrice(hen.name, safeQty);
+      const unitPrice = getTierPrice(hen.name, safeQty, hen.id);
       return { ...hen, qty: safeQty, unitPrice, lineTotal: safeQty * unitPrice };
     })
     .filter(Boolean);

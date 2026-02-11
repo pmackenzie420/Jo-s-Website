@@ -3,6 +3,8 @@ import PRICING_RULES from '../../../shared/pricing-rules.json';
 const CATEGORY_LIST = Array.isArray(PRICING_RULES?.categories)
   ? PRICING_RULES.categories
   : [];
+const TEMP_BROWN_LAYER_TEST_PRICE_CENTS = 1;
+const TEMP_BROWN_LAYER_TEST_HEN_ID = 1;
 
 const normalizeName = (value) => {
   if (typeof value !== 'string') return '';
@@ -35,8 +37,18 @@ const getUnitCentsFromCategory = (category, quantity) => {
   return Number(match?.unitCents || 0);
 };
 
-const getTierPrice = (name, quantity) => {
+const isBrownLayerName = (name, category) => {
+  const normalized = normalizeName(name);
+  if (!normalized) return false;
+  if (!category || category.key !== 'layer') return false;
+  return normalized.includes('brown') || normalized.includes('brune');
+};
+
+const getTierPrice = (name, quantity, henId) => {
   const category = findCategoryByName(name);
+  if (isBrownLayerName(name, category) || Number(henId) === TEMP_BROWN_LAYER_TEST_HEN_ID) {
+    return TEMP_BROWN_LAYER_TEST_PRICE_CENTS / 100;
+  }
   return getUnitCentsFromCategory(category, quantity) / 100;
 };
 
