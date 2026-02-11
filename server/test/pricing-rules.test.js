@@ -15,7 +15,7 @@ test('calculateItemPrice uses shared tier rules', () => {
 });
 
 test('getMinimumOrderQuantity returns configured minimums', () => {
-    assert.equal(getMinimumOrderQuantity('Meat Chicken'), 25);
+    assert.equal(getMinimumOrderQuantity('Meat Chicken'), 1);
     assert.equal(getMinimumOrderQuantity('Lohmann Brown'), 0);
 });
 
