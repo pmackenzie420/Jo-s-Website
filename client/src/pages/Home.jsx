@@ -110,10 +110,8 @@ export default function Home({ lang }) {
         </div>
       </div>
 
-      {/* Content Section */}
-      <div className="home-content-flow">
-
-        {/* 1. Main Actions */}
+      {/* Top section: CTAs + Intro */}
+      <div className="home-top-section">
         <div className="home-cta-row">
           <Link to="/order" className="cta-primary">
             {lang === 'en' ? "Order Online" : "Commander en Ligne"}
@@ -122,31 +120,36 @@ export default function Home({ lang }) {
             {lang === 'en' ? "View Prices" : "Voir les Prix"}
           </Link>
         </div>
-
-        {/* 2. Intro Text */}
         <p className="home-intro-text">{aboutContent.intro}</p>
+      </div>
 
-        {/* 3. Products Header */}
-        <h2 className="home-section-title">{aboutContent.offeringsTitle}</h2>
-
-        {/* 4. Offerings Grid with Images */}
-        <div className="home-offerings-list">
-          {aboutContent.offerings.map((offering, index) => (
-            <div key={index} className="home-offering-card">
-              <img
-                src={OFFERING_IMAGES[index].src}
-                alt={OFFERING_IMAGES[index].alt}
-                className="home-offering-image"
-                loading="eager"
-                decoding="async"
-              />
-              <div className="home-offering-body">
-                <h3 className="home-offering-title">{offering.title}</h3>
-                <p className="home-offering-description">{offering.description}</p>
+      {/* Offerings Band */}
+      <div className="home-offerings-band">
+        <div className="home-offerings-inner">
+          <h2 className="home-section-title">{aboutContent.offeringsTitle}</h2>
+          <div className="home-offerings-list">
+            {aboutContent.offerings.map((offering, index) => (
+              <div key={index} className="home-offering-card">
+                <img
+                  src={OFFERING_IMAGES[index].src}
+                  alt={OFFERING_IMAGES[index].alt}
+                  className="home-offering-image"
+                  loading="eager"
+                  decoding="async"
+                />
+                <div className="home-offering-body">
+                  <h3 className="home-offering-title">{offering.title}</h3>
+                  <p className="home-offering-description">{offering.description}</p>
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
+      </div>
+
+      {/* Content Section */}
+      <div className="home-content-flow">
+        <hr className="home-section-divider" />
 
         {/* 5. Full History Section */}
         <div className="home-history">
