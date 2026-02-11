@@ -21,8 +21,19 @@ const registerCatalogRoutes = (app, deps) => {
         }
     };
 
-    app.get('/api/heartbeat', (req, res) => {
-        res.json({ ok: true });
+    app.get('/api/heartbeat', async (req, res) => {
+        const shouldCheckDb = ['1', 'true', 'yes'].includes(
+            String(req.query.db || '').toLowerCase()
+        );
+        if (!shouldCheckDb) {
+            return res.json({ ok: true });
+        }
+        try {
+            await pool.query('SELECT 1');
+            return res.json({ ok: true, db: 'ok' });
+        } catch (err) {
+            return sendServerError(res, err, 'Heartbeat DB check failed');
+        }
     });
 
     app.get('/api/hens', async (req, res) => {
