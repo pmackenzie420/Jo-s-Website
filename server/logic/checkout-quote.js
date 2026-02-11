@@ -1,6 +1,4 @@
 const { CheckoutHttpError } = require('./checkout-errors');
-const TEMP_BROWN_LAYER_TEST_HEN_ID = 1;
-const TEMP_BROWN_LAYER_TEST_PRICE_CENTS = 1;
 
 const buildCheckoutQuote = async ({
     pool,
@@ -63,9 +61,7 @@ const buildCheckoutQuote = async ({
             throw new CheckoutHttpError(400, `Insufficient stock for ${hen.name}`);
         }
 
-        const unitPrice = Number(hen.id) === TEMP_BROWN_LAYER_TEST_HEN_ID
-            ? TEMP_BROWN_LAYER_TEST_PRICE_CENTS
-            : calculateItemPrice(hen.name, quantity);
+        const unitPrice = calculateItemPrice(hen.name, quantity);
         const itemTotal = unitPrice * quantity;
         totalCents += itemTotal;
         const isLohmann = isLohmannHenName(hen.name);
