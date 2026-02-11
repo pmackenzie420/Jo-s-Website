@@ -13,7 +13,7 @@ const {
 } = require('../utils/helpers');
 const { getPaymentDetails, getOrderSummary, isLambName } = require('./pricing');
 
-const POSTMARK_SERVER_TOKEN = process.env.POSTMARK_SERVER_TOKEN;
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM;
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Les Fermes Soulard';
 
@@ -197,24 +197,40 @@ const buildOrderConfirmationEmailPayload = ({ order, items }) => {
     return { subject, text, html };
 };
 
+const normalizeResendAttachments = (attachments) => {
+    if (!Array.isArray(attachments) || attachments.length === 0) {
+        return undefined;
+    }
+    const normalized = attachments
+        .map((attachment) => ({
+            filename: attachment?.filename || attachment?.name || attachment?.Name || 'attachment',
+            content: attachment?.content || attachment?.Content || '',
+            type: attachment?.type || attachment?.ContentType || 'application/octet-stream'
+        }))
+        .filter((attachment) => typeof attachment.content === 'string' && attachment.content.length > 0);
+
+    return normalized.length > 0 ? normalized : undefined;
+};
+
 const sendEmailMessage = async ({ to, subject, text, html, attachments }) => {
     const payload = {
-        From: EMAIL_FROM_NAME ? `${EMAIL_FROM_NAME} <${EMAIL_FROM}>` : EMAIL_FROM,
-        To: to.name ? `${to.name} <${to.email}>` : to.email,
-        Subject: subject,
-        TextBody: text || '',
-        HtmlBody: html || ''
+        from: EMAIL_FROM_NAME ? `${EMAIL_FROM_NAME} <${EMAIL_FROM}>` : EMAIL_FROM,
+        to: [to.name ? `${to.name} <${to.email}>` : to.email],
+        subject,
+        text: text || '',
+        html: html || ''
     };
 
-    if (attachments) {
-        payload.Attachments = attachments;
+    const resendAttachments = normalizeResendAttachments(attachments);
+    if (resendAttachments) {
+        payload.attachments = resendAttachments;
     }
 
-    const response = await fetch('https://api.postmarkapp.com/email', {
+    const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'X-Postmark-Server-Token': POSTMARK_SERVER_TOKEN
+            Authorization: `Bearer ${RESEND_API_KEY}`
         },
         body: JSON.stringify(payload)
     });
@@ -226,7 +242,7 @@ const sendEmailMessage = async ({ to, subject, text, html, attachments }) => {
 };
 
 const sendOrderConfirmationEmail = async (orderId) => {
-    if (!POSTMARK_SERVER_TOKEN || !EMAIL_FROM) {
+    if (!RESEND_API_KEY || !EMAIL_FROM) {
         return { skipped: 'not_configured' };
     }
 
