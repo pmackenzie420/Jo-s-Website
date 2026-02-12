@@ -24,14 +24,16 @@ const TAB_CONFIG = [
   { key: 'email', label: 'Emailing' }
 ];
 
+const pad2 = (value) => String(value).padStart(2, '0');
+
 const normalizeDate = (value) => {
   if (!value) return 'Unknown';
   if (typeof value === 'string') {
     return value.includes('T') ? value.split('T')[0] : value;
   }
-  const date = new Date(value);
+  const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toISOString().split('T')[0];
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 };
 
 const parseLocalDate = (value) => {
@@ -40,6 +42,13 @@ const parseLocalDate = (value) => {
   if (typeof value === 'string') {
     if (/^\d{4}-\d{2}-\d{2}$/.test(value)) {
       const [y, m, d] = value.split('-').map(Number);
+      return new Date(y, m - 1, d);
+    }
+    const datePrefix = value.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+    if (datePrefix) {
+      const y = Number(datePrefix[1]);
+      const m = Number(datePrefix[2]);
+      const d = Number(datePrefix[3]);
       return new Date(y, m - 1, d);
     }
     return new Date(value);

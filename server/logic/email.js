@@ -54,6 +54,8 @@ const buildOrderConfirmationEmailText = ({ order, items }) => {
         }
     }
 
+    lines.push('', copy.reminderTitle, copy.reminderLineOne, copy.reminderLineTwo);
+
     lines.push('', copy.orderTitleText);
     if (items.length > 0) {
         for (const item of items) {
@@ -159,6 +161,13 @@ const buildOrderConfirmationEmailHtml = ({ order, items }) => {
       </p>
     </div>`;
 
+    const reminderBlock = `
+    <div style="background: #fff8e8; padding: 15px; margin: 20px 0; border-left: 4px solid #9f6a00;">
+      <h3 style="margin-top: 0; margin-bottom: 8px; color: #5a3a00;">${copy.reminderTitle}</h3>
+      <p style="margin: 0 0 8px; color: #333;">${copy.reminderLineOne}</p>
+      <p style="margin: 0; color: #333;">${copy.reminderLineTwo}</p>
+    </div>`;
+
     return `
   <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
   <div style="background: #2D5A3D; color: white; padding: 20px; text-align: center;">
@@ -169,6 +178,7 @@ const buildOrderConfirmationEmailHtml = ({ order, items }) => {
     <p>${copy.greeting(customerName)}</p>
     <p>${copy.thankYou}</p>
     ${pickupDetails}
+    ${reminderBlock}
     <h3 style="margin-bottom: 8px;">${copy.orderTitleHtml}</h3>
     <ul style="padding-left: 18px; margin-top: 0;">${itemRows}</ul>
     ${total ? `<p style="font-weight: bold;">Total: ${total}</p>` : ''}

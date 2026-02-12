@@ -61,6 +61,9 @@ const isPickupRestricted = (name, pickupLocation) => {
 const getDepositEligibleMinQty = () =>
   Number(findCategoryByKey('layer')?.depositEligibleMinQty || 0);
 
+const getDepositRequiredAboveQty = () =>
+  Number(findCategoryByKey('layer')?.depositRequiredAboveQty || 0);
+
 export {
   getTierPrice,
   isLohmannHenName,
@@ -69,4 +72,5 @@ export {
   getMinOrderQuantity,
   isPickupRestricted,
   getDepositEligibleMinQty,
+  getDepositRequiredAboveQty,
 };

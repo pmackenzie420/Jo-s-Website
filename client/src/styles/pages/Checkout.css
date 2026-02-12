@@ -273,6 +273,29 @@
   color: var(--color-text-strong);
 }
 
+.deposit-policy-box {
+  border-color: var(--color-border-strong);
+  background: var(--color-surface-subtle);
+}
+
+.deposit-policy-title {
+  font-size: 16px;
+  margin-bottom: 10px;
+}
+
+.deposit-policy-note {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-strong);
+}
+
+.deposit-policy-extra {
+  margin: 8px 0 0;
+  font-size: 13px;
+  color: var(--color-text-muted);
+}
+
 .summary-pickup {
   background: var(--color-surface-subtle);
   border: var(--border-soft);

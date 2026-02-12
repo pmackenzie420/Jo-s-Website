@@ -9,6 +9,7 @@ import useCheckout from './useCheckout';
 import { CHECKOUT_STORAGE_KEYS } from '../constants/checkout';
 import {
   getDepositEligibleMinQty,
+  getDepositRequiredAboveQty,
   isLambName,
   isLohmannHenName
 } from '../utils/catalog';
@@ -146,6 +147,9 @@ export default function useCheckoutController(lang) {
   }, [cartItems]);
 
   const lohmannDepositEligible = cartTotals.lohmannQty >= getDepositEligibleMinQty();
+  const depositRequiredAboveQty = Math.max(getDepositRequiredAboveQty(), 0);
+  const depositOnlyForLargeLohmannOrder =
+    depositRequiredAboveQty > 0 && cartTotals.lohmannQty > depositRequiredAboveQty;
   const hasLambs = cartTotals.lambQty > 0;
   
   // Lambs are ALWAYS deposit-only (full price of the item is the deposit)
@@ -168,8 +172,7 @@ export default function useCheckoutController(lang) {
   // The Lambs are always handled automatically (Deposit Only).
   
   const depositEligible = lohmannDepositEligible;
-  
-  const paymentOption = formData.paymentOption; 
+  const paymentOption = depositOnlyForLargeLohmannOrder ? 'deposit' : formData.paymentOption;
 
   // Calculate Pay Now based on selection
   let payNowCents = 0;
@@ -204,17 +207,23 @@ export default function useCheckoutController(lang) {
     depositNowCents: otherItemsCents + lohmannDepositCents + lambDepositCents,
     
     depositEligible, // Strictly for Hens toggle
+    depositOnlyForLargeLohmannOrder,
+    depositRequiredAboveQty,
     lohmannQty: cartTotals.lohmannQty,
     hasLambs,
     lambQty: cartTotals.lambQty
   };
 
   useEffect(() => {
+    if (depositOnlyForLargeLohmannOrder && formData.paymentOption !== 'deposit') {
+      setFormData((prev) => ({ ...prev, paymentOption: 'deposit' }));
+      return;
+    }
     // Only reset if they selected deposit but are no longer eligible for ANY deposit
     if (!depositEligible && formData.paymentOption === 'deposit') {
       setFormData((prev) => ({ ...prev, paymentOption: 'full' }));
     }
-  }, [depositEligible, formData.paymentOption, setFormData]);
+  }, [depositEligible, depositOnlyForLargeLohmannOrder, formData.paymentOption, setFormData]);
 
   useEffect(() => {
     if (typeof window === 'undefined') {
@@ -295,7 +304,10 @@ export default function useCheckoutController(lang) {
     handleEmailBlur,
     paymentOption,
     setPaymentOption: (value) =>
-      setFormData((prev) => ({ ...prev, paymentOption: value })),
+      setFormData((prev) => ({
+        ...prev,
+        paymentOption: depositOnlyForLargeLohmannOrder ? 'deposit' : value
+      })),
     paymentSummary,
     termsAccepted,
     setTermsAccepted: (accepted) => {
@@ -320,7 +332,7 @@ export default function useCheckoutController(lang) {
       setTermsError(null);
       if (validateForm()) {
         setSubmitError('');
-        handleSubmit(e);
+        handleSubmit(e, { paymentOption });
       }
     },
     formatPhone,

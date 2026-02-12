@@ -1,6 +1,7 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
+const { Sentry, sentryEnabled, captureException } = require('./sentry');
 const express = require('express');
 const cors = require('cors');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
@@ -19,6 +20,7 @@ const {
     isLohmannHenName,
     getMinimumOrderQuantity,
     getDepositEligibleMinQty,
+    getDepositRequiredAboveQty,
     isPickupLocationRestricted,
     getPaymentDetails,
     getOrderSummary
@@ -155,13 +157,22 @@ const getRequestBaseUrl = (req) => {
 
 const sendServerError = (res, err, message = 'Server error') => {
     logError(message, err);
+    const sentryEventId = captureException(err, {
+        tags: { handler: 'sendServerError' },
+        extra: { message }
+    });
     if (!isProduction) {
         return res.status(500).json({
             error: message,
-            detail: err?.message || null
+            detail: err?.message || null,
+            sentryEventId: sentryEventId || null
         });
     }
-    return res.status(500).json({ error: message });
+    const payload = { error: message };
+    if (sentryEventId) {
+        payload.errorId = sentryEventId;
+    }
+    return res.status(500).json(payload);
 };
 
 const adminLoginLimiter = createRateLimiter({
@@ -260,6 +271,7 @@ registerCheckoutRoutes(app, {
     isLohmannHenName,
     getMinimumOrderQuantity,
     getDepositEligibleMinQty,
+    getDepositRequiredAboveQty,
     isPickupLocationRestricted,
     getPaymentDetails,
     getOrderSummary,
@@ -306,6 +318,52 @@ registerAdminRoutes(app, {
     sendEmailMessage,
     formatPickupDate,
     handlePickupStockRequest
+});
+
+if (sentryEnabled) {
+    Sentry.setupExpressErrorHandler(app, {
+        shouldHandleError: (error) => {
+            const status =
+                Number(error?.statusCode)
+                || Number(error?.status)
+                || Number(error?.status_code)
+                || Number(error?.output?.statusCode);
+            return !Number.isFinite(status) || status >= 500;
+        }
+    });
+}
+
+app.use((err, req, res, next) => {
+    if (res.headersSent) {
+        return next(err);
+    }
+    logError('Unhandled request error', err);
+    const statusCandidate = Number(err?.statusCode || err?.status || err?.status_code);
+    const statusCode =
+        Number.isInteger(statusCandidate) && statusCandidate >= 400 && statusCandidate < 600
+            ? statusCandidate
+            : 500;
+    const sentryEventId = res.sentry || captureException(err, {
+        tags: { handler: 'unhandledMiddleware' },
+        extra: {
+            path: req?.path,
+            method: req?.method
+        }
+    });
+    if (!isProduction) {
+        return res.status(statusCode).json({
+            error: statusCode >= 500 ? 'Server error' : 'Request error',
+            detail: err?.message || null,
+            sentryEventId: sentryEventId || null
+        });
+    }
+    const payload = {
+        error: statusCode >= 500 ? 'Server error' : 'Request error'
+    };
+    if (sentryEventId) {
+        payload.errorId = sentryEventId;
+    }
+    return res.status(statusCode).json(payload);
 });
 
 app.listen(port, () => logInfo(`Server on port ${port}`));

@@ -21,6 +21,9 @@ const findCategoryByName = (name) => {
     ) || null;
 };
 
+const findCategoryByKey = (key) =>
+    CATEGORY_LIST.find((category) => category?.key === key) || null;
+
 const getUnitCentsFromCategory = (category, quantity) => {
     const qty = Number(quantity);
     if (!category || !Number.isFinite(qty) || qty <= 0) return 0;
@@ -44,7 +47,9 @@ const isLambName = (name) => isCategory(name, 'lamb');
 const getMinimumOrderQuantity = (name) =>
     Number(findCategoryByName(name)?.minOrderQty || 0);
 const getDepositEligibleMinQty = () =>
-    Number(CATEGORY_LIST.find((category) => category?.key === 'layer')?.depositEligibleMinQty || 0);
+    Number(findCategoryByKey('layer')?.depositEligibleMinQty || 0);
+const getDepositRequiredAboveQty = () =>
+    Number(findCategoryByKey('layer')?.depositRequiredAboveQty || 0);
 
 const isPickupLocationRestricted = (name, pickupLocation) => {
     const normalizedLocation = normalizeName(pickupLocation);
@@ -123,6 +128,7 @@ module.exports = {
     isLambName,
     getMinimumOrderQuantity,
     getDepositEligibleMinQty,
+    getDepositRequiredAboveQty,
     isPickupLocationRestricted,
     getPaymentDetails,
     getOrderSummary

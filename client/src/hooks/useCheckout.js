@@ -21,8 +21,10 @@ export default function useCheckout(lang, formData, cartItems) {
   const [loading, setLoading] = useState(false);
   const [submitError, setSubmitError] = useState('');
 
-  const handleSubmit = async (event) => {
-    event.preventDefault();
+  const handleSubmit = async (event, options = {}) => {
+    if (event?.preventDefault) {
+      event.preventDefault();
+    }
     setSubmitError('');
 
     if (!cartItems || cartItems.length === 0) {
@@ -43,6 +45,11 @@ export default function useCheckout(lang, formData, cartItems) {
 
     setLoading(true);
 
+    const submittedPaymentOption =
+      options?.paymentOption === 'deposit' || options?.paymentOption === 'full'
+        ? options.paymentOption
+        : formData.paymentOption;
+
     const payload = {
       language: effectiveLang,
       customer: {
@@ -55,7 +62,7 @@ export default function useCheckout(lang, formData, cartItems) {
         date: formData.pickupDate,
         location: formData.pickupLocation,
       },
-      paymentOption: formData.paymentOption,
+      paymentOption: submittedPaymentOption,
       items: cartItems.map((item) => ({ id: item.id, quantity: item.qty })),
     };
 
@@ -81,13 +88,21 @@ export default function useCheckout(lang, formData, cartItems) {
 
   const formatPickupDate = (dateValue) => {
     if (!dateValue) return '';
-    const dateString = typeof dateValue === 'string' ? dateValue : String(dateValue);
-    const date = dateString.length === 10 ? new Date(`${dateString}T00:00:00`) : new Date(dateValue);
+    const dateString = typeof dateValue === 'string' ? dateValue.trim() : String(dateValue);
+    const datePrefix = dateString.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/);
+    const date = datePrefix
+      ? new Date(Date.UTC(
+        Number(datePrefix[1]),
+        Number(datePrefix[2]) - 1,
+        Number(datePrefix[3])
+      ))
+      : new Date(dateValue);
     if (Number.isNaN(date.getTime())) return dateValue;
     return new Intl.DateTimeFormat(effectiveLang === 'fr' ? 'fr-CA' : 'en-CA', {
       month: 'long',
       day: 'numeric',
       year: 'numeric',
+      timeZone: 'UTC'
     }).format(date);
   };
   

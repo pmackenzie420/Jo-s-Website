@@ -1,26 +1,86 @@
-const formatPickupDate = (value) => {
-    if (!value) return '';
+const pad2 = (value) => String(value).padStart(2, '0');
+
+const getCalendarParts = (value) => {
+    if (!value) return null;
+
     if (value instanceof Date) {
-        return value.toISOString().split('T')[0];
+        if (Number.isNaN(value.getTime())) return null;
+        const isUtcMidnight =
+            value.getUTCHours() === 0
+            && value.getUTCMinutes() === 0
+            && value.getUTCSeconds() === 0
+            && value.getUTCMilliseconds() === 0;
+        if (isUtcMidnight) {
+            return {
+                year: value.getUTCFullYear(),
+                month: value.getUTCMonth() + 1,
+                day: value.getUTCDate()
+            };
+        }
+        return {
+            year: value.getFullYear(),
+            month: value.getMonth() + 1,
+            day: value.getDate()
+        };
     }
+
     if (typeof value === 'string') {
-        return value.split('T')[0];
+        const trimmed = value.trim();
+        const dateOnlyMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        if (dateOnlyMatch) {
+            return {
+                year: Number(dateOnlyMatch[1]),
+                month: Number(dateOnlyMatch[2]),
+                day: Number(dateOnlyMatch[3])
+            };
+        }
+        const isoPrefixMatch = trimmed.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+        if (isoPrefixMatch) {
+            return {
+                year: Number(isoPrefixMatch[1]),
+                month: Number(isoPrefixMatch[2]),
+                day: Number(isoPrefixMatch[3])
+            };
+        }
+        const parsed = new Date(trimmed);
+        if (Number.isNaN(parsed.getTime())) return null;
+        return {
+            year: parsed.getUTCFullYear(),
+            month: parsed.getUTCMonth() + 1,
+            day: parsed.getUTCDate()
+        };
     }
-    return String(value);
+
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return {
+        year: parsed.getUTCFullYear(),
+        month: parsed.getUTCMonth() + 1,
+        day: parsed.getUTCDate()
+    };
+};
+
+const formatPickupDate = (value) => {
+    const parts = getCalendarParts(value);
+    if (!parts) {
+        return value ? String(value).split('T')[0] : '';
+    }
+    return `${parts.year}-${pad2(parts.month)}-${pad2(parts.day)}`;
 };
 
 const formatPickupDateLong = (value, language = 'en') => {
-    if (!value) return '';
-    const dateValue = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(dateValue.getTime())) {
+    const parts = getCalendarParts(value);
+    if (!parts) {
         return formatPickupDate(value);
     }
+    const dateValue = new Date(Date.UTC(parts.year, parts.month - 1, parts.day));
     const locale = language === 'fr' ? 'fr-CA' : 'en-CA';
     try {
         return new Intl.DateTimeFormat(locale, {
             month: 'long',
             day: 'numeric',
-            year: 'numeric'
+            year: 'numeric',
+            timeZone: 'UTC'
         }).format(dateValue);
     } catch (err) {
         return formatPickupDate(value);

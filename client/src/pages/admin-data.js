@@ -13,6 +13,17 @@ import {
   buildShortSummary
 } from './admin-utils';
 
+const parseCalendarDateKey = (value) => {
+  if (typeof value !== 'string') return null;
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  return {
+    year: Number(match[1]),
+    month: Number(match[2]),
+    day: Number(match[3])
+  };
+};
+
 const buildOrdersWithDetails = (orders, hens) => {
   const henNameById = new Map(hens.map((henItem) => [Number(henItem.id), henItem.name]));
 
@@ -87,12 +98,16 @@ const buildGroupedPickups = (ordersWithDetails) => {
   });
 
   const sortedDates = Array.from(dateMap.entries()).sort((a, b) => {
-    const dateA = new Date(a[0]);
-    const dateB = new Date(b[0]);
-    if (Number.isNaN(dateA.getTime()) || Number.isNaN(dateB.getTime())) {
-      return a[0].localeCompare(b[0]);
+    const dateA = parseCalendarDateKey(a[0]);
+    const dateB = parseCalendarDateKey(b[0]);
+    if (!dateA || !dateB) {
+      if (dateA && !dateB) return -1;
+      if (!dateA && dateB) return 1;
+      return String(a[0]).localeCompare(String(b[0]));
     }
-    return dateA - dateB;
+    if (dateA.year !== dateB.year) return dateA.year - dateB.year;
+    if (dateA.month !== dateB.month) return dateA.month - dateB.month;
+    return dateA.day - dateB.day;
   });
 
   return sortedDates.map(([date, locations]) => {

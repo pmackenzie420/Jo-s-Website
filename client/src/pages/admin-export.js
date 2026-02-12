@@ -1,4 +1,11 @@
-import { formatDateLong, formatDateShort, formatLocationShort, formatCurrency, formatPhoneDisplay } from './admin-utils';
+import {
+  formatDateLong,
+  formatDateShort,
+  formatLocationShort,
+  formatCurrency,
+  formatPhoneDisplay,
+  normalizeDate
+} from './admin-utils';
 
 const getExportTitle = (groupDate, locationLabel) => {
   if (groupDate && locationLabel) {
@@ -51,7 +58,7 @@ const savePdfDocument = (doc, filename) => {
 };
 
 const exportOrdersPdf = async ({ groupedPickups, groupDate, locationGroup }) => {
-  const dateSuffix = groupDate || new Date().toISOString().split('T')[0];
+  const dateSuffix = groupDate || normalizeDate(new Date());
   const locationSuffix = locationGroup?.location || 'all';
   const filename = `orders-${dateSuffix}-${locationSuffix}.pdf`;
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([

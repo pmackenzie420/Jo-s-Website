@@ -29,6 +29,11 @@ const COPY = {
         totalLabel: 'Total',
         depositPaid: 'Deposit paid',
         paidInFull: 'Paid in full',
+        reminderTitle: 'Attention!',
+        reminderLineOne:
+            'No phone reminder will be made. Please carefully note your pickup date.',
+        reminderLineTwo:
+            'If any change occurs, we will notify you by email.',
         pickupEmailFallback: 'Pickup details are included in your confirmation email.',
         returnHome: 'Return to Home'
     },
@@ -56,6 +61,11 @@ const COPY = {
         totalLabel: 'Total',
         depositPaid: 'Dépôt payé',
         paidInFull: 'Payé en totalité',
+        reminderTitle: 'Attention!',
+        reminderLineOne:
+            'Aucun rappel téléphonique ne sera effectué. Merci de noter soigneusement la date de ramassage.',
+        reminderLineTwo:
+            'Si un changement survenait, nous vous avertirons par courriel.',
         pickupEmailFallback: 'Les détails du ramassage sont dans votre courriel de confirmation.',
         returnHome: "Retour à l'accueil"
     }
@@ -71,6 +81,58 @@ const normalizeLanguage = (value) => {
         return 'en';
     }
     return null;
+};
+
+const formatCalendarDate = (value, language) => {
+    if (!value) return '';
+    let year;
+    let month;
+    let day;
+
+    if (value instanceof Date) {
+        if (Number.isNaN(value.getTime())) return '';
+        const isUtcMidnight =
+            value.getUTCHours() === 0
+            && value.getUTCMinutes() === 0
+            && value.getUTCSeconds() === 0
+            && value.getUTCMilliseconds() === 0;
+        if (isUtcMidnight) {
+            year = value.getUTCFullYear();
+            month = value.getUTCMonth() + 1;
+            day = value.getUTCDate();
+        } else {
+            year = value.getFullYear();
+            month = value.getMonth() + 1;
+            day = value.getDate();
+        }
+    } else {
+        const stringValue = typeof value === 'string' ? value.trim() : String(value);
+        const dateOnlyMatch = stringValue.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+        const isoPrefixMatch = stringValue.match(/^(\d{4})-(\d{2})-(\d{2})T/);
+        if (dateOnlyMatch) {
+            year = Number(dateOnlyMatch[1]);
+            month = Number(dateOnlyMatch[2]);
+            day = Number(dateOnlyMatch[3]);
+        } else if (isoPrefixMatch) {
+            year = Number(isoPrefixMatch[1]);
+            month = Number(isoPrefixMatch[2]);
+            day = Number(isoPrefixMatch[3]);
+        } else {
+            const parsed = new Date(stringValue);
+            if (Number.isNaN(parsed.getTime())) return stringValue;
+            year = parsed.getUTCFullYear();
+            month = parsed.getUTCMonth() + 1;
+            day = parsed.getUTCDate();
+        }
+    }
+
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    return new Intl.DateTimeFormat(language === 'fr' ? 'fr-CA' : 'en-CA', {
+        month: 'long',
+        day: 'numeric',
+        year: 'numeric',
+        timeZone: 'UTC'
+    }).format(parsed);
 };
 
 function Success({ lang }) {
@@ -137,13 +199,7 @@ function Success({ lang }) {
     const normalizedOrderLanguage = normalizeLanguage(order?.language);
     const language = normalizedOrderLanguage || (lang === 'fr' ? 'fr' : 'en');
     const copy = COPY[language];
-    const pickupDate = order?.pickup_date
-        ? new Intl.DateTimeFormat(language === 'fr' ? 'fr-CA' : 'en-CA', {
-              month: 'long',
-              day: 'numeric',
-              year: 'numeric'
-          }).format(new Date(order.pickup_date))
-        : '';
+    const pickupDate = formatCalendarDate(order?.pickup_date, language);
 
     const locationDetails = order?.pickup_location
         ? LOCATION_DETAILS[order.pickup_location] || { label: order.pickup_location }
@@ -215,6 +271,12 @@ function Success({ lang }) {
                                 <span>{locationDetails.address}</span>
                             </div>
                         )}
+                    </div>
+
+                    <div className="success-reminder" role="note">
+                        <div className="success-reminder-title">{copy.reminderTitle}</div>
+                        <p className="success-reminder-text">{copy.reminderLineOne}</p>
+                        <p className="success-reminder-text">{copy.reminderLineTwo}</p>
                     </div>
 
                     {(order?.customer_name || order?.customer_phone || order?.customer_address) && (

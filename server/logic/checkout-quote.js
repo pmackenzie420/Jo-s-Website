@@ -10,6 +10,7 @@ const buildCheckoutQuote = async ({
     isLohmannHenName,
     getMinimumOrderQuantity,
     getDepositEligibleMinQty,
+    getDepositRequiredAboveQty,
     isPickupLocationRestricted
 }) => {
     const itemIds = checkoutItems.map((item) => item.id);
@@ -98,7 +99,15 @@ const buildCheckoutQuote = async ({
     }
 
     const depositEligibleMinQty = Math.max(Number(getDepositEligibleMinQty?.() || 13), 1);
+    const depositRequiredAboveQty = Math.max(Number(getDepositRequiredAboveQty?.() || 0), 0);
     const depositEligible = lohmannQty >= depositEligibleMinQty;
+    const depositRequired = depositRequiredAboveQty > 0 && lohmannQty > depositRequiredAboveQty;
+    if (depositRequired && requestedPayment !== 'deposit') {
+        throw new CheckoutHttpError(
+            400,
+            `Orders above ${depositRequiredAboveQty} Lohmann hens require a 25% deposit.`
+        );
+    }
     if (requestedPayment === 'deposit' && !depositEligible) {
         throw new CheckoutHttpError(
             400,

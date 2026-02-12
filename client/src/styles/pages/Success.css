@@ -24,6 +24,30 @@
   margin-top: 20px;
 }
 
+.success-reminder {
+  margin-top: 20px;
+  padding: 14px 16px;
+  border-left: 4px solid #9f6a00;
+  background: #fff8e8;
+  border-radius: var(--radius-sm);
+}
+
+.success-reminder-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #5a3a00;
+  margin-bottom: 6px;
+}
+
+.success-reminder-text {
+  margin: 0 0 6px;
+  color: var(--color-text-strong);
+}
+
+.success-reminder-text:last-child {
+  margin-bottom: 0;
+}
+
 .success-section-title {
   font-size: 16px;
   font-weight: 700;

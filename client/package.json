@@ -11,6 +11,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@sentry/react": "^10.38.0",
     "axios": "^1.13.2",
     "jspdf": "^4.0.0",
     "jspdf-autotable": "^5.0.7",

@@ -4,6 +4,7 @@ const {
     calculateItemPrice,
     getMinimumOrderQuantity,
     getDepositEligibleMinQty,
+    getDepositRequiredAboveQty,
     isPickupLocationRestricted
 } = require('../logic/pricing');
 
@@ -23,8 +24,12 @@ test('getDepositEligibleMinQty reads shared rules', () => {
     assert.equal(getDepositEligibleMinQty(), 13);
 });
 
+test('getDepositRequiredAboveQty reads shared rules', () => {
+    assert.equal(getDepositRequiredAboveQty(), 50);
+});
+
 test('isPickupLocationRestricted follows configured location rules', () => {
-    assert.equal(isPickupLocationRestricted('Lamb', 'hemmingford'), true);
+    assert.equal(isPickupLocationRestricted('Lamb', 'hemmingford'), false);
     assert.equal(isPickupLocationRestricted('Lamb', 'bristol'), false);
     assert.equal(isPickupLocationRestricted('Lohmann Brown', 'hemmingford'), false);
 });

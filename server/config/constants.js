@@ -28,6 +28,11 @@ const ORDER_CONFIRMATION_COPY = {
         dueLabel: 'Amount due at pickup',
         orderIdLabel: 'Order ID',
         itemsUnavailable: 'Item details unavailable',
+        reminderTitle: 'Attention!',
+        reminderLineOne:
+            'No phone reminder will be made. Please carefully note your pickup date.',
+        reminderLineTwo:
+            'If any change occurs, we will notify you by email.',
         questions: (phone) => `Questions? Reply to this email or call us at ${phone}.`,
         depositPaid: 'Deposit paid',
         paidInFull: 'Paid in full'
@@ -50,6 +55,11 @@ const ORDER_CONFIRMATION_COPY = {
         dueLabel: 'Montant dû au ramassage',
         orderIdLabel: 'ID de commande',
         itemsUnavailable: "Détails d'article indisponibles",
+        reminderTitle: 'Attention!',
+        reminderLineOne:
+            'Aucun rappel téléphonique ne sera effectué. Merci de noter soigneusement la date de ramassage.',
+        reminderLineTwo:
+            'Si un changement survenait, nous vous avertirons par courriel.',
         questions: (phone) => `Des questions ? Répondez à ce courriel ou appelez-nous au ${phone}.`,
         depositPaid: 'Dépôt payé',
         paidInFull: 'Payé en totalité'

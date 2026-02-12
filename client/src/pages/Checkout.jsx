@@ -251,30 +251,32 @@ export default function Checkout({ lang }) {
                       {lang === 'en' ? 'Payment (Hens)' : 'Paiement (Poules)'}
                     </h3>
                     <div className="payment-options">
-                      <label className={`payment-option ${paymentOption === 'full' ? 'active' : ''}`}>
-                        <input
-                          type="radio"
-                          name="paymentOption"
-                          value="full"
-                          checked={paymentOption === 'full'}
-                          onChange={() => setPaymentOption('full')}
-                        />
-                        <div>
-                          <div className="payment-option-title">
-                            {lang === 'en' ? 'Pay full amount' : 'Tout payer'}
+                      {!paymentSummary.depositOnlyForLargeLohmannOrder && (
+                        <label className={`payment-option ${paymentOption === 'full' ? 'active' : ''}`}>
+                          <input
+                            type="radio"
+                            name="paymentOption"
+                            value="full"
+                            checked={paymentOption === 'full'}
+                            onChange={() => setPaymentOption('full')}
+                          />
+                          <div>
+                            <div className="payment-option-title">
+                              {lang === 'en' ? 'Pay full amount' : 'Tout payer'}
+                            </div>
+                            <div className="payment-option-line payment-option-line--primary">
+                              <span className="payment-option-label">
+                                {lang === 'en'
+                                  ? 'Amount due now:'
+                                  : 'Montant à payer maintenant :'}
+                              </span>
+                              <span className="payment-option-amount payment-option-amount--primary">
+                                {formatCurrency(paymentSummary.fullPayCents)}
+                              </span>
+                            </div>
                           </div>
-                          <div className="payment-option-line payment-option-line--primary">
-                            <span className="payment-option-label">
-                              {lang === 'en'
-                                ? 'Amount due now:'
-                                : 'Montant à payer maintenant :'}
-                            </span>
-                            <span className="payment-option-amount payment-option-amount--primary">
-                              {formatCurrency(paymentSummary.fullPayCents)}
-                            </span>
-                          </div>
-                        </div>
-                      </label>
+                        </label>
+                      )}
 
                       {paymentSummary.depositEligible && (
                         <label className={`payment-option ${paymentOption === 'deposit' ? 'active' : ''}`}>
@@ -303,7 +305,7 @@ export default function Checkout({ lang }) {
                               <span className="payment-option-label">
                                 {lang === 'en'
                                   ? 'Balance at pickup:'
-                                  : 'Reste à payer au ramassage :'}
+                                : 'Reste à payer au ramassage :'}
                               </span>
                               <span className="payment-option-amount payment-option-amount--primary">
                                  {formatCurrency(paymentSummary.lohmannDueCents)}
@@ -313,6 +315,26 @@ export default function Checkout({ lang }) {
                         </label>
                       )}
                     </div>
+                  </div>
+                )}
+
+                {paymentOption === 'deposit' && (
+                  <div className="summary-box payment-box deposit-policy-box">
+                    <h3 className="summary-title deposit-policy-title">
+                      {lang === 'en' ? 'Deposit Policy' : 'Politique de dépôt'}
+                    </h3>
+                    <p className="deposit-policy-note">
+                      {lang === 'en'
+                        ? 'For deposits, the remaining balance must be paid by e-transfer before pickup, or in cash at pickup.'
+                        : 'Pour les dépôts, le solde restant doit être payé par virement Interac avant le ramassage, ou en argent comptant au ramassage.'}
+                    </p>
+                    {paymentSummary.depositOnlyForLargeLohmannOrder && (
+                      <p className="deposit-policy-extra">
+                        {lang === 'en'
+                          ? `Orders above ${paymentSummary.depositRequiredAboveQty} hens are deposit-only.`
+                          : `Les commandes de plus de ${paymentSummary.depositRequiredAboveQty} poules sont dépôt seulement.`}
+                      </p>
+                    )}
                   </div>
                 )}
 

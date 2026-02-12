@@ -146,7 +146,7 @@ export default function Order({ lang }) {
           } else if (lowerName.includes('meat') || lowerName.includes('chair') || lowerUrl.includes('broiler')) {
             imageUrl = '/photos/chicks_cropped.jpg';
           } else if (lowerName.includes('white') && (lowerName.includes('ready') || lowerName.includes('lay'))) {
-            imageUrl = '/photos/white_hen.png';
+            imageUrl = '/photos/white_hen.jpg';
           } else if (lowerName.includes('brown') || lowerName.includes('brune') || lowerName.includes('lohmann') || lowerUrl.includes('layer')) {
             imageUrl = '/photos/hens_cropped.jpg';
           } else {

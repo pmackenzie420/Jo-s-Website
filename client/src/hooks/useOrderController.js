@@ -20,13 +20,21 @@ const { form: FORM_STORAGE_KEY } = CHECKOUT_STORAGE_KEYS;
 
 const formatPickupDate = (value, lang) => {
   if (!value) return '';
-  const dateString = typeof value === 'string' ? value : String(value);
-  const date = dateString.length === 10 ? new Date(`${dateString}T00:00:00`) : new Date(value);
+  const dateString = typeof value === 'string' ? value.trim() : String(value);
+  const datePrefix = dateString.match(/^(\d{4})-(\d{2})-(\d{2})(?:T.*)?$/);
+  const date = datePrefix
+    ? new Date(Date.UTC(
+      Number(datePrefix[1]),
+      Number(datePrefix[2]) - 1,
+      Number(datePrefix[3])
+    ))
+    : new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return new Intl.DateTimeFormat(lang === 'fr' ? 'fr-CA' : 'en-CA', {
     month: 'long',
     day: 'numeric',
-    year: 'numeric'
+    year: 'numeric',
+    timeZone: 'UTC'
   }).format(date);
 };
 

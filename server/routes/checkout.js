@@ -24,6 +24,7 @@ const registerCheckoutRoutes = (app, deps) => {
         isLohmannHenName,
         getMinimumOrderQuantity,
         getDepositEligibleMinQty,
+        getDepositRequiredAboveQty,
         isPickupLocationRestricted,
         getPaymentDetails,
         getOrderSummary,
@@ -76,6 +77,7 @@ const registerCheckoutRoutes = (app, deps) => {
                 isLohmannHenName,
                 getMinimumOrderQuantity,
                 getDepositEligibleMinQty,
+                getDepositRequiredAboveQty,
                 isPickupLocationRestricted
             });
 

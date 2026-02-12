@@ -9,7 +9,8 @@
         { "minQty": 6, "unitCents": 1700 },
         { "minQty": 1, "unitCents": 1750 }
       ],
-      "depositEligibleMinQty": 13
+      "depositEligibleMinQty": 13,
+      "depositRequiredAboveQty": 50
     },
     {
       "key": "meat",
@@ -28,8 +29,7 @@
       "tiers": [
         { "minQty": 1, "unitCents": 5000 }
       ],
-      "depositOnly": true,
-      "restrictedPickupLocations": ["hemmingford"]
+      "depositOnly": true
     }
   ]
 }
