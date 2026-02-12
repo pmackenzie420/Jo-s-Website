@@ -129,7 +129,7 @@ export default function Prices({ lang }) {
                 <tr><td>300+</td><td>$2.15 {t.unit}</td></tr>
                 <tr><td>100 - 299</td><td>$2.30 {t.unit}</td></tr>
                 <tr><td>49 - 99</td><td>$2.50 {t.unit}</td></tr>
-                <tr><td>25 - 49</td><td>$2.60 {t.unit}</td></tr>
+                <tr><td>1 - 48</td><td>$2.60 {t.unit}</td></tr>
               </tbody>
             </table>
             <p className="meat-footer">{t.meat_footer}</p>

@@ -21,7 +21,7 @@
         { "minQty": 49, "unitCents": 250 },
         { "minQty": 1, "unitCents": 260 }
       ],
-      "minOrderQty": 25
+      "minOrderQty": 1
     },
     {
       "key": "lamb",

@@ -178,7 +178,7 @@ export default function Order({ lang }) {
                   <div className={`product-stock${isOutOfStock ? ' out-of-stock' : ''}`}>
                     {stockLabel}
                   </div>
-                  {/* Minimum order note for meat chickens - show when qty is 1-24 */}
+                  {/* Minimum order note for items with configured minimum quantities */}
                   {minOrderQty > 0 && safeQty > 0 && safeQty < minOrderQty && (
                     <div className="minimum-order-note">
                       {lang === 'en'
