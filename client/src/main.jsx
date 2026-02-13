@@ -11,6 +11,15 @@ import './styles/global.css'
 initSentry()
 
 if (import.meta.env.PROD) {
+  // Auto-recover from chunk/preload failures right after a deploy.
+  window.addEventListener('vite:preloadError', () => {
+    const key = 'jowebsite:preload-reload-attempted';
+    if (!window.sessionStorage.getItem(key)) {
+      window.sessionStorage.setItem(key, '1');
+      window.location.reload();
+    }
+  });
+
   inject()
   injectSpeedInsights()
 }

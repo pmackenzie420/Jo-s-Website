@@ -3,14 +3,42 @@ import { Routes, Route } from 'react-router-dom';
 import Layout from '../layouts/BoxedLayout';
 import MainGate from '../components/MainGate';
 
-const Home = lazy(() => import('../pages/Home'));
-const Prices = lazy(() => import('../pages/Prices'));
-const Contact = lazy(() => import('../pages/Contact'));
-const Privacy = lazy(() => import('../pages/Privacy'));
-const Checkout = lazy(() => import('../pages/Checkout'));
-const Order = lazy(() => import('../pages/Order'));
-const Admin = lazy(() => import('../pages/Admin'));
-const Success = lazy(() => import('../pages/Success'));
+const isChunkLoadError = (err) => {
+  const message = err?.message || '';
+  return (
+    message.includes('Failed to fetch dynamically imported module') ||
+    message.includes('Importing a module script failed') ||
+    message.includes('Loading chunk') ||
+    message.includes('ChunkLoadError')
+  );
+};
+
+// If a deploy happens while a user has the SPA open, old chunk URLs can 404.
+// Reloading once grabs the latest build and resolves the mismatch.
+const lazyWithRetry = (importer) =>
+  lazy(async () => {
+    try {
+      return await importer();
+    } catch (err) {
+      if (typeof window !== 'undefined' && isChunkLoadError(err)) {
+        const key = 'jowebsite:chunk-reload-attempted';
+        if (!window.sessionStorage.getItem(key)) {
+          window.sessionStorage.setItem(key, '1');
+          window.location.reload();
+        }
+      }
+      throw err;
+    }
+  });
+
+const Home = lazyWithRetry(() => import('../pages/Home'));
+const Prices = lazyWithRetry(() => import('../pages/Prices'));
+const Contact = lazyWithRetry(() => import('../pages/Contact'));
+const Privacy = lazyWithRetry(() => import('../pages/Privacy'));
+const Checkout = lazyWithRetry(() => import('../pages/Checkout'));
+const Order = lazyWithRetry(() => import('../pages/Order'));
+const Admin = lazyWithRetry(() => import('../pages/Admin'));
+const Success = lazyWithRetry(() => import('../pages/Success'));
 
 export default function DesktopApp() {
   const [lang, setLang] = useState(() => {
