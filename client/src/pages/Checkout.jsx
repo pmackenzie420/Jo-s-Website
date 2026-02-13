@@ -26,6 +26,7 @@ export default function Checkout({ lang }) {
     formatPhone,
     normalizePhone,
     isValidEmail,
+    isEmailVerificationChecking,
     termsAccepted,
     setTermsAccepted,
     termsError,
@@ -244,8 +245,15 @@ export default function Checkout({ lang }) {
               </div>
               
               <div className="step-actions">
-                <button type="button" className="btn-continue" onClick={nextStep}>
-                  {lang === 'en' ? 'Continue' : 'Continuer'}
+                <button
+                  type="button"
+                  className="btn-continue"
+                  onClick={nextStep}
+                  disabled={isEmailVerificationChecking}
+                >
+                  {isEmailVerificationChecking
+                    ? (lang === 'en' ? 'Verifying...' : 'Vérification...')
+                    : (lang === 'en' ? 'Continue' : 'Continuer')}
                 </button>
               </div>
             </section>

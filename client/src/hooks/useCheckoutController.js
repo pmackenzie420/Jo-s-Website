@@ -28,6 +28,7 @@ const DEFAULT_FORM_DATA = {
 };
 
 const toCents = (value) => Math.round(Number(value) * 100);
+const EMAIL_VERIFY_REQUEST_TIMEOUT_MS = 4500;
 const EMAIL_VERIFY_STATE_IDLE = {
   status: 'idle',
   checkedEmail: '',
@@ -106,6 +107,7 @@ export default function useCheckoutController(lang) {
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsError, setTermsError] = useState(null);
   const [emailVerification, setEmailVerification] = useState(EMAIL_VERIFY_STATE_IDLE);
+  const emailVerificationRequestRef = useRef({ email: '', promise: null });
 
   const resetEmailVerification = () => {
     setEmailVerification(EMAIL_VERIFY_STATE_IDLE);
@@ -133,6 +135,11 @@ export default function useCheckoutController(lang) {
       return !emailVerification.shouldBlock;
     }
 
+    const inFlight = emailVerificationRequestRef.current;
+    if (inFlight?.promise && inFlight.email === normalizedEmail) {
+      return inFlight.promise;
+    }
+
     setEmailVerification({
       status: 'checking',
       checkedEmail: normalizedEmail,
@@ -141,43 +148,59 @@ export default function useCheckoutController(lang) {
       suggestion: null
     });
 
-    try {
-      const response = await axios.post(`${API_URL}/checkout/email-verify`, {
-        email: normalizedEmail,
-        language: locale
-      });
-      const payload = response?.data || {};
-      const nextState = {
-        status: payload.status || (payload.shouldBlock ? 'invalid' : 'valid'),
-        checkedEmail: payload.normalizedEmail || normalizedEmail,
-        message: payload.message || '',
-        shouldBlock: Boolean(payload.shouldBlock),
-        suggestion: payload.suggestion || null
-      };
-      setEmailVerification(nextState);
+    let verificationPromise;
+    verificationPromise = (async () => {
+      try {
+        const response = await axios.post(`${API_URL}/checkout/email-verify`, {
+          email: normalizedEmail,
+          language: locale
+        }, {
+          timeout: EMAIL_VERIFY_REQUEST_TIMEOUT_MS
+        });
+        const payload = response?.data || {};
+        const nextState = {
+          status: payload.status || (payload.shouldBlock ? 'invalid' : 'valid'),
+          checkedEmail: payload.normalizedEmail || normalizedEmail,
+          message: payload.message || '',
+          shouldBlock: Boolean(payload.shouldBlock),
+          suggestion: payload.suggestion || null
+        };
+        setEmailVerification(nextState);
 
-      if (nextState.shouldBlock) {
-        setErrors((prev) => ({
-          ...prev,
-          email: nextState.message || (locale === 'en' ? 'Invalid email address' : 'Adresse courriel invalide')
-        }));
-        return false;
+        if (nextState.shouldBlock) {
+          setErrors((prev) => ({
+            ...prev,
+            email: nextState.message || (locale === 'en' ? 'Invalid email address' : 'Adresse courriel invalide')
+          }));
+          return false;
+        }
+
+        setErrors((prev) => ({ ...prev, email: null }));
+        return true;
+      } catch {
+        setEmailVerification({
+          status: 'warning',
+          checkedEmail: normalizedEmail,
+          message: locale === 'en'
+            ? 'Email verification timed out. You can continue.'
+            : 'La vérification du courriel a expiré. Vous pouvez continuer.',
+          shouldBlock: false,
+          suggestion: null
+        });
+        return true;
+      } finally {
+        if (emailVerificationRequestRef.current.promise === verificationPromise) {
+          emailVerificationRequestRef.current = { email: '', promise: null };
+        }
       }
+    })();
 
-      setErrors((prev) => ({ ...prev, email: null }));
-      return true;
-    } catch {
-      setEmailVerification({
-        status: 'warning',
-        checkedEmail: normalizedEmail,
-        message: locale === 'en'
-          ? 'Email verification is temporarily unavailable. You can continue.'
-          : 'La vérification du courriel est temporairement indisponible. Vous pouvez continuer.',
-        shouldBlock: false,
-        suggestion: null
-      });
-      return true;
-    }
+    emailVerificationRequestRef.current = {
+      email: normalizedEmail,
+      promise: verificationPromise
+    };
+
+    return verificationPromise;
   };
 
   const validateStep = (step) => {
@@ -436,6 +459,7 @@ export default function useCheckoutController(lang) {
     formatPhone,
     normalizePhone,
     isValidEmail,
+    isEmailVerificationChecking: emailVerification.status === 'checking',
     currentStep,
     nextStep,
     prevStep
