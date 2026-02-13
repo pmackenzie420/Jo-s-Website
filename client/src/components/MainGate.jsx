@@ -37,7 +37,7 @@ export default function MainGate({ children, lang }) {
   const [status, setStatus] = useState('loading');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
-  const gateDisabled = parseBoolean(import.meta.env.VITE_DISABLE_MAIN_GATE, false);
+  const gateDisabled = parseBoolean(import.meta.env.VITE_DISABLE_MAIN_GATE, true);
   const devBypass = import.meta.env.DEV || gateDisabled;
   const bypassGate = devBypass;
 
