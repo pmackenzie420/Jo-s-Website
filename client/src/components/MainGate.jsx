@@ -24,12 +24,21 @@ const COPY = {
   }
 };
 
+const parseBoolean = (value, fallback = false) => {
+  if (typeof value !== 'string') return fallback;
+  const normalized = value.trim().toLowerCase();
+  if (['1', 'true', 'yes', 'on'].includes(normalized)) return true;
+  if (['0', 'false', 'no', 'off'].includes(normalized)) return false;
+  return fallback;
+};
+
 export default function MainGate({ children, lang }) {
   const copy = lang === 'fr' ? COPY.fr : COPY.en;
   const [status, setStatus] = useState('loading');
   const [password, setPassword] = useState('');
   const [error, setError] = useState(null);
-  const devBypass = import.meta.env.DEV || import.meta.env.VITE_DISABLE_MAIN_GATE === 'true';
+  const gateDisabled = parseBoolean(import.meta.env.VITE_DISABLE_MAIN_GATE, false);
+  const devBypass = import.meta.env.DEV || gateDisabled;
   const bypassGate = devBypass;
 
   useEffect(() => {
