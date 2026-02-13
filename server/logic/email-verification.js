@@ -151,18 +151,36 @@ const isValidParsedEmail = (normalizedEmail) => {
     return true;
 };
 
+const DEFAULT_CACHE_MAX_SIZE = 5000;
+
+const createBoundedCache = (maxSize = DEFAULT_CACHE_MAX_SIZE) => {
+    const map = new Map();
+    return {
+        get(key) { return map.get(key); },
+        set(key, value) {
+            if (map.size >= maxSize) {
+                const firstKey = map.keys().next().value;
+                map.delete(firstKey);
+            }
+            map.set(key, value);
+        },
+        get size() { return map.size; }
+    };
+};
+
 const createEmailVerifier = ({
     resolver = dns,
     now = () => Date.now(),
     cacheTtlMs = parsePositiveNumber(process.env.EMAIL_VERIFY_CACHE_TTL_SECONDS, 600) * 1000,
+    cacheMaxSize = DEFAULT_CACHE_MAX_SIZE,
     quickEmailApiKey = String(process.env.QUICKEMAILVERIFICATION_API_KEY || '').trim(),
     provider = normalizeProvider(process.env.EMAIL_VERIFY_PROVIDER),
     quickEmailApiUrl = String(process.env.QUICKEMAILVERIFICATION_API_URL || QUICK_EMAIL_VERIFY_URL).trim(),
     quickEmailTimeoutMs = parsePositiveNumber(process.env.EMAIL_VERIFY_HTTP_TIMEOUT_MS, 3500),
     quickEmailClient = (url, options) => fetch(url, options)
 } = {}) => {
-    const domainCache = new Map();
-    const providerCache = new Map();
+    const domainCache = createBoundedCache(cacheMaxSize);
+    const providerCache = createBoundedCache(cacheMaxSize);
 
     const getDomainSignals = async (domain) => {
         const nowMs = now();

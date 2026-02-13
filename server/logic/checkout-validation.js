@@ -1,5 +1,28 @@
 const { CheckoutHttpError } = require('./checkout-errors');
 
+const VALIDATION_ERRORS = {
+    en: {
+        nameRequired: 'Customer name is required.',
+        phoneRequired: 'Valid customer phone is required.',
+        emailRequired: 'Valid customer email is required.',
+        addressRequired: 'Valid customer address is required.',
+        itemsRequired: 'At least one valid order item is required.',
+        tooManyItems: 'Too many items in checkout.',
+        pickupRequired: 'Pickup date and location are required.',
+        pickupUnavailable: 'Selected pickup date is not available for that location.'
+    },
+    fr: {
+        nameRequired: 'Le nom du client est requis.',
+        phoneRequired: 'Un numéro de téléphone valide est requis.',
+        emailRequired: 'Une adresse courriel valide est requise.',
+        addressRequired: 'Une adresse valide est requise.',
+        itemsRequired: 'Au moins un article valide est requis.',
+        tooManyItems: 'Trop d\'articles dans le panier.',
+        pickupRequired: 'La date et le lieu de ramassage sont requis.',
+        pickupUnavailable: 'La date de ramassage sélectionnée n\'est pas disponible pour ce lieu.'
+    }
+};
+
 const normalizePhoneForStorage = (value) => {
     const digits = String(value || '').replace(/\D/g, '');
     if (digits.length === 11 && digits.startsWith('1')) {
@@ -24,6 +47,7 @@ const parseCheckoutContext = (req, deps) => {
     const checkoutItems = normalizeCheckoutItems(req.body?.items);
     const headerLanguage = req.get('accept-language') || '';
     const orderLanguage = normalizeLanguage(language || lang || headerLanguage);
+    const copy = VALIDATION_ERRORS[orderLanguage] || VALIDATION_ERRORS.en;
 
     const customerName = sanitizeText(customer?.name, 200);
     const customerPhone = sanitizeText(customer?.phone, 50);
@@ -34,25 +58,25 @@ const parseCheckoutContext = (req, deps) => {
     const requestedPayment = paymentOption === 'deposit' ? 'deposit' : 'full';
 
     if (!customerName) {
-        throw new CheckoutHttpError(400, 'Customer name is required.');
+        throw new CheckoutHttpError(400, copy.nameRequired);
     }
     if (customerPhone.length < 7) {
-        throw new CheckoutHttpError(400, 'Valid customer phone is required.');
+        throw new CheckoutHttpError(400, copy.phoneRequired);
     }
     if (!isValidEmail(customerEmail)) {
-        throw new CheckoutHttpError(400, 'Valid customer email is required.');
+        throw new CheckoutHttpError(400, copy.emailRequired);
     }
     if (customerAddress.length < 5) {
-        throw new CheckoutHttpError(400, 'Valid customer address is required.');
+        throw new CheckoutHttpError(400, copy.addressRequired);
     }
     if (checkoutItems.length === 0) {
-        throw new CheckoutHttpError(400, 'At least one valid order item is required.');
+        throw new CheckoutHttpError(400, copy.itemsRequired);
     }
     if (checkoutItems.length > CHECKOUT_MAX_ITEM_ROWS) {
-        throw new CheckoutHttpError(400, 'Too many items in checkout.');
+        throw new CheckoutHttpError(400, copy.tooManyItems);
     }
     if (!pickupDate || !pickupLocation) {
-        throw new CheckoutHttpError(400, 'Pickup date and location are required.');
+        throw new CheckoutHttpError(400, copy.pickupRequired);
     }
 
     return {
@@ -68,7 +92,7 @@ const parseCheckoutContext = (req, deps) => {
     };
 };
 
-const resolvePickupDateId = async (pool, pickupDate, pickupLocation) => {
+const resolvePickupDateId = async (pool, pickupDate, pickupLocation, language) => {
     const pickupCheck = await pool.query(
         `
         SELECT id
@@ -83,7 +107,8 @@ const resolvePickupDateId = async (pool, pickupDate, pickupLocation) => {
         [pickupDate, pickupLocation]
     );
     if (pickupCheck.rows.length === 0) {
-        throw new CheckoutHttpError(400, 'Selected pickup date is not available for that location.');
+        const copy = VALIDATION_ERRORS[language] || VALIDATION_ERRORS.en;
+        throw new CheckoutHttpError(400, copy.pickupUnavailable);
     }
     return pickupCheck.rows[0].id;
 };

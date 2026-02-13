@@ -23,6 +23,13 @@ const addPickupDate = ({ dateValue, location }) =>
     withAuth
   );
 
+const updatePickupDate = ({ dateId, dateValue, emailUsers = false }) =>
+  axios.put(
+    `${API_URL}/admin/pickup-dates/${dateId}`,
+    { date_value: dateValue, email_users: emailUsers },
+    withAuth
+  );
+
 const deletePickupDate = (dateId) =>
   axios.delete(`${API_URL}/admin/pickup-dates/${dateId}`, withAuth);
 
@@ -39,6 +46,7 @@ export {
   fetchOrdersPage,
   updatePickupStock,
   addPickupDate,
+  updatePickupDate,
   deletePickupDate,
   updateOrdersStatus,
   sendGroupEmail

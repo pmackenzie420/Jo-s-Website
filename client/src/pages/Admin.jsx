@@ -5,6 +5,7 @@ import AdminToast from './admin/AdminToast';
 import AdminLoginView from './admin/AdminLoginView';
 import AdminPickupsPage from './admin/AdminPickupsPage';
 import AdminStockPage from './admin/AdminStockPage';
+import AdminDatesPage from './admin/AdminDatesPage';
 import AdminSearchPage from './admin/AdminSearchPage';
 import AdminEmailPage from './admin/AdminEmailPage';
 import AdminCustomerModal from './admin/AdminCustomerModal';
@@ -30,11 +31,16 @@ export default function Admin() {
     selectedPickup,
     newPickupDate,
     newPickupLocation,
+    changingDateId,
+    changePickupDate,
+    changeEmailUsers,
     emailGroupKey,
     emailSubject,
     emailMessage,
     emailSending,
+    emailFailedRecipients,
     allPickupStocks,
+    allPickupReserved,
     pickupStockSaving,
     dirtyStockKeys,
     isAddingDate,
@@ -52,6 +58,8 @@ export default function Admin() {
     setIsAddingDate,
     setNewPickupLocation,
     setNewPickupDate,
+    setChangePickupDate,
+    setChangeEmailUsers,
     setEmailSubject,
     setEmailMessage,
     handleLogin,
@@ -61,6 +69,9 @@ export default function Admin() {
     handlePickupStockSave,
     deleteDate,
     handleAddDateClick,
+    startDateChange,
+    cancelDateChange,
+    applyDateChange,
     handleTabChange,
     handleNoticeAction,
     handleToggleEmailGroup,
@@ -130,16 +141,6 @@ export default function Admin() {
               <div className="admin-page-title">{activeTabConfig?.label}</div>
             </div>
           </div>
-          {activeTab === 'search' && (
-            <div className="admin-search">
-              <input
-                className="admin-input"
-                placeholder="Search by name, phone, email"
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
-            </div>
-          )}
           <nav className="admin-tabs" aria-label="Admin sections">
             {TAB_CONFIG.map((tab) => (
               <button
@@ -183,20 +184,35 @@ export default function Admin() {
               dates={dates}
               hens={hens}
               allPickupStocks={allPickupStocks}
+              allPickupReserved={allPickupReserved}
               pickupStockSaving={pickupStockSaving}
               dirtyStockKeys={dirtyStockKeys}
+              onPickupStockChange={handlePickupStockChange}
+              onPickupStockSave={handlePickupStockSave}
+            />
+          )}
+          {activeTab === 'dates' && (
+            <AdminDatesPage
+              dataLoading={dataLoading}
+              dates={dates}
               scheduleLoading={scheduleLoading}
               isAddingDate={isAddingDate}
               newPickupDate={newPickupDate}
               newPickupLocation={newPickupLocation}
+              changingDateId={changingDateId}
+              changePickupDate={changePickupDate}
+              changeEmailUsers={changeEmailUsers}
               dateInputRef={dateInputRef}
               orderCountByPickupKey={orderCountByPickupKey}
-              onPickupStockChange={handlePickupStockChange}
-              onPickupStockSave={handlePickupStockSave}
               onDeleteDate={deleteDate}
+              onStartDateChange={startDateChange}
+              onCancelDateChange={cancelDateChange}
+              onApplyDateChange={applyDateChange}
               onSetIsAddingDate={setIsAddingDate}
               onSetNewPickupLocation={setNewPickupLocation}
               onSetNewPickupDate={setNewPickupDate}
+              onSetChangePickupDate={setChangePickupDate}
+              onSetChangeEmailUsers={setChangeEmailUsers}
               onAddDateClick={handleAddDateClick}
               addDateButtonLabel={addDateButtonLabel}
             />
@@ -204,6 +220,8 @@ export default function Admin() {
           {activeTab === 'search' && (
             <AdminSearchPage
               dataLoading={dataLoading}
+              searchQuery={searchQuery}
+              onSearchChange={setSearchQuery}
               filteredCustomers={filteredCustomers}
               ordersHasMore={ordersHasMore}
               ordersLoadingMore={ordersLoadingMore}
@@ -219,6 +237,7 @@ export default function Admin() {
               emailSubject={emailSubject}
               emailMessage={emailMessage}
               emailSending={emailSending}
+              emailFailedRecipients={emailFailedRecipients}
               onToggleGroup={handleToggleEmailGroup}
               onSubjectChange={setEmailSubject}
               onMessageChange={setEmailMessage}

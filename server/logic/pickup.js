@@ -91,9 +91,79 @@ const fetchAllPickupStocks = async (pool) => {
     return result.rows;
 };
 
+const pad2 = (value) => String(value).padStart(2, '0');
+
+const normalizeDateValue = (value) => {
+    if (!value) return '';
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        return trimmed.includes('T') ? trimmed.split('T')[0] : trimmed;
+    }
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return String(value).trim();
+    }
+    return `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
+};
+
+const parseOrderItems = (items) => {
+    if (!items) return [];
+    if (Array.isArray(items)) return items;
+    if (typeof items === 'string') {
+        try {
+            const parsed = JSON.parse(items);
+            return Array.isArray(parsed) ? parsed : [];
+        } catch {
+            return [];
+        }
+    }
+    return [];
+};
+
+const fetchReservedPickupItems = async (pool) => {
+    const result = await pool.query(
+        `
+        SELECT pickup_date AS date_value, pickup_location AS location, items
+        FROM orders
+        WHERE pickup_date IS NOT NULL
+          AND COALESCE(pickup_location, '') <> ''
+          AND LOWER(COALESCE(status, 'pending')) <> 'cancelled'
+        `
+    );
+
+    const totalsByKey = new Map();
+    for (const row of result.rows) {
+        const dateValue = normalizeDateValue(row?.date_value);
+        const location = String(row?.location || '').trim();
+        if (!dateValue || !location) continue;
+
+        const items = parseOrderItems(row?.items);
+        for (const item of items) {
+            const henId = Number(item?.id);
+            const quantity = Number(item?.quantity ?? item?.qty ?? 0);
+            if (!Number.isInteger(henId) || henId <= 0) continue;
+            if (!Number.isInteger(quantity) || quantity <= 0) continue;
+
+            const key = `${dateValue}::${location}::${henId}`;
+            totalsByKey.set(key, (totalsByKey.get(key) || 0) + quantity);
+        }
+    }
+
+    return Array.from(totalsByKey.entries()).map(([key, reserved]) => {
+        const [dateValue, location, henId] = key.split('::');
+        return {
+            date_value: dateValue,
+            location,
+            hen_id: Number(henId),
+            reserved
+        };
+    });
+};
+
 module.exports = {
     fetchPickupDates,
     findPickupDateId,
     fetchPickupStockItems,
-    fetchAllPickupStocks
+    fetchAllPickupStocks,
+    fetchReservedPickupItems
 };

@@ -128,8 +128,10 @@ body.admin-active #root {
   margin-top: 4px;
 }
 
-.admin-search {
+.admin-search-bar {
   width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
 }
 
 .admin-main {
@@ -367,6 +369,12 @@ body.admin-modal-open .admin-main {
   margin-bottom: 0;
 }
 
+.pickup-location-meta {
+  font-size: 13px;
+  color: var(--admin-muted);
+  width: 100%;
+}
+
 .pickup-location-actions {
   display: flex;
   flex-direction: row;
@@ -494,6 +502,18 @@ body.admin-modal-open .admin-main {
   font-size: 14px;
 }
 
+.pickup-stock-name-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pickup-stock-meta {
+  font-size: 12px;
+  color: var(--admin-muted);
+}
+
 .stock-card {
   padding: 16px;
   border-radius: var(--admin-radius);
@@ -546,9 +566,9 @@ body.admin-modal-open .admin-main {
 }
 
 .date-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
   gap: 10px;
   padding: 12px 0;
   border-bottom: 1px solid var(--admin-border);
@@ -562,6 +582,12 @@ body.admin-modal-open .admin-main {
   border-bottom: none;
 }
 
+.date-row-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .date-row .admin-button {
   width: auto;
 }
@@ -573,6 +599,26 @@ body.admin-modal-open .admin-main {
 .date-meta {
   font-size: 12px;
   color: var(--admin-muted);
+}
+
+.date-change-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  padding-top: 8px;
+}
+
+.date-change-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--admin-ink);
+}
+
+.date-change-warning {
+  font-size: 12px;
+  color: var(--admin-danger);
 }
 
 .date-actions {
@@ -829,6 +875,41 @@ body.admin-modal-open .admin-main {
   margin-top: 12px;
   display: grid;
   gap: 12px;
+}
+
+.email-failed-panel {
+  border-color: var(--admin-danger);
+}
+
+.email-failed-title {
+  color: var(--admin-danger);
+}
+
+.email-failed-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.email-failed-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--admin-border);
+  font-size: 13px;
+}
+
+.email-failed-row:last-child {
+  border-bottom: none;
+}
+
+.email-failed-name {
+  font-weight: 600;
+}
+
+.email-failed-email {
+  color: var(--admin-muted);
 }
 
 .login-container {
@@ -1219,34 +1300,96 @@ body.admin-modal-open .admin-main {
 
 @media (min-width: 768px) {
   .admin-main {
-    padding: 16px 24px 24px;
-    gap: 16px;
+    max-width: 960px;
+    margin: 0 auto;
+    width: 100%;
+    padding: 24px 32px 32px;
+    gap: 20px;
+  }
+
+  .admin-topbar {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0 16px;
+    padding: calc(12px + env(safe-area-inset-top)) 24px 0;
+    border-bottom: none;
+  }
+
+  .admin-topbar-row {
+    justify-content: flex-start;
   }
 
   .admin-page-title {
-    font-size: 24px;
+    font-size: 20px;
   }
-
-
 
   .admin-tabs {
     display: flex;
+    border-bottom: none;
+    padding-bottom: 0;
+    margin: 0;
   }
 
   .admin-nav-mobile {
     display: none;
   }
 
+  .admin-button {
+    width: auto;
+  }
+
+  .admin-action-grid {
+    display: flex;
+    flex-direction: row;
+    gap: 10px;
+  }
+
+  .pickup-card-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .stock-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .pickup-stock-row {
+    grid-template-columns: 1fr 120px;
+  }
+
+  .date-row {
+    grid-template-columns: 1fr auto auto;
+    align-items: center;
+  }
+
+  .date-actions-row {
+    display: flex;
+    justify-content: flex-start;
+  }
+
+  .date-actions-row .admin-button {
+    width: auto;
   }
 
   .pickup-row-surface {
     padding: 16px 18px;
   }
+
+  .export-button {
+    width: auto;
+  }
+
+  .email-group-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media (min-width: 1024px) {
+  .admin-main {
+    max-width: 1060px;
+  }
+
   .search-layout {
     display: grid;
     grid-template-columns: 1.1fr 1fr;

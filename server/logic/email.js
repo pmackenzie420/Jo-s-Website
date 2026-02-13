@@ -5,23 +5,19 @@ const {
     LOCATION_DETAILS, 
     COMPANY_CONTACT 
 } = require('../config/constants');
-const { 
-    normalizeLanguage, 
-    formatPickupDateLong, 
-    formatCurrency, 
-    escapeHtml 
+const {
+    normalizeLanguage,
+    formatPickupDateLong,
+    formatCurrency,
+    escapeHtml,
+    extractEmailAddress
 } = require('../utils/helpers');
+const { buildBrandedEmailHtml, BRAND_COLOR } = require('../utils/email-template');
 const { getPaymentDetails, getOrderSummary, isLambName } = require('./pricing');
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM;
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Les Fermes Soulard';
-const extractEmailAddress = (value) => {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-    const angleMatch = raw.match(/<([^>]+)>/);
-    return angleMatch?.[1] ? String(angleMatch[1]).trim() : raw;
-};
 const getDefaultNoReplyAddress = () => {
     const fromAddress = extractEmailAddress(EMAIL_FROM);
     const atIndex = fromAddress.lastIndexOf('@');
@@ -126,8 +122,7 @@ const buildOrderConfirmationEmailText = ({ order, items }) => {
         '---',
         COMPANY_CONTACT.name,
         footerAddress,
-        `${COMPANY_CONTACT.phone}`,
-        COMPANY_CONTACT.email
+        `${COMPANY_CONTACT.phone}`
     );
 
     return lines.join('\n');
@@ -142,39 +137,37 @@ const buildOrderConfirmationEmailHtml = ({ order, items }) => {
     const locationDetails = locationKey ? LOCATION_DETAILS[locationKey] : null;
     const locationLabel = escapeHtml(locationDetails?.label || locationKey || '');
     const locationAddress = escapeHtml(locationDetails?.address || '');
-    const footerAddress = escapeHtml(LOCATION_DETAILS.bristol?.address || COMPANY_CONTACT.address);
     const total = escapeHtml(formatCurrency(order.total_cents));
     const paymentDetails = getPaymentDetails(order);
     const hasLambs = items.some(item => isLambName(item.name));
-    
+
     const paidLabel = (paymentDetails.paymentType === 'deposit' || hasLambs) ? copy.depositPaid : copy.paidInFull;
     const paidAmount = escapeHtml(formatCurrency(paymentDetails.paidCents));
-    
+
     let dueAmount = paymentDetails.dueCents > 0
         ? escapeHtml(formatCurrency(paymentDetails.dueCents))
         : '';
-        
+
     if (hasLambs) {
         dueAmount = language === 'fr' ? 'À déterminer (selon le poids)' : 'To be determined (based on weight)';
     }
 
     const orderId = escapeHtml(order.id);
-    const emailLink = `mailto:${encodeURIComponent(COMPANY_CONTACT.email)}`;
 
     const itemRows = items.length > 0
         ? items.map((item) => {
             const displayName = escapeHtml(String(item.name || 'Item').split(' / ')[0]);
             const quantity = escapeHtml(Number(item.quantity ?? 0));
             const lineTotal = escapeHtml(formatCurrency(item.line_cents));
-            return `<li style="margin-bottom: 6px;">${quantity} ${displayName}${lineTotal ? ` - ${lineTotal}` : ''}</li>`;
+            return `<li style="margin-bottom:6px;">${quantity} ${displayName}${lineTotal ? ` - ${lineTotal}` : ''}</li>`;
         }).join('')
         : `<li>${copy.itemsUnavailable}</li>`;
 
     const pickupDetails = (pickupDate || locationLabel || locationAddress)
         ? `
-      <div style="background: #f5f5f5; padding: 15px; margin: 20px 0; border-left: 4px solid #2D5A3D;">
-        <h3 style="margin-top: 0; color: #333;">${copy.pickupTitleHtml}</h3>
-        <p style="margin: 0; color: #333;">
+      <div style="background:#f5f5f5; padding:15px; margin:20px 0; border-left:4px solid ${BRAND_COLOR};">
+        <h3 style="margin-top:0; color:#333;">${copy.pickupTitleHtml}</h3>
+        <p style="margin:0; color:#333;">
           ${pickupDate ? `<strong>${copy.dateLabel}:</strong> ${pickupDate}<br>` : ''}
           ${locationLabel ? `<strong>${copy.locationLabel}:</strong> ${locationLabel}<br>` : ''}
           ${locationAddress ? `<strong>${copy.addressLabel}:</strong> ${locationAddress}` : ''}
@@ -183,9 +176,9 @@ const buildOrderConfirmationEmailHtml = ({ order, items }) => {
         : '';
 
     const paymentBlock = `
-    <div style="background: #f5f5f5; padding: 15px; margin: 20px 0; border-left: 4px solid #2D5A3D;">
-      <h3 style="margin-top: 0; color: #333;">${copy.paymentTitleHtml}</h3>
-      <p style="margin: 0; color: #333;">
+    <div style="background:#f5f5f5; padding:15px; margin:20px 0; border-left:4px solid ${BRAND_COLOR};">
+      <h3 style="margin-top:0; color:#333;">${copy.paymentTitleHtml}</h3>
+      <p style="margin:0; color:#333;">
         <strong>${copy.statusLabel}:</strong> ${escapeHtml(paidLabel)}<br>
         ${paidAmount ? `<strong>${copy.paidTodayLabel}:</strong> ${paidAmount}<br>` : ''}
         ${dueAmount ? `<strong>${copy.dueLabel}:</strong> ${dueAmount}` : ''}
@@ -193,39 +186,25 @@ const buildOrderConfirmationEmailHtml = ({ order, items }) => {
     </div>`;
 
     const reminderBlock = `
-    <div style="background: #fff8e8; padding: 15px; margin: 20px 0; border-left: 4px solid #9f6a00;">
-      <h3 style="margin-top: 0; margin-bottom: 8px; color: #5a3a00;">${copy.reminderTitle}</h3>
-      <p style="margin: 0 0 8px; color: #333;">${copy.reminderLineOne}</p>
-      <p style="margin: 0; color: #333;">${copy.reminderLineTwo}</p>
+    <div style="background:#fff8e8; padding:15px; margin:20px 0; border-left:4px solid #9f6a00;">
+      <h3 style="margin-top:0; margin-bottom:8px; color:#5a3a00;">${copy.reminderTitle}</h3>
+      <p style="margin:0 0 8px; color:#333;">${copy.reminderLineOne}</p>
+      <p style="margin:0; color:#333;">${copy.reminderLineTwo}</p>
     </div>`;
 
-    return `
-  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-  <div style="background: #2D5A3D; color: white; padding: 20px; text-align: center;">
-    <h1 style="margin: 0;">${escapeHtml(COMPANY_CONTACT.name)}</h1>
-  </div>
-
-  <div style="padding: 20px; background: white; color: #333;">
+    const contentHtml = `
     <p>${copy.greeting(customerName)}</p>
     <p>${copy.thankYou}</p>
     ${pickupDetails}
     ${reminderBlock}
-    <h3 style="margin-bottom: 8px;">${copy.orderTitleHtml}</h3>
-    <ul style="padding-left: 18px; margin-top: 0;">${itemRows}</ul>
-    ${total ? `<p style="font-weight: bold;">Total: ${total}</p>` : ''}
+    <h3 style="margin-bottom:8px;">${copy.orderTitleHtml}</h3>
+    <ul style="padding-left:18px; margin-top:0;">${itemRows}</ul>
+    ${total ? `<p style="font-weight:bold;">Total: ${total}</p>` : ''}
     ${paymentBlock}
-    <p style="font-size: 12px; color: #666;">${copy.orderIdLabel}: ${orderId}</p>
-    <p>${copy.questions(escapeHtml(COMPANY_CONTACT.phone))}</p>
-  </div>
+    <p style="font-size:12px; color:#666;">${copy.orderIdLabel}: ${orderId}</p>
+    <p>${copy.questions(escapeHtml(COMPANY_CONTACT.phone))}</p>`;
 
-  <div style="background: #f5f5f5; padding: 15px; text-align: center; font-size: 12px; color: #666;">
-    <p style="margin: 0;">
-      ${escapeHtml(COMPANY_CONTACT.name)}<br>
-      ${footerAddress}<br>
-      ${escapeHtml(COMPANY_CONTACT.phone)} • <a href="${emailLink}" style="color: #2D5A3D; text-decoration: none;">${escapeHtml(COMPANY_CONTACT.email)}</a>
-    </p>
-  </div>
-</div>`.trim();
+    return buildBrandedEmailHtml({ contentHtml });
 };
 
 const buildOrderConfirmationEmailPayload = ({ order, items }) => {

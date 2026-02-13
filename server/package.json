@@ -8,6 +8,7 @@
     "render-build": "npm install",
     "test": "node --test",
     "db:ensure-indexes": "node scripts/ensure_order_indexes.js",
+    "db:seed-dummy": "node scripts/seed_dummy_data.js",
     "check:db": "node scripts/check_db.js",
     "check:data": "node scripts/check_data.js",
     "auth:hash": "node scripts/hash_password.js"

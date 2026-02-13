@@ -266,7 +266,7 @@ export default function useCheckoutController(lang) {
   const lambDepositCents = cartTotals.lambSubtotalCents;
 
   const lohmannDepositCents = lohmannDepositEligible
-    ? Math.floor(cartTotals.lohmannSubtotalCents * 0.25)
+    ? Math.floor(cartTotals.lohmannSubtotalCents / 4)
     : 0;
     
   // Items that are neither Lohmann nor Lamb need to be paid in full

@@ -7,6 +7,7 @@ export default function AdminEmailPage({
   emailSubject,
   emailMessage,
   emailSending,
+  emailFailedRecipients,
   onToggleGroup,
   onSubjectChange,
   onMessageChange,
@@ -39,7 +40,16 @@ export default function AdminEmailPage({
                   if (!recipients.has(email)) {
                     recipients.set(email, {
                       email,
-                      name: order.customerName
+                      name: order.customerName,
+                      language: order.language
+                    });
+                    return;
+                  }
+                  const existing = recipients.get(email);
+                  if (!existing.language && order.language) {
+                    recipients.set(email, {
+                      ...existing,
+                      language: order.language
                     });
                   }
                 });
@@ -88,7 +98,16 @@ export default function AdminEmailPage({
                           className="admin-button"
                           type="button"
                           disabled={recipients.size === 0 || emailSending === groupKey}
-                          onClick={() => onSendGroupEmail(groupKey, Array.from(recipients.values()))}
+                          onClick={() =>
+                            onSendGroupEmail(
+                              groupKey,
+                              Array.from(recipients.values()),
+                              {
+                                groupDate: group.date,
+                                locationLabel: locationGroup.locationLabel
+                              }
+                            )
+                          }
                         >
                           {emailSending === groupKey ? 'Sending...' : 'Send Email'}
                         </button>
@@ -101,6 +120,24 @@ export default function AdminEmailPage({
           </div>
         )}
       </section>
+      {emailFailedRecipients?.length > 0 && (
+        <section className="admin-panel stagger-item email-failed-panel">
+          <div className="panel-header">
+            <div>
+              <div className="panel-title email-failed-title">Failed to send</div>
+              <div className="panel-subtitle">{emailFailedRecipients.length} recipient{emailFailedRecipients.length !== 1 ? 's' : ''} did not receive the email.</div>
+            </div>
+          </div>
+          <div className="email-failed-list">
+            {emailFailedRecipients.map((recipient) => (
+              <div key={recipient.email} className="email-failed-row">
+                <span className="email-failed-name">{recipient.name || recipient.email}</span>
+                {recipient.name && <span className="email-failed-email">{recipient.email}</span>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
     </div>
   );
 }

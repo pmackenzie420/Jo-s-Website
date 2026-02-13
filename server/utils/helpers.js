@@ -155,6 +155,13 @@ const parseOrderItems = (items) => {
     return [];
 };
 
+const extractEmailAddress = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const angleMatch = raw.match(/<([^>]+)>/);
+    return angleMatch?.[1] ? String(angleMatch[1]).trim() : raw;
+};
+
 module.exports = {
     formatPickupDate,
     formatPickupDateLong,
@@ -164,5 +171,6 @@ module.exports = {
     parseOriginList,
     getClientIp,
     parseCookies,
-    parseOrderItems
+    parseOrderItems,
+    extractEmailAddress
 };

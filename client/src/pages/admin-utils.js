@@ -19,9 +19,10 @@ const parsePickupKey = (value) => {
 
 const TAB_CONFIG = [
   { key: 'pickups', label: 'Pickups' },
-  { key: 'stock', label: 'Stock + Dates' },
-  { key: 'search', label: 'Customer Search' },
-  { key: 'email', label: 'Emailing' }
+  { key: 'stock', label: 'Stock' },
+  { key: 'dates', label: 'Dates' },
+  { key: 'search', label: 'Search' },
+  { key: 'email', label: 'Email' }
 ];
 
 const pad2 = (value) => String(value).padStart(2, '0');

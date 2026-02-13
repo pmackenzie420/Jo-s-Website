@@ -3,6 +3,7 @@ import {
   LOCATION_LABELS,
   LOCATION_OPTIONS,
   parsePickupKey,
+  normalizeDate,
   formatDateLong,
   normalizeStatus
 } from './admin-utils';
@@ -13,6 +14,7 @@ import {
   fetchOrdersPage,
   updatePickupStock,
   addPickupDate,
+  updatePickupDate,
   deletePickupDate,
   updateOrdersStatus
 } from './admin-api';
@@ -36,6 +38,12 @@ const ADMIN_ALLOWED_ORDER_STATUSES = new Set([
   'picked_up',
   'cancelled'
 ]);
+const pluralize = (count, singular, plural = `${singular}s`) => (
+  count === 1 ? singular : plural
+);
+const formatEmailOutcomeSummary = ({ total, sent, failed }) => (
+  `Sent ${total} ${pluralize(total, 'email')}: ${sent} ${pluralize(sent, 'success', 'successes')}, ${failed} ${pluralize(failed, 'failure')}.`
+);
 
 export default function useAdminController() {
   const [password, setPassword] = useState('');
@@ -54,7 +62,11 @@ export default function useAdminController() {
   const [selectedPickup, setSelectedPickup] = useState(null);
   const [newPickupDate, setNewPickupDate] = useState('');
   const [newPickupLocation, setNewPickupLocation] = useState(LOCATION_OPTIONS[0]?.value || '');
+  const [changingDateId, setChangingDateId] = useState(null);
+  const [changePickupDate, setChangePickupDate] = useState('');
+  const [changeEmailUsers, setChangeEmailUsers] = useState(false);
   const [allPickupStocks, setAllPickupStocks] = useState({});
+  const [allPickupReserved, setAllPickupReserved] = useState({});
   const [pickupStockSaving, setPickupStockSaving] = useState(null);
   const [dirtyStockKeys, setDirtyStockKeys] = useState(new Set());
   const [isAddingDate, setIsAddingDate] = useState(false);
@@ -67,6 +79,7 @@ export default function useAdminController() {
     emailSubject,
     emailMessage,
     emailSending,
+    emailFailedRecipients,
     setEmailGroupKey,
     setEmailSubject,
     setEmailMessage,
@@ -80,6 +93,11 @@ export default function useAdminController() {
     setAllPickupStocks(
       payload?.pickupStocks && typeof payload.pickupStocks === 'object'
         ? payload.pickupStocks
+        : {}
+    );
+    setAllPickupReserved(
+      payload?.pickupReserved && typeof payload.pickupReserved === 'object'
+        ? payload.pickupReserved
         : {}
     );
   }, []);
@@ -328,6 +346,96 @@ export default function useAdminController() {
     [refreshMeta, showToast]
   );
 
+  const startDateChange = useCallback((dateItem) => {
+    const currentDate = normalizeDate(dateItem?.date_value);
+    setChangingDateId(dateItem?.id || null);
+    setChangePickupDate(currentDate);
+    setChangeEmailUsers(false);
+  }, []);
+
+  const cancelDateChange = useCallback(() => {
+    setChangingDateId(null);
+    setChangePickupDate('');
+    setChangeEmailUsers(false);
+  }, []);
+
+  const applyDateChange = useCallback(
+    async (dateItem) => {
+      if (!dateItem?.id) return;
+      if (!changePickupDate) {
+        showToast({ type: 'error', text: 'Please select a new date.' });
+        return;
+      }
+
+      const fromDate = normalizeDate(dateItem.date_value);
+      const fromDateLabel = formatDateLong(fromDate);
+      const toDateLabel = formatDateLong(changePickupDate);
+
+      const warningText = changeEmailUsers
+        ? `Email users with pickup date change from ${fromDateLabel} to ${toDateLabel}?`
+        : `Apply pickup date change from ${fromDateLabel} to ${toDateLabel} without emailing users?`;
+      const confirmed = window.confirm(warningText);
+      if (!confirmed) return;
+
+      const loadingKey = `change:${dateItem.id}`;
+      setScheduleLoading(loadingKey);
+      try {
+        const response = await updatePickupDate({
+          dateId: dateItem.id,
+          dateValue: changePickupDate,
+          emailUsers: changeEmailUsers
+        });
+
+        const payload = response?.data || {};
+        const movedOrders = Number(payload.movedOrders || 0);
+        const mergedText = payload.merged ? ' Merged with existing date.' : '';
+        const emailSentCount = Number(payload.emailSent || 0);
+        const emailFailedCount = Number(payload.emailFailed || 0);
+        const emailTotalCount = (
+          Number(payload.emailRecipients || 0)
+          || (emailSentCount + emailFailedCount)
+        );
+        const emailSummary = changeEmailUsers
+          ? ` Emails: ${formatEmailOutcomeSummary({
+            total: emailTotalCount,
+            sent: emailSentCount,
+            failed: emailFailedCount
+          })}`
+          : '';
+        showToast({
+          type: 'success',
+          text: `Pickup date updated.${mergedText} ${movedOrders} orders moved.${emailSummary}`.trim()
+        });
+
+        await Promise.all([
+          refreshMeta(),
+          refreshOrders({ quiet: true })
+        ]);
+        cancelDateChange();
+      } catch (error) {
+        const status = error?.response?.status;
+        if (status === 400 || status === 404 || status === 409) {
+          showToast({
+            type: 'error',
+            text: error?.response?.data?.error || 'Failed to update pickup date.'
+          });
+        } else {
+          showToast({ type: 'error', text: 'Failed to update pickup date.' });
+        }
+      } finally {
+        setScheduleLoading(null);
+      }
+    },
+    [
+      cancelDateChange,
+      changeEmailUsers,
+      changePickupDate,
+      refreshMeta,
+      refreshOrders,
+      showToast
+    ]
+  );
+
   const deleteDate = useCallback(
     async (dateItem, orderCount) => {
       if (orderCount > 0) {
@@ -339,13 +447,16 @@ export default function useAdminController() {
         await deletePickupDate(dateItem.id);
         showToast({ type: 'success', text: 'Pickup date removed.' });
         await refreshMeta();
+        if (changingDateId === dateItem.id) {
+          cancelDateChange();
+        }
       } catch {
         showToast({ type: 'error', text: 'Failed to remove pickup date.' });
       } finally {
         setScheduleLoading(null);
       }
     },
-    [refreshMeta, showToast]
+    [cancelDateChange, changingDateId, refreshMeta, showToast]
   );
 
   const updateOrderStatus = useCallback(
@@ -503,13 +614,16 @@ export default function useAdminController() {
     setActiveTab(key);
     setSelectedCustomer(null);
     setSelectedPickup(null);
+    if (key !== 'stock') {
+      cancelDateChange();
+    }
     if (key !== 'search') {
       setSearchQuery('');
     }
     if (key !== 'email') {
       setEmailGroupKey(null);
     }
-  }, [setEmailGroupKey]);
+  }, [cancelDateChange, setEmailGroupKey]);
 
   return {
     password,
@@ -528,11 +642,16 @@ export default function useAdminController() {
     selectedPickup,
     newPickupDate,
     newPickupLocation,
+    changingDateId,
+    changePickupDate,
+    changeEmailUsers,
     emailGroupKey,
     emailSubject,
     emailMessage,
     emailSending,
+    emailFailedRecipients,
     allPickupStocks,
+    allPickupReserved,
     pickupStockSaving,
     dirtyStockKeys,
     isAddingDate,
@@ -550,6 +669,8 @@ export default function useAdminController() {
     setIsAddingDate,
     setNewPickupLocation,
     setNewPickupDate,
+    setChangePickupDate,
+    setChangeEmailUsers,
     setEmailSubject,
     setEmailMessage,
     handleLogin,
@@ -559,6 +680,9 @@ export default function useAdminController() {
     handlePickupStockSave,
     deleteDate,
     handleAddDateClick,
+    startDateChange,
+    cancelDateChange,
+    applyDateChange,
     handleTabChange,
     handleNoticeAction,
     handleToggleEmailGroup,

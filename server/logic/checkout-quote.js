@@ -51,12 +51,34 @@ const resolveCheckoutImageUrl = (hen, clientBaseUrl = process.env.CLIENT_URL) =>
     return `${normalizedBaseUrl}${selectedPath.startsWith('/') ? selectedPath : `/${selectedPath}`}`;
 };
 
+const CHECKOUT_ERRORS = {
+    en: {
+        itemsUnavailable: 'Some requested items are unavailable.',
+        locationRestricted: 'Lamb is not available for Hemmingford pickups.',
+        minimumOrder: (min, name) => `Minimum order is ${min} for ${name}.`,
+        insufficientStock: (name) => `Insufficient stock for ${name}.`,
+        depositRequired: (qty) => `Orders above ${qty} Lohmann hens require a 25% deposit.`,
+        depositMinimum: (min) => `Deposit is available only for ${min} or more Lohmann hens.`,
+        emptyCheckout: 'No purchasable items in checkout.'
+    },
+    fr: {
+        itemsUnavailable: 'Certains articles demandés ne sont pas disponibles.',
+        locationRestricted: "L'agneau n'est pas disponible pour les ramassages à Hemmingford.",
+        minimumOrder: (min, name) => `La commande minimale est de ${min} pour ${name}.`,
+        insufficientStock: (name) => `Stock insuffisant pour ${name}.`,
+        depositRequired: (qty) => `Les commandes de plus de ${qty} poules Lohmann nécessitent un dépôt de 25 %.`,
+        depositMinimum: (min) => `Le dépôt est offert à partir de ${min} poules Lohmann.`,
+        emptyCheckout: 'Aucun article achetable dans le panier.'
+    }
+};
+
 const buildCheckoutQuote = async ({
     pool,
     checkoutItems,
     pickupDateId,
     pickupLocation,
     requestedPayment,
+    language,
     calculateItemPrice,
     isLohmannHenName,
     getMinimumOrderQuantity,
@@ -64,6 +86,7 @@ const buildCheckoutQuote = async ({
     getDepositRequiredAboveQty,
     isPickupLocationRestricted
 }) => {
+    const copy = CHECKOUT_ERRORS[language] || CHECKOUT_ERRORS.en;
     const itemIds = checkoutItems.map((item) => item.id);
     const hensResult = itemIds.length
         ? await pool.query(
@@ -73,7 +96,7 @@ const buildCheckoutQuote = async ({
         : { rows: [] };
     const henMap = new Map(hensResult.rows.map((row) => [Number(row.id), row]));
     if (henMap.size !== itemIds.length) {
-        throw new CheckoutHttpError(400, 'Some requested items are unavailable.');
+        throw new CheckoutHttpError(400, copy.itemsUnavailable);
     }
 
     const stockResult = itemIds.length
@@ -103,16 +126,16 @@ const buildCheckoutQuote = async ({
         if (!Number.isFinite(quantity) || quantity <= 0) continue;
 
         if (isPickupLocationRestricted(hen.name, pickupLocation)) {
-            throw new CheckoutHttpError(400, 'Lamb is not available for Hemmingford pickups.');
+            throw new CheckoutHttpError(400, copy.locationRestricted);
         }
         const minimumOrderQty = getMinimumOrderQuantity(hen.name);
         if (minimumOrderQty > 0 && quantity < minimumOrderQty) {
-            throw new CheckoutHttpError(400, `Minimum order is ${minimumOrderQty} for ${hen.name}.`);
+            throw new CheckoutHttpError(400, copy.minimumOrder(minimumOrderQty, hen.name));
         }
 
         const availableStock = stockMap.get(Number(hen.id)) ?? 0;
         if (availableStock < quantity) {
-            throw new CheckoutHttpError(400, `Insufficient stock for ${hen.name}`);
+            throw new CheckoutHttpError(400, copy.insufficientStock(hen.name));
         }
 
         const unitPrice = calculateItemPrice(hen.name, quantity);
@@ -167,20 +190,14 @@ const buildCheckoutQuote = async ({
     const depositRequired = depositRequiredAboveQty > 0 && lohmannQty > depositRequiredAboveQty;
     const hasLambItems = lambQty > 0;
     if (depositRequired && requestedPayment !== 'deposit') {
-        throw new CheckoutHttpError(
-            400,
-            `Orders above ${depositRequiredAboveQty} Lohmann hens require a 25% deposit.`
-        );
+        throw new CheckoutHttpError(400, copy.depositRequired(depositRequiredAboveQty));
     }
     if (requestedPayment === 'deposit' && !depositEligible && !hasLambItems) {
-        throw new CheckoutHttpError(
-            400,
-            `Deposit is available only for ${depositEligibleMinQty} or more Lohmann hens.`
-        );
+        throw new CheckoutHttpError(400, copy.depositMinimum(depositEligibleMinQty));
     }
 
     const depositCents = depositEligible
-        ? Math.floor(lohmannSubtotalCents * 0.25)
+        ? Math.floor(lohmannSubtotalCents / 4)
         : 0;
     const amountPaidCents = requestedPayment === 'deposit'
         ? nonLohmannSubtotalCents + depositCents
@@ -206,7 +223,7 @@ const buildCheckoutQuote = async ({
         }
     }
     if (lineItems.length === 0 || totalCents <= 0) {
-        throw new CheckoutHttpError(400, 'No purchasable items in checkout.');
+        throw new CheckoutHttpError(400, copy.emptyCheckout);
     }
 
     const reservationItems = checkoutItems

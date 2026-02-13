@@ -2,6 +2,8 @@ import { formatDateLong } from '../admin-utils';
 
 export default function AdminSearchPage({
   dataLoading,
+  searchQuery,
+  onSearchChange,
   filteredCustomers,
   ordersHasMore,
   ordersLoadingMore,
@@ -13,6 +15,14 @@ export default function AdminSearchPage({
   }
   return (
     <div className="admin-stack">
+      <div className="admin-search-bar">
+        <input
+          className="admin-input"
+          placeholder="Search by name, phone, email"
+          value={searchQuery}
+          onChange={(event) => onSearchChange(event.target.value)}
+        />
+      </div>
       <section className="admin-panel stagger-item">
         <div className="panel-header">
           <div>

@@ -114,7 +114,8 @@ const registerCheckoutRoutes = (app, deps) => {
             const pickupDateId = await resolvePickupDateId(
                 pool,
                 checkoutContext.pickupDate,
-                checkoutContext.pickupLocation
+                checkoutContext.pickupLocation,
+                checkoutContext.orderLanguage
             );
 
             const quote = await buildCheckoutQuote({
@@ -123,6 +124,7 @@ const registerCheckoutRoutes = (app, deps) => {
                 pickupDateId,
                 pickupLocation: checkoutContext.pickupLocation,
                 requestedPayment: checkoutContext.requestedPayment,
+                language: checkoutContext.orderLanguage,
                 calculateItemPrice,
                 isLohmannHenName,
                 getMinimumOrderQuantity,
@@ -201,9 +203,10 @@ const registerCheckoutRoutes = (app, deps) => {
                     return res.status(checkoutErr.status).json({ error: checkoutErr.message });
                 }
                 if (String(checkoutErr?.message || '').includes('Insufficient')) {
-                    return res.status(409).json({
-                        error: 'One or more items just sold out. Please refresh and try again.'
-                    });
+                    const soldOutMsg = checkoutContext.orderLanguage === 'fr'
+                        ? 'Un ou plusieurs articles viennent de se vendre. Veuillez rafraîchir et réessayer.'
+                        : 'One or more items just sold out. Please refresh and try again.';
+                    return res.status(409).json({ error: soldOutMsg });
                 }
                 throw checkoutErr;
             }
