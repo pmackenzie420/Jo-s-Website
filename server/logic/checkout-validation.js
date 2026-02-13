@@ -76,6 +76,7 @@ const resolvePickupDateId = async (pool, pickupDate, pickupLocation) => {
         WHERE is_active = true
           AND date_value = $1
           AND location = $2
+          AND date_value >= CURRENT_DATE
         ORDER BY created_at ASC, id ASC
         LIMIT 1
         `,

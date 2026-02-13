@@ -150,7 +150,7 @@ const registerCheckoutRoutes = (app, deps) => {
                     customerEmail: checkoutContext.customerEmail,
                     customerAddress: checkoutContext.customerAddress,
                     totalCents: quote.totalCents,
-                    checkoutItems: checkoutContext.checkoutItems,
+                    orderItemsForStorage: quote.orderItemsForStorage,
                     RESERVED_ORDER_STATUS,
                     pickupDate: checkoutContext.pickupDate,
                     pickupLocation: checkoutContext.pickupLocation,

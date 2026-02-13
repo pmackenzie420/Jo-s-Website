@@ -1,8 +1,13 @@
-const fetchPickupDates = async (pool, location) => {
+const fetchPickupDates = async (pool, location, options = {}) => {
+    const includePast = options.includePast !== false;
     const values = [];
-    const whereLocationClause = location ? 'AND location = $1' : '';
+    const whereClauses = ['is_active = true'];
     if (location) {
         values.push(location);
+        whereClauses.push(`location = $${values.length}`);
+    }
+    if (!includePast) {
+        whereClauses.push('date_value >= CURRENT_DATE');
     }
     const result = await pool.query(
         `
@@ -14,8 +19,7 @@ const fetchPickupDates = async (pool, location) => {
                 is_active,
                 created_at
             FROM pickup_dates
-            WHERE is_active = true
-              ${whereLocationClause}
+            WHERE ${whereClauses.join('\n              AND ')}
             ORDER BY date_value, location, created_at ASC, id ASC
         )
         SELECT id, date_value, location, is_active, created_at

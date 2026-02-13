@@ -88,6 +88,7 @@ const buildCheckoutQuote = async ({
 
     const lineItemsFull = [];
     const lineItemsLohmann = [];
+    const orderItemsForStorage = [];
     let totalCents = 0;
     let lohmannSubtotalCents = 0;
     let nonLohmannSubtotalCents = 0;
@@ -146,6 +147,13 @@ const buildCheckoutQuote = async ({
             },
             quantity
         };
+        orderItemsForStorage.push({
+            id: Number(hen.id),
+            quantity,
+            name: hen.name,
+            unit_cents: unitPrice,
+            line_cents: itemTotal
+        });
         if (isLohmann) {
             lineItemsLohmann.push(lineItem);
         } else {
@@ -216,6 +224,7 @@ const buildCheckoutQuote = async ({
         amountPaidCents,
         amountDueCents,
         lineItems,
+        orderItemsForStorage,
         reservationItems
     };
 };

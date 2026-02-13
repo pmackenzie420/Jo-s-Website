@@ -43,7 +43,7 @@ const COPY = {
     title: 'Politique de confidentialit\u00e9',
     intro: 'Nous respectons votre vie priv\u00e9e et nous nous engageons \u00e0 prot\u00e9ger vos renseignements personnels.',
     infoTitle: 'Renseignements que nous recueillons',
-    infoIntro: "Lorsque vous passez une commande ou nous contactez, nous pouvons recueillir les informations suivantes :",
+    infoIntro: "Lorsque vous passez une commande ou que vous nous contactez, nous pouvons recueillir les informations suivantes :",
     infoList: [
       'Nom',
       'Adresse courriel',
@@ -75,7 +75,7 @@ const COPY = {
       'Vous pouvez demander l\u2019acc\u00e8s, la correction ou la suppression de vos renseignements personnels en tout temps en nous contactant.',
     contactTitle: 'Contact',
     contactBody:
-      "Si vous avez des questions au sujet de cette politique de confidentialit\u00e9 ou sur la fa\u00e7on dont vos renseignements personnels sont trait\u00e9s, veuillez contacter :"
+      "Si vous avez des questions au sujet de cette politique de confidentialit\u00e9 ou sur la fa\u00e7on dont vos renseignements personnels sont trait\u00e9s, veuillez nous contacter :"
   }
 };
 

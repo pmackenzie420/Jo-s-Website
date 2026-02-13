@@ -664,6 +664,15 @@ test('checkout route stores lamb-only orders as deposit even when full payment i
 
     assert.equal(res.statusCode, 200);
     assert.equal(stripeCreatePayload?.metadata?.payment_type, 'deposit');
+    const storedItems = JSON.parse(insertedOrderValues?.[3] || '[]');
+    assert.equal(storedItems.length, 1);
+    assert.deepEqual(storedItems[0], {
+        id: 5,
+        quantity: 1,
+        name: 'Lamb / Agneau',
+        unit_cents: 10000,
+        line_cents: 10000
+    });
     assert.equal(insertedOrderValues?.[7], 'deposit');
     assert.equal(insertedOrderValues?.[8], 10000);
     assert.equal(insertedOrderValues?.[9], 0);

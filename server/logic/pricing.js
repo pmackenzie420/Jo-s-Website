@@ -105,10 +105,17 @@ const getOrderSummary = async (orderId) => {
     const items = parsedItems.map((item) => {
         const id = String(item.id);
         const quantity = Number(item.quantity ?? item.qty ?? 0);
-        const rawName = henMap.get(id) || item.name || 'Item';
+        const rawName = item.name || henMap.get(id) || 'Item';
         const name = String(rawName);
-        const unitCents = calculateItemPrice(name, quantity);
-        const lineCents = unitCents * quantity;
+        const persistedUnitCents = Number(item.unit_cents ?? item.unitCents);
+        const persistedLineCents = Number(item.line_cents ?? item.lineCents);
+        const unitCents = Number.isFinite(persistedUnitCents) && persistedUnitCents >= 0
+            ? Math.floor(persistedUnitCents)
+            : calculateItemPrice(name, quantity);
+        const calculatedLineCents = unitCents * quantity;
+        const lineCents = Number.isFinite(persistedLineCents) && persistedLineCents >= 0
+            ? Math.floor(persistedLineCents)
+            : calculatedLineCents;
         return {
             id,
             name,

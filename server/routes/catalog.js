@@ -77,7 +77,7 @@ const registerCatalogRoutes = (app, deps) => {
     app.get('/api/pickup-dates', async (req, res) => {
         try {
             const location = typeof req.query.location === 'string' ? req.query.location : null;
-            const dates = await fetchPickupDates(pool, location);
+            const dates = await fetchPickupDates(pool, location, { includePast: false });
             return res.json(dates);
         } catch (err) {
             return sendServerError(res, err, 'Failed to load pickup dates');

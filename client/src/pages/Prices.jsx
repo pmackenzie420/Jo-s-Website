@@ -10,8 +10,8 @@ export default function Prices({ lang }) {
 
       // Hens shared
       hens_group_title: "READY-TO-LAY HENS",
-      white_hen_title: "WHITE LOHMANN: 19 weeks-old",
-      hen_title: "BROWN LOHMANN: 19 weeks-old",
+      white_hen_title: "WHITE LOHMANN: 19 weeks old",
+      hen_title: "BROWN LOHMANN: 19 weeks old",
       col_qty: "Quantity",
       col_price: "Price",
 
