@@ -16,6 +16,27 @@ const { getPaymentDetails, getOrderSummary, isLambName } = require('./pricing');
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM;
 const EMAIL_FROM_NAME = process.env.EMAIL_FROM_NAME || 'Les Fermes Soulard';
+const extractEmailAddress = (value) => {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    const angleMatch = raw.match(/<([^>]+)>/);
+    return angleMatch?.[1] ? String(angleMatch[1]).trim() : raw;
+};
+const getDefaultNoReplyAddress = () => {
+    const fromAddress = extractEmailAddress(EMAIL_FROM);
+    const atIndex = fromAddress.lastIndexOf('@');
+    if (atIndex <= 0 || atIndex === fromAddress.length - 1) return '';
+    const domain = fromAddress.slice(atIndex + 1).trim().toLowerCase();
+    if (!domain) return '';
+    return `no-reply@${domain}`;
+};
+const EMAIL_REPLY_TO = process.env.EMAIL_REPLY_TO || '';
+const CONFIRMATION_EMAIL_REPLY_TO = String(
+    process.env.CONFIRMATION_EMAIL_REPLY_TO
+    || EMAIL_REPLY_TO
+    || getDefaultNoReplyAddress()
+).trim();
+const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const buildOrderConfirmationEmailText = ({ order, items }) => {
     const language = normalizeLanguage(order.language);
@@ -222,7 +243,7 @@ const normalizeResendAttachments = (attachments) => {
     return normalized.length > 0 ? normalized : undefined;
 };
 
-const sendEmailMessage = async ({ to, subject, text, html, attachments }) => {
+const sendEmailMessage = async ({ to, subject, text, html, attachments, replyTo }) => {
     const payload = {
         from: EMAIL_FROM_NAME ? `${EMAIL_FROM_NAME} <${EMAIL_FROM}>` : EMAIL_FROM,
         to: [to.name ? `${to.name} <${to.email}>` : to.email],
@@ -230,6 +251,10 @@ const sendEmailMessage = async ({ to, subject, text, html, attachments }) => {
         text: text || '',
         html: html || ''
     };
+    const normalizedReplyTo = extractEmailAddress(replyTo);
+    if (SIMPLE_EMAIL_PATTERN.test(normalizedReplyTo)) {
+        payload.reply_to = normalizedReplyTo;
+    }
 
     const resendAttachments = normalizeResendAttachments(attachments);
     if (resendAttachments) {
@@ -289,7 +314,8 @@ const sendOrderConfirmationEmail = async (orderId) => {
             },
             subject: emailPayload.subject,
             text: emailPayload.text,
-            html: emailPayload.html
+            html: emailPayload.html,
+            replyTo: CONFIRMATION_EMAIL_REPLY_TO
         });
         return { sent: true };
     } catch (err) {

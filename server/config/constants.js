@@ -33,7 +33,7 @@ const ORDER_CONFIRMATION_COPY = {
             'No phone reminder will be made. Please carefully note your pickup date.',
         reminderLineTwo:
             'If any change occurs, we will notify you by email.',
-        questions: (phone) => `Questions? Reply to this email or call us at ${phone}.`,
+        questions: (phone) => `Questions? Call us at ${phone}.`,
         depositPaid: 'Deposit paid',
         paidInFull: 'Paid in full'
     },
@@ -60,7 +60,7 @@ const ORDER_CONFIRMATION_COPY = {
             'Aucun rappel téléphonique ne sera effectué. Merci de noter soigneusement la date de ramassage.',
         reminderLineTwo:
             'Si un changement survenait, nous vous avertirons par courriel.',
-        questions: (phone) => `Des questions ? Répondez à ce courriel ou appelez-nous au ${phone}.`,
+        questions: (phone) => `Des questions ? Appelez-nous au ${phone}.`,
         depositPaid: 'Dépôt payé',
         paidInFull: 'Payé en totalité'
     }
