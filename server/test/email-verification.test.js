@@ -98,3 +98,77 @@ test('email verifier warns on disposable domains', async () => {
     assert.equal(result.reason, 'disposable_domain');
     assert.equal(result.status, 'warning');
 });
+
+test('email verifier uses QuickEmailVerification when configured', async () => {
+    const verifier = createEmailVerifier({
+        provider: 'quickemailverification',
+        quickEmailApiKey: 'test-key',
+        quickEmailClient: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                result: 'valid',
+                reason: 'accepted_email',
+                disposable: 'false',
+                role: 'false',
+                accept_all: 'false',
+                safe_to_send: 'true'
+            })
+        }),
+        resolver: {
+            resolveMx: async () => { throw createError('ENOTFOUND'); },
+            resolve4: async () => { throw createError('ENOTFOUND'); },
+            resolve6: async () => { throw createError('ENOTFOUND'); }
+        }
+    });
+
+    const result = await verifier.verify('user@example.com', { language: 'en' });
+    assert.equal(result.accepted, true);
+    assert.equal(result.shouldBlock, false);
+    assert.equal(result.reason, 'valid');
+});
+
+test('email verifier maps QuickEmailVerification invalid domain to blocking error', async () => {
+    const verifier = createEmailVerifier({
+        provider: 'quickemailverification',
+        quickEmailApiKey: 'test-key',
+        quickEmailClient: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                result: 'invalid',
+                reason: 'invalid_domain',
+                did_you_mean: 'name@gmail.com'
+            })
+        }),
+        resolver: {
+            resolveMx: async () => [{ exchange: 'mx.example.com', priority: 10 }],
+            resolve4: async () => [],
+            resolve6: async () => []
+        }
+    });
+
+    const result = await verifier.verify('name@gmial.com', { language: 'en' });
+    assert.equal(result.accepted, false);
+    assert.equal(result.shouldBlock, true);
+    assert.equal(result.reason, 'domain_not_found');
+    assert.equal(result.suggestion, 'name@gmail.com');
+});
+
+test('email verifier falls back to DNS when QuickEmailVerification is unavailable', async () => {
+    const verifier = createEmailVerifier({
+        provider: 'quickemailverification',
+        quickEmailApiKey: 'test-key',
+        quickEmailClient: async () => ({ ok: false, status: 429, json: async () => ({}) }),
+        resolver: {
+            resolveMx: async () => [{ exchange: 'mx.example.com', priority: 10 }],
+            resolve4: async () => [],
+            resolve6: async () => []
+        }
+    });
+
+    const result = await verifier.verify('user@example.com', { language: 'en' });
+    assert.equal(result.accepted, true);
+    assert.equal(result.shouldBlock, false);
+    assert.equal(result.reason, 'valid');
+});
