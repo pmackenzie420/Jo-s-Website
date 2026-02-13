@@ -9,10 +9,10 @@ const {
 } = require('../logic/pricing');
 
 test('calculateItemPrice uses shared tier rules', () => {
-    assert.equal(calculateItemPrice('Lohmann Brown', 5), 1750);
-    assert.equal(calculateItemPrice('Lohmann Brown', 13), 1525);
-    assert.equal(calculateItemPrice('Meat Chicken', 120), 230);
-    assert.equal(calculateItemPrice('Agneau', 1), 5000);
+    assert.equal(calculateItemPrice('Lohmann Brown', 5), 1825);
+    assert.equal(calculateItemPrice('Lohmann Brown', 13), 1600);
+    assert.equal(calculateItemPrice('Meat Chicken', 120), 240);
+    assert.equal(calculateItemPrice('Agneau', 1), 10000);
 });
 
 test('getMinimumOrderQuantity returns configured minimums', () => {

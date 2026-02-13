@@ -4,10 +4,10 @@
       "key": "layer",
       "keywords": ["lohmann", "ready-to-lay", "white ready"],
       "tiers": [
-        { "minQty": 50, "unitCents": 1400 },
-        { "minQty": 13, "unitCents": 1525 },
-        { "minQty": 6, "unitCents": 1700 },
-        { "minQty": 1, "unitCents": 1750 }
+        { "minQty": 50, "unitCents": 1460 },
+        { "minQty": 13, "unitCents": 1600 },
+        { "minQty": 6, "unitCents": 1775 },
+        { "minQty": 1, "unitCents": 1825 }
       ],
       "depositEligibleMinQty": 13,
       "depositRequiredAboveQty": 50
@@ -16,10 +16,11 @@
       "key": "meat",
       "keywords": ["meat", "chair"],
       "tiers": [
-        { "minQty": 300, "unitCents": 215 },
-        { "minQty": 100, "unitCents": 230 },
-        { "minQty": 49, "unitCents": 250 },
-        { "minQty": 1, "unitCents": 260 }
+        { "minQty": 300, "unitCents": 225 },
+        { "minQty": 100, "unitCents": 240 },
+        { "minQty": 50, "unitCents": 260 },
+        { "minQty": 25, "unitCents": 275 },
+        { "minQty": 1, "unitCents": 275 }
       ],
       "minOrderQty": 25
     },
@@ -27,7 +28,7 @@
       "key": "lamb",
       "keywords": ["lamb", "agneau"],
       "tiers": [
-        { "minQty": 1, "unitCents": 5000 }
+        { "minQty": 1, "unitCents": 10000 }
       ],
       "depositOnly": true
     }

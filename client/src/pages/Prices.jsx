@@ -91,10 +91,10 @@ export default function Prices({ lang }) {
                 <tr><th>{t.col_qty}</th><th>{t.col_price}</th></tr>
               </thead>
               <tbody>
-                <tr><td>50+</td><td>$14.00 {t.unit}</td></tr>
-                <tr><td>13 - 49</td><td>$15.25 {t.unit}</td></tr>
-                <tr><td>6 - 12</td><td>$17.00 {t.unit}</td></tr>
-                <tr><td>1 - 5</td><td>$17.50 {t.unit}</td></tr>
+                <tr><td>50+</td><td>$14.60 {t.unit}</td></tr>
+                <tr><td>13 - 49</td><td>$16.00 {t.unit}</td></tr>
+                <tr><td>6 - 12</td><td>$17.75 {t.unit}</td></tr>
+                <tr><td>1 - 5</td><td>$18.25 {t.unit}</td></tr>
               </tbody>
             </table>
           </div>
@@ -106,10 +106,10 @@ export default function Prices({ lang }) {
                 <tr><th>{t.col_qty}</th><th>{t.col_price}</th></tr>
               </thead>
               <tbody>
-                <tr><td>50+</td><td>$14.00 {t.unit}</td></tr>
-                <tr><td>13 - 49</td><td>$15.25 {t.unit}</td></tr>
-                <tr><td>6 - 12</td><td>$17.00 {t.unit}</td></tr>
-                <tr><td>1 - 5</td><td>$17.50 {t.unit}</td></tr>
+                <tr><td>50+</td><td>$14.60 {t.unit}</td></tr>
+                <tr><td>13 - 49</td><td>$16.00 {t.unit}</td></tr>
+                <tr><td>6 - 12</td><td>$17.75 {t.unit}</td></tr>
+                <tr><td>1 - 5</td><td>$18.25 {t.unit}</td></tr>
               </tbody>
             </table>
           </div>
@@ -126,10 +126,10 @@ export default function Prices({ lang }) {
                 <tr><th>{t.meat_col_qty}</th><th>{t.meat_col_price}</th></tr>
               </thead>
               <tbody>
-                <tr><td>300+</td><td>$2.15 {t.unit}</td></tr>
-                <tr><td>100 - 299</td><td>$2.30 {t.unit}</td></tr>
-                <tr><td>49 - 99</td><td>$2.50 {t.unit}</td></tr>
-                <tr><td>1 - 48</td><td>$2.60 {t.unit}</td></tr>
+                <tr><td>300+</td><td>$2.25 {t.unit}</td></tr>
+                <tr><td>100 - 299</td><td>$2.40 {t.unit}</td></tr>
+                <tr><td>50 - 99</td><td>$2.60 {t.unit}</td></tr>
+                <tr><td>25 - 49</td><td>$2.75 {t.unit}</td></tr>
               </tbody>
             </table>
             <p className="meat-footer">{t.meat_footer}</p>
@@ -142,7 +142,7 @@ export default function Prices({ lang }) {
                 <tr><th>{t.col_qty}</th><th>{t.col_price}</th></tr>
               </thead>
               <tbody>
-                <tr><td>1+</td><td>$50.00 {t.unit}</td></tr>
+                <tr><td>1+</td><td>$100.00 {t.unit} (dépôt / deposit)</td></tr>
               </tbody>
             </table>
             <p className="meat-footer">{t.lamb_footer}</p>

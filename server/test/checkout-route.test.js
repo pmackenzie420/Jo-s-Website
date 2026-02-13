@@ -665,6 +665,6 @@ test('checkout route stores lamb-only orders as deposit even when full payment i
     assert.equal(res.statusCode, 200);
     assert.equal(stripeCreatePayload?.metadata?.payment_type, 'deposit');
     assert.equal(insertedOrderValues?.[7], 'deposit');
-    assert.equal(insertedOrderValues?.[8], 5000);
+    assert.equal(insertedOrderValues?.[8], 10000);
     assert.equal(insertedOrderValues?.[9], 0);
 });
