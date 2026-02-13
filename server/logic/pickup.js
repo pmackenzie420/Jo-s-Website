@@ -1,18 +1,43 @@
 const fetchPickupDates = async (pool, location) => {
-    let query = 'SELECT * FROM pickup_dates WHERE is_active = true';
     const values = [];
+    const whereLocationClause = location ? 'AND location = $1' : '';
     if (location) {
         values.push(location);
-        query += ' AND location = $1';
     }
-    query += ' ORDER BY date_value ASC';
-    const result = await pool.query(query, values);
+    const result = await pool.query(
+        `
+        WITH canonical_dates AS (
+            SELECT DISTINCT ON (date_value, location)
+                id,
+                date_value,
+                location,
+                is_active,
+                created_at
+            FROM pickup_dates
+            WHERE is_active = true
+              ${whereLocationClause}
+            ORDER BY date_value, location, created_at ASC, id ASC
+        )
+        SELECT id, date_value, location, is_active, created_at
+        FROM canonical_dates
+        ORDER BY date_value ASC
+        `,
+        values
+    );
     return result.rows;
 };
 
 const findPickupDateId = async (pool, date, location) => {
     const result = await pool.query(
-        'SELECT id FROM pickup_dates WHERE is_active = true AND date_value = $1 AND location = $2',
+        `
+        SELECT id
+        FROM pickup_dates
+        WHERE is_active = true
+          AND date_value = $1
+          AND location = $2
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+        `,
         [date, location]
     );
     return result.rows[0]?.id || null;
@@ -40,15 +65,23 @@ const fetchPickupStockItems = async (pool, pickupDateId) => {
 const fetchAllPickupStocks = async (pool) => {
     const result = await pool.query(
         `
+        WITH canonical_dates AS (
+            SELECT DISTINCT ON (date_value, location)
+                id,
+                date_value,
+                location
+            FROM pickup_dates
+            WHERE is_active = true
+            ORDER BY date_value, location, created_at ASC, id ASC
+        )
         SELECT
-            pickup_dates.date_value,
-            pickup_dates.location,
+            canonical_dates.date_value,
+            canonical_dates.location,
             pickup_stock.hen_id,
             pickup_stock.stock
         FROM pickup_stock
-        INNER JOIN pickup_dates
-            ON pickup_dates.id = pickup_stock.pickup_date_id
-        WHERE pickup_dates.is_active = true
+        INNER JOIN canonical_dates
+            ON canonical_dates.id = pickup_stock.pickup_date_id
         `
     );
     return result.rows;

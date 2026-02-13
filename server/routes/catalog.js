@@ -48,12 +48,17 @@ const registerCatalogRoutes = (app, deps) => {
                         hens.*,
                         COALESCE(pickup_stock.stock, 0) AS stock
                     FROM hens
-                    LEFT JOIN pickup_dates
-                        ON pickup_dates.date_value = $1
-                        AND pickup_dates.location = $2
-                        AND pickup_dates.is_active = true
+                    LEFT JOIN LATERAL (
+                        SELECT id
+                        FROM pickup_dates
+                        WHERE date_value = $1
+                          AND location = $2
+                          AND is_active = true
+                        ORDER BY created_at ASC, id ASC
+                        LIMIT 1
+                    ) AS selected_pickup ON TRUE
                     LEFT JOIN pickup_stock
-                        ON pickup_stock.pickup_date_id = pickup_dates.id
+                        ON pickup_stock.pickup_date_id = selected_pickup.id
                         AND pickup_stock.hen_id = hens.id
                     WHERE hens.is_active = true
                     ORDER BY hens.id ASC

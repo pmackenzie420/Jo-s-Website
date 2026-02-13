@@ -10,7 +10,14 @@ const getOrderItemTotals = (parseOrderItems, collectOrderItemTotals, rawItems) =
 const findPickupDateIdByValue = async (client, pickupDate, pickupLocation) => {
     if (!pickupDate || !pickupLocation) return null;
     const result = await client.query(
-        'SELECT id FROM pickup_dates WHERE date_value = $1 AND location = $2',
+        `
+        SELECT id
+        FROM pickup_dates
+        WHERE date_value = $1
+          AND location = $2
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+        `,
         [pickupDate, pickupLocation]
     );
     return result.rows[0]?.id || null;

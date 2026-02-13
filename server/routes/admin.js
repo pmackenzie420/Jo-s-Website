@@ -47,7 +47,8 @@ const registerAdminRoutes = (app, deps) => {
         isValidEmail,
         sendEmailMessage,
         formatPickupDate,
-        handlePickupStockRequest
+        handlePickupStockRequest,
+        releaseReservedOrder = async () => ({ status: 'not_reserved' })
     } = deps;
 
     const fetchAdminOrders = async ({ limit = 2000, offset = 0 } = {}) => {
@@ -202,14 +203,31 @@ const registerAdminRoutes = (app, deps) => {
     });
 
     app.post('/api/admin/pickup-dates', checkAuth, async (req, res) => {
-        const { date_value, location } = req.body;
-        if (!date_value || !location) {
+        const dateValue = sanitizeText(req.body?.date_value, 40);
+        const location = sanitizeText(req.body?.location, 40);
+        if (!dateValue || !location) {
             return res.status(400).send('Date and location are required.');
         }
         try {
+            const existing = await pool.query(
+                `
+                SELECT id
+                FROM pickup_dates
+                WHERE date_value = $1 AND location = $2
+                ORDER BY created_at ASC, id ASC
+                LIMIT 1
+                `,
+                [dateValue, location]
+            );
+            if (existing.rows.length > 0) {
+                return res.status(409).json({
+                    error: 'Pickup date already exists for this location.'
+                });
+            }
+
             const result = await pool.query(
                 'INSERT INTO pickup_dates (date_value, location) VALUES ($1, $2) RETURNING *',
-                [date_value, location]
+                [dateValue, location]
             );
             const pickupDate = result.rows[0];
             const hensRes = await pool.query(
@@ -229,6 +247,11 @@ const registerAdminRoutes = (app, deps) => {
             }
             return res.json(pickupDate);
         } catch (err) {
+            if (err?.code === '23505') {
+                return res.status(409).json({
+                    error: 'Pickup date already exists for this location.'
+                });
+            }
             return sendServerError(res, err, 'Failed to add pickup date');
         }
     });
@@ -236,6 +259,32 @@ const registerAdminRoutes = (app, deps) => {
     app.delete('/api/admin/pickup-dates/:id', checkAuth, async (req, res) => {
         const { id } = req.params;
         try {
+            const targetDate = await pool.query(
+                'SELECT date_value, location FROM pickup_dates WHERE id = $1',
+                [id]
+            );
+            if (targetDate.rows.length === 0) {
+                return res.json({ success: true });
+            }
+
+            const dateValue = targetDate.rows[0].date_value;
+            const location = targetDate.rows[0].location;
+            const activeOrders = await pool.query(
+                `
+                SELECT COUNT(*)::int AS count
+                FROM orders
+                WHERE pickup_date = $1
+                  AND pickup_location = $2
+                  AND LOWER(COALESCE(status, 'pending')) <> 'cancelled'
+                `,
+                [dateValue, location]
+            );
+            if (Number(activeOrders.rows[0]?.count || 0) > 0) {
+                return res.status(409).json({
+                    error: 'Cannot delete pickup date with active orders.'
+                });
+            }
+
             await pool.query('DELETE FROM pickup_dates WHERE id = $1', [id]);
             return res.json({ success: true });
         } catch (err) {
@@ -292,14 +341,39 @@ const registerAdminRoutes = (app, deps) => {
         if (!Array.isArray(ids) || ids.length === 0) {
             return res.status(400).json({ error: 'ids array is required' });
         }
+        const uniqueIds = Array.from(
+            new Set(
+                ids.map((value) => String(value || '').trim())
+                    .filter(Boolean)
+            )
+        );
+        if (uniqueIds.length === 0) {
+            return res.status(400).json({ error: 'ids array is required' });
+        }
         if (!ADMIN_ALLOWED_ORDER_STATUSES.has(status)) {
             return res.status(400).json({ error: 'Invalid status value.' });
         }
         try {
-            await pool.query(
-                'UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])',
-                [status, ids.map(String)]
-            );
+            if (status === 'cancelled') {
+                const directUpdateIds = [];
+                for (const orderId of uniqueIds) {
+                    const releaseResult = await releaseReservedOrder(orderId);
+                    if (releaseResult?.status === 'not_reserved') {
+                        directUpdateIds.push(orderId);
+                    }
+                }
+                if (directUpdateIds.length > 0) {
+                    await pool.query(
+                        'UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])',
+                        [status, directUpdateIds]
+                    );
+                }
+            } else {
+                await pool.query(
+                    'UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])',
+                    [status, uniqueIds]
+                );
+            }
             return res.json({ success: true, message: 'Status updated' });
         } catch (err) {
             return sendServerError(res, err, 'Failed to update order statuses');

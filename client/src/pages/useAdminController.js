@@ -28,6 +28,14 @@ import useAdminNotice from './admin-hooks/useAdminNotice';
 import useAdminEmailComposer from './admin-hooks/useAdminEmailComposer';
 
 const ORDERS_PAGE_LIMIT = 500;
+const ADMIN_ALLOWED_ORDER_STATUSES = new Set([
+  'reserved',
+  'pending',
+  'paid',
+  'fulfilled',
+  'picked_up',
+  'cancelled'
+]);
 
 export default function useAdminController() {
   const [password, setPassword] = useState('');
@@ -370,6 +378,16 @@ export default function useAdminController() {
       const status = normalizeStatus(order.status);
       if (!order.activeOrderIds?.length || status === 'picked_up' || status === 'cancelled') return;
 
+      const previousStatusById = new Map();
+      for (const sourceOrder of order.orders || []) {
+        const sourceId = String(sourceOrder?.id || '').trim();
+        const sourceStatus = String(sourceOrder?.status || '').toLowerCase();
+        if (!sourceId) continue;
+        if (!ADMIN_ALLOWED_ORDER_STATUSES.has(sourceStatus)) continue;
+        previousStatusById.set(sourceId, sourceStatus);
+      }
+      const previousMergedStatus = status;
+
       setSelectedPickup(null);
       setOptimisticStatuses((prev) => ({ ...prev, [order.key]: 'picked_up' }));
 
@@ -392,18 +410,36 @@ export default function useAdminController() {
         actionLabel: 'Undo',
         duration: 5000,
         action: async () => {
-          setOptimisticStatuses((prev) => ({ ...prev, [order.key]: 'pending' }));
-          const didUndo = await updateOrderStatus(order.activeOrderIds, 'pending', order.key, {
-            showToast: false
-          });
-          if (!didUndo) {
+          setOptimisticStatuses((prev) => ({ ...prev, [order.key]: previousMergedStatus }));
+          const idsByStatus = new Map();
+          for (const orderId of order.activeOrderIds) {
+            const orderIdText = String(orderId || '').trim();
+            if (!orderIdText) continue;
+            const restoreStatus = previousStatusById.get(orderIdText) || 'pending';
+            if (!idsByStatus.has(restoreStatus)) {
+              idsByStatus.set(restoreStatus, []);
+            }
+            idsByStatus.get(restoreStatus).push(orderIdText);
+          }
+
+          try {
+            for (const [restoreStatus, restoreIds] of idsByStatus.entries()) {
+              await updateOrdersStatus({ ids: restoreIds, status: restoreStatus });
+            }
+            await refreshOrders({ quiet: true });
+            setOptimisticStatuses((prev) => {
+              const next = { ...prev };
+              delete next[order.key];
+              return next;
+            });
+          } catch {
             setOptimisticStatuses((prev) => ({ ...prev, [order.key]: 'picked_up' }));
             showToast({ type: 'error', text: 'Failed to undo pickup.' });
           }
         }
       });
     },
-    [showToast, updateOrderStatus]
+    [showToast, updateOrderStatus, refreshOrders]
   );
 
   const handleRowClick = useCallback((order) => {

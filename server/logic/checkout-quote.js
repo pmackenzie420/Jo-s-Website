@@ -1,5 +1,56 @@
 const { CheckoutHttpError } = require('./checkout-errors');
 
+const normalizeBaseUrl = (value) => {
+    if (typeof value !== 'string') return '';
+    return value.trim().replace(/\/+$/, '');
+};
+
+const isLambItemName = (value) => {
+    const normalized = String(value || '').toLowerCase();
+    return normalized.includes('lamb') || normalized.includes('agneau');
+};
+
+const getCheckoutImagePath = (hen) => {
+    const lowerName = String(hen?.name || '').toLowerCase();
+    const rawImageUrl = String(hen?.image_url || '');
+    const lowerImageUrl = rawImageUrl.toLowerCase();
+
+    if (lowerName.includes('lamb') || lowerName.includes('agneau') || lowerImageUrl.includes('lamb')) {
+        return '/photos/lamb_cropped.jpg';
+    }
+    if (lowerName.includes('meat') || lowerName.includes('chair') || lowerImageUrl.includes('broiler')) {
+        return '/photos/chicks_cropped.jpg';
+    }
+    if (lowerName.includes('white') && (lowerName.includes('ready') || lowerName.includes('lay'))) {
+        return '/photos/white_hen.jpg';
+    }
+    if (
+        lowerName.includes('brown')
+        || lowerName.includes('brune')
+        || lowerName.includes('lohmann')
+        || lowerImageUrl.includes('layer')
+    ) {
+        return '/photos/hens_cropped.jpg';
+    }
+
+    if (rawImageUrl.startsWith('http')) {
+        return rawImageUrl;
+    }
+    if (rawImageUrl.startsWith('/')) {
+        return rawImageUrl;
+    }
+    return '';
+};
+
+const resolveCheckoutImageUrl = (hen, clientBaseUrl = process.env.CLIENT_URL) => {
+    const selectedPath = getCheckoutImagePath(hen);
+    if (!selectedPath) return null;
+    if (selectedPath.startsWith('http')) return selectedPath;
+    const normalizedBaseUrl = normalizeBaseUrl(clientBaseUrl);
+    if (!normalizedBaseUrl) return null;
+    return `${normalizedBaseUrl}${selectedPath.startsWith('/') ? selectedPath : `/${selectedPath}`}`;
+};
+
 const buildCheckoutQuote = async ({
     pool,
     checkoutItems,
@@ -41,6 +92,7 @@ const buildCheckoutQuote = async ({
     let lohmannSubtotalCents = 0;
     let nonLohmannSubtotalCents = 0;
     let lohmannQty = 0;
+    let lambQty = 0;
 
     for (const item of checkoutItems) {
         const hen = henMap.get(Number(item.id));
@@ -66,21 +118,24 @@ const buildCheckoutQuote = async ({
         const itemTotal = unitPrice * quantity;
         totalCents += itemTotal;
         const isLohmann = isLohmannHenName(hen.name);
+        const isLamb = isLambItemName(hen.name);
         if (isLohmann) {
             lohmannSubtotalCents += itemTotal;
             lohmannQty += quantity;
         } else {
             nonLohmannSubtotalCents += itemTotal;
+            if (isLamb) {
+                lambQty += quantity;
+            }
         }
 
         const productData = {
             name: hen.name,
             description: `Bulk Price: $${(unitPrice / 100).toFixed(2)}/unit`
         };
-        if (hen.image_url && hen.image_url.startsWith('http')) {
-            productData.images = [hen.image_url];
-        } else if (hen.image_url && hen.image_url.startsWith('/') && process.env.CLIENT_URL) {
-            productData.images = [`${process.env.CLIENT_URL}${hen.image_url}`];
+        const checkoutImageUrl = resolveCheckoutImageUrl(hen);
+        if (checkoutImageUrl) {
+            productData.images = [checkoutImageUrl];
         }
 
         const lineItem = {
@@ -102,13 +157,14 @@ const buildCheckoutQuote = async ({
     const depositRequiredAboveQty = Math.max(Number(getDepositRequiredAboveQty?.() || 0), 0);
     const depositEligible = lohmannQty >= depositEligibleMinQty;
     const depositRequired = depositRequiredAboveQty > 0 && lohmannQty > depositRequiredAboveQty;
+    const hasLambItems = lambQty > 0;
     if (depositRequired && requestedPayment !== 'deposit') {
         throw new CheckoutHttpError(
             400,
             `Orders above ${depositRequiredAboveQty} Lohmann hens require a 25% deposit.`
         );
     }
-    if (requestedPayment === 'deposit' && !depositEligible) {
+    if (requestedPayment === 'deposit' && !depositEligible && !hasLambItems) {
         throw new CheckoutHttpError(
             400,
             `Deposit is available only for ${depositEligibleMinQty} or more Lohmann hens.`
@@ -122,7 +178,7 @@ const buildCheckoutQuote = async ({
         ? nonLohmannSubtotalCents + depositCents
         : totalCents;
     const amountDueCents = Math.max(totalCents - amountPaidCents, 0);
-    const paymentType = amountDueCents > 0 ? 'deposit' : 'full';
+    const paymentType = (amountDueCents > 0 || hasLambItems) ? 'deposit' : 'full';
 
     let lineItems = [...lineItemsFull, ...lineItemsLohmann];
     if (paymentType === 'deposit') {
@@ -165,5 +221,6 @@ const buildCheckoutQuote = async ({
 };
 
 module.exports = {
-    buildCheckoutQuote
+    buildCheckoutQuote,
+    resolveCheckoutImageUrl
 };

@@ -26,6 +26,7 @@ const COPY = {
         statusLabel: 'Status',
         paidTodayLabel: 'Paid today',
         dueAtPickupLabel: 'Due at pickup',
+        lambDueUnknown: 'To be determined (based on weight)',
         totalLabel: 'Total',
         depositPaid: 'Deposit paid',
         paidInFull: 'Paid in full',
@@ -58,6 +59,7 @@ const COPY = {
         statusLabel: 'Statut',
         paidTodayLabel: "Payé aujourd'hui",
         dueAtPickupLabel: 'Dû au ramassage',
+        lambDueUnknown: 'À déterminer (selon le poids)',
         totalLabel: 'Total',
         depositPaid: 'Dépôt payé',
         paidInFull: 'Payé en totalité',
@@ -81,6 +83,11 @@ const normalizeLanguage = (value) => {
         return 'en';
     }
     return null;
+};
+
+const isLambItemName = (value) => {
+    const normalized = String(value || '').toLowerCase();
+    return normalized.includes('lamb') || normalized.includes('agneau');
 };
 
 const formatCalendarDate = (value, language) => {
@@ -225,6 +232,16 @@ function Success({ lang }) {
         : null;
     const paymentType = order?.payment_type || (Number(dueCents) > 0 ? 'deposit' : 'full');
     const paymentLabel = paymentType === 'deposit' ? copy.depositPaid : copy.paidInFull;
+    const hasLambItems = Array.isArray(order?.items)
+        && order.items.some((item) => isLambItemName(item?.name));
+    let dueAtPickupText = null;
+    if (hasLambItems && Number(dueCents) > 0 && dueAmount) {
+        dueAtPickupText = `$${dueAmount} + ${copy.lambDueUnknown}`;
+    } else if (hasLambItems) {
+        dueAtPickupText = copy.lambDueUnknown;
+    } else if (dueAmount && Number(dueCents) > 0) {
+        dueAtPickupText = `$${dueAmount}`;
+    }
     const hasVerifiedOrder = Boolean(order);
     const titleText = loading
         ? copy.loadingTitle
@@ -338,10 +355,10 @@ function Success({ lang }) {
                                 <span>${paidAmount}</span>
                             </div>
                         )}
-                        {dueAmount && Number(dueCents) > 0 && (
+                        {dueAtPickupText && (
                             <div className="success-detail-row">
                                 <span className="success-label">{copy.dueAtPickupLabel}:</span>
-                                <span>${dueAmount}</span>
+                                <span>{dueAtPickupText}</span>
                             </div>
                         )}
                     </div>

@@ -15,6 +15,8 @@ const {
     getPaymentDetails
 } = require('../logic/pricing');
 
+const normalizeSql = (sql) => String(sql).replace(/\s+/g, ' ').trim();
+
 const createMockRes = () => {
     const cookies = [];
     const res = {
@@ -50,10 +52,11 @@ test('checkout route creates reserved order and returns Stripe checkout URL', as
 
     const pool = {
         async query(sql) {
-            if (sql.includes('SELECT id FROM pickup_dates')) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('SELECT id FROM pickup_dates')) {
                 return { rows: [{ id: 'pickup-date-1' }] };
             }
-            if (sql.includes('SELECT id, name, image_url FROM hens')) {
+            if (normalizedSql.includes('SELECT id, name, image_url FROM hens')) {
                 return {
                     rows: [{
                         id: 1,
@@ -62,16 +65,16 @@ test('checkout route creates reserved order and returns Stripe checkout URL', as
                     }]
                 };
             }
-            if (sql.includes('SELECT hen_id, stock FROM pickup_stock')) {
+            if (normalizedSql.includes('SELECT hen_id, stock FROM pickup_stock')) {
                 return { rows: [{ hen_id: 1, stock: 100 }] };
             }
-            if (sql.includes('UPDATE orders SET stripe_payment_id')) {
+            if (normalizedSql.includes('UPDATE orders SET stripe_payment_id')) {
                 return { rowCount: 1, rows: [] };
             }
-            if (sql.includes('SELECT id, status FROM orders WHERE stripe_payment_id')) {
+            if (normalizedSql.includes('SELECT id, status FROM orders WHERE stripe_payment_id')) {
                 return { rows: [] };
             }
-            throw new Error(`Unexpected pool query: ${sql}`);
+            throw new Error(`Unexpected pool query: ${normalizedSql}`);
         }
     };
 
@@ -203,10 +206,11 @@ test('checkout route rejects full payment when Lohmann qty is above 50', async (
 
     const pool = {
         async query(sql) {
-            if (sql.includes('SELECT id FROM pickup_dates')) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('SELECT id FROM pickup_dates')) {
                 return { rows: [{ id: 'pickup-date-1' }] };
             }
-            if (sql.includes('SELECT id, name, image_url FROM hens')) {
+            if (normalizedSql.includes('SELECT id, name, image_url FROM hens')) {
                 return {
                     rows: [{
                         id: 1,
@@ -215,16 +219,16 @@ test('checkout route rejects full payment when Lohmann qty is above 50', async (
                     }]
                 };
             }
-            if (sql.includes('SELECT hen_id, stock FROM pickup_stock')) {
+            if (normalizedSql.includes('SELECT hen_id, stock FROM pickup_stock')) {
                 return { rows: [{ hen_id: 1, stock: 1000 }] };
             }
-            if (sql.includes('SELECT id, status FROM orders WHERE stripe_payment_id')) {
+            if (normalizedSql.includes('SELECT id, status FROM orders WHERE stripe_payment_id')) {
                 return { rows: [] };
             }
-            if (sql.includes('UPDATE orders SET stripe_payment_id')) {
+            if (normalizedSql.includes('UPDATE orders SET stripe_payment_id')) {
                 return { rowCount: 0, rows: [] };
             }
-            throw new Error(`Unexpected pool query: ${sql}`);
+            throw new Error(`Unexpected pool query: ${normalizedSql}`);
         }
     };
 
@@ -351,10 +355,11 @@ test('checkout route accepts deposit for Lohmann qty above 50 with lamb in same 
 
     const pool = {
         async query(sql) {
-            if (sql.includes('SELECT id FROM pickup_dates')) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('SELECT id FROM pickup_dates')) {
                 return { rows: [{ id: 'pickup-date-1' }] };
             }
-            if (sql.includes('SELECT id, name, image_url FROM hens')) {
+            if (normalizedSql.includes('SELECT id, name, image_url FROM hens')) {
                 return {
                     rows: [
                         {
@@ -370,7 +375,7 @@ test('checkout route accepts deposit for Lohmann qty above 50 with lamb in same 
                     ]
                 };
             }
-            if (sql.includes('SELECT hen_id, stock FROM pickup_stock')) {
+            if (normalizedSql.includes('SELECT hen_id, stock FROM pickup_stock')) {
                 return {
                     rows: [
                         { hen_id: 1, stock: 1000 },
@@ -378,13 +383,13 @@ test('checkout route accepts deposit for Lohmann qty above 50 with lamb in same 
                     ]
                 };
             }
-            if (sql.includes('UPDATE orders SET stripe_payment_id')) {
+            if (normalizedSql.includes('UPDATE orders SET stripe_payment_id')) {
                 return { rowCount: 1, rows: [] };
             }
-            if (sql.includes('SELECT id, status FROM orders WHERE stripe_payment_id')) {
+            if (normalizedSql.includes('SELECT id, status FROM orders WHERE stripe_payment_id')) {
                 return { rows: [] };
             }
-            throw new Error(`Unexpected pool query: ${sql}`);
+            throw new Error(`Unexpected pool query: ${normalizedSql}`);
         }
     };
 
@@ -510,4 +515,156 @@ test('checkout route accepts deposit for Lohmann qty above 50 with lamb in same 
     assert.equal(stripeCreatePayload?.metadata?.payment_type, 'deposit');
     assert.equal(Array.isArray(stripeCreatePayload?.line_items), true);
     assert.equal(stripeCreatePayload.line_items.length, 2);
+});
+
+test('checkout route stores lamb-only orders as deposit even when full payment is requested', async () => {
+    const routeHandlers = {};
+    const app = {
+        post(path, ...handlers) {
+            routeHandlers[`POST ${path}`] = handlers[handlers.length - 1];
+        },
+        get(path, ...handlers) {
+            routeHandlers[`GET ${path}`] = handlers[handlers.length - 1];
+        }
+    };
+
+    const pool = {
+        async query(sql) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('SELECT id FROM pickup_dates')) {
+                return { rows: [{ id: 'pickup-date-1' }] };
+            }
+            if (normalizedSql.includes('SELECT id, name, image_url FROM hens')) {
+                return {
+                    rows: [{
+                        id: 5,
+                        name: 'Lamb / Agneau',
+                        image_url: null
+                    }]
+                };
+            }
+            if (normalizedSql.includes('SELECT hen_id, stock FROM pickup_stock')) {
+                return { rows: [{ hen_id: 5, stock: 100 }] };
+            }
+            if (normalizedSql.includes('UPDATE orders SET stripe_payment_id')) {
+                return { rowCount: 1, rows: [] };
+            }
+            if (normalizedSql.includes('SELECT id, status FROM orders WHERE stripe_payment_id')) {
+                return { rows: [] };
+            }
+            throw new Error(`Unexpected pool query: ${normalizedSql}`);
+        }
+    };
+
+    let stripeCreatePayload = null;
+    const stripe = {
+        checkout: {
+            sessions: {
+                async create(payload) {
+                    stripeCreatePayload = payload;
+                    return {
+                        id: 'cs_test_checkout_lamb',
+                        url: 'https://checkout.stripe.test/pay/cs_test_checkout_lamb?session_id=cs_test_checkout_lamb'
+                    };
+                },
+                async expire() {
+                    return { id: 'cs_test_checkout_lamb', status: 'expired' };
+                },
+                async retrieve() {
+                    return { id: 'cs_test_checkout_lamb', payment_status: 'unpaid' };
+                }
+            }
+        }
+    };
+
+    let insertedOrderValues = null;
+    const withTransaction = async (_pool, work) => {
+        const client = {
+            async query(sql, params) {
+                if (sql.includes('SELECT id FROM customers')) {
+                    return { rows: [] };
+                }
+                if (sql.includes('INSERT INTO customers')) {
+                    return { rows: [{ id: 'customer-1' }] };
+                }
+                if (sql.includes('INSERT INTO orders')) {
+                    insertedOrderValues = params;
+                    return { rows: [{ id: 'order-lamb-1' }] };
+                }
+                throw new Error(`Unexpected tx query: ${sql}`);
+            }
+        };
+        return work(client);
+    };
+
+    registerCheckoutRoutes(app, {
+        pool,
+        stripe,
+        sendServerError: (res, err, message) =>
+            res.status(500).json({ error: message, detail: err.message }),
+        orderConfirmLimiter: (_req, _res, next) => next(),
+        getRequestBaseUrl: () => 'http://localhost:5173',
+        normalizeCheckoutItems,
+        normalizeLanguage,
+        sanitizeText,
+        isValidEmail,
+        calculateItemPrice,
+        isLohmannHenName,
+        getMinimumOrderQuantity,
+        getDepositEligibleMinQty: () => 13,
+        getDepositRequiredAboveQty,
+        isPickupLocationRestricted,
+        getPaymentDetails,
+        getOrderSummary: async () => null,
+        parseCookies,
+        signOrderConfirmToken: () => 'confirm-token',
+        verifyOrderConfirmToken: () => null,
+        getCookieOptions: () => ({ httpOnly: true }),
+        ORDER_CONFIRM_COOKIE: 'order_confirm',
+        ORDER_CONFIRM_TTL_MS: 1000,
+        CHECKOUT_MAX_ITEM_ROWS: 200,
+        RESERVED_ORDER_STATUS: 'reserved',
+        CHECKOUT_RESERVATION_TTL_MINUTES: 45,
+        PAID_STATUSES: new Set(['paid', 'fulfilled', 'picked_up']),
+        reserveStockForItems: async () => {},
+        withTransaction,
+        finalizeOrderFromSession: async () => ({ status: 'missing_order' }),
+        releaseReservedOrder: async () => ({ status: 'released' }),
+        sweepExpiredReservedOrders: async () => {}
+    });
+
+    const checkoutHandler = routeHandlers['POST /api/checkout'];
+    assert.ok(checkoutHandler);
+
+    const req = {
+        body: {
+            customer: {
+                name: 'Lamb Customer',
+                phone: '(555) 555-1234',
+                email: 'lamb.checkout@example.com',
+                address: '42 Farm Lane'
+            },
+            pickup: {
+                date: '2026-03-01',
+                location: 'bristol'
+            },
+            paymentOption: 'full',
+            language: 'en',
+            items: [{ id: 5, quantity: 1 }]
+        },
+        get(name) {
+            if (name === 'accept-language') return 'en';
+            return '';
+        },
+        headers: {}
+    };
+    const res = createMockRes();
+
+    await checkoutHandler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(stripeCreatePayload?.metadata?.payment_type, 'deposit');
+    assert.equal(insertedOrderValues?.[7], 'deposit');
+    assert.equal(insertedOrderValues?.[8], 5000);
+    assert.equal(insertedOrderValues?.[9], 0);
 });

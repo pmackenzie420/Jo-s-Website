@@ -5,6 +5,8 @@ const { registerAdminRoutes } = require('../routes/admin');
 const { sanitizeText, isValidEmail } = require('../logic/checkout-utils');
 const { formatPickupDate } = require('../utils/helpers');
 
+const normalizeSql = (sql) => String(sql).replace(/\s+/g, ' ').trim();
+
 const createMockRes = () => {
     const res = {
         statusCode: 200,
@@ -31,7 +33,7 @@ const createMockRes = () => {
     return res;
 };
 
-const registerRoutesForTest = (pool) => {
+const registerRoutesForTest = (pool, overrides = {}) => {
     const routeHandlers = {};
     const app = {
         get(path, ...handlers) {
@@ -63,7 +65,8 @@ const registerRoutesForTest = (pool) => {
         isValidEmail,
         sendEmailMessage: async () => {},
         formatPickupDate,
-        handlePickupStockRequest: async (_req, res) => res.json({ ok: true })
+        handlePickupStockRequest: async (_req, res) => res.json({ ok: true }),
+        ...overrides
     });
 
     return routeHandlers;
@@ -72,6 +75,7 @@ const registerRoutesForTest = (pool) => {
 test('admin orders-page returns paged payload with hasMore metadata', async () => {
     const pool = {
         async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
             if (sql.includes('FROM orders')) {
                 assert.deepEqual(params, [3, 0]);
                 return {
@@ -82,7 +86,7 @@ test('admin orders-page returns paged payload with hasMore metadata', async () =
                     ]
                 };
             }
-            throw new Error(`Unexpected SQL: ${sql}`);
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
         }
     };
 
@@ -112,22 +116,23 @@ test('admin orders-page returns paged payload with hasMore metadata', async () =
 test('admin meta returns hens, dates, and pickup stock key map', async () => {
     const pool = {
         async query(sql) {
-            if (sql.includes('FROM hens WHERE is_active = true ORDER BY id ASC')) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('FROM hens WHERE is_active = true ORDER BY id ASC')) {
                 return {
                     rows: [{ id: 1, name: 'Ready-to-Lay Hens / Poules Prêtes à Pondre' }]
                 };
             }
-            if (sql.includes('FROM pickup_dates WHERE is_active = true')) {
-                return {
-                    rows: [{ id: 'date_1', date_value: '2026-06-01', location: 'bristol' }]
-                };
-            }
-            if (sql.includes('FROM pickup_stock')) {
+            if (normalizedSql.includes('FROM pickup_stock')) {
                 return {
                     rows: [{ date_value: '2026-06-01', location: 'bristol', hen_id: 1, stock: 9 }]
                 };
             }
-            throw new Error(`Unexpected SQL: ${sql}`);
+            if (normalizedSql.includes('FROM pickup_dates WHERE is_active = true')) {
+                return {
+                    rows: [{ id: 'date_1', date_value: '2026-06-01', location: 'bristol' }]
+                };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
         }
     };
 
@@ -146,4 +151,121 @@ test('admin meta returns hens, dates, and pickup stock key map', async () => {
     assert.equal(res.body.hens.length, 1);
     assert.equal(res.body.dates.length, 1);
     assert.equal(res.body.pickupStocks['2026-06-01::bristol']['1'], 9);
+});
+
+test('admin add pickup date rejects duplicates for same date and location', async () => {
+    let insertCalled = false;
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+            if (
+                normalizedSql.includes('FROM pickup_dates')
+                && normalizedSql.includes('WHERE date_value = $1 AND location = $2')
+            ) {
+                assert.deepEqual(params, ['2026-06-01', 'hemmingford']);
+                return { rows: [{ id: 'existing-date-id' }] };
+            }
+            if (normalizedSql.includes('INSERT INTO pickup_dates')) {
+                insertCalled = true;
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const handlers = registerRoutesForTest(pool);
+    const handler = handlers['POST /api/admin/pickup-dates'];
+    assert.ok(handler);
+
+    const req = {
+        body: {
+            date_value: '2026-06-01',
+            location: 'hemmingford'
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.body?.error, 'Pickup date already exists for this location.');
+    assert.equal(insertCalled, false);
+});
+
+test('admin cancelling orders releases reserved stock before direct status updates', async () => {
+    const updateCalls = [];
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])')) {
+                updateCalls.push(params);
+                return { rowCount: 1, rows: [] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const releasedIds = [];
+    const handlers = registerRoutesForTest(pool, {
+        releaseReservedOrder: async (orderId) => {
+            releasedIds.push(String(orderId));
+            if (String(orderId) === '1') return { status: 'released' };
+            if (String(orderId) === '2') return { status: 'not_reserved' };
+            return { status: 'missing_order' };
+        }
+    });
+
+    const handler = handlers['PUT /api/admin/orders/status'];
+    assert.ok(handler);
+
+    const req = {
+        body: {
+            ids: ['1', '2', '3'],
+            status: 'cancelled'
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(releasedIds, ['1', '2', '3']);
+    assert.equal(updateCalls.length, 1);
+    assert.deepEqual(updateCalls[0], ['cancelled', ['2']]);
+});
+
+test('admin delete pickup date blocks when active orders exist', async () => {
+    let deleteCalled = false;
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('SELECT date_value, location FROM pickup_dates WHERE id = $1')) {
+                assert.deepEqual(params, ['pickup-date-1']);
+                return {
+                    rows: [{ date_value: '2026-06-01', location: 'hemmingford' }]
+                };
+            }
+            if (normalizedSql.includes('FROM orders') && normalizedSql.includes('LOWER(COALESCE(status, \'pending\')) <> \'cancelled\'')) {
+                assert.deepEqual(params, ['2026-06-01', 'hemmingford']);
+                return { rows: [{ count: 2 }] };
+            }
+            if (normalizedSql.includes('DELETE FROM pickup_dates WHERE id = $1')) {
+                deleteCalled = true;
+                return { rowCount: 1, rows: [] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const handlers = registerRoutesForTest(pool);
+    const handler = handlers['DELETE /api/admin/pickup-dates/:id'];
+    assert.ok(handler);
+
+    const req = { params: { id: 'pickup-date-1' } };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 409);
+    assert.equal(res.body?.error, 'Cannot delete pickup date with active orders.');
+    assert.equal(deleteCalled, false);
 });

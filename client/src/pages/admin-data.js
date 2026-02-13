@@ -55,7 +55,9 @@ const buildOrdersWithDetails = (orders, hens) => {
     const amountPaid = paidCents / 100;
     const amountDue = dueCents / 100;
     const paymentType = normalizePaymentType(order.payment_type, dueCents);
-    const paymentSummary = amountDue > 0 ? `Due ${formatCurrency(amountDue)}` : 'Paid';
+    const paymentSummary = paymentType === 'deposit'
+      ? (amountDue > 0 ? `Due ${formatCurrency(amountDue)}` : 'Deposit')
+      : 'Paid';
 
     return {
       ...order,
@@ -162,7 +164,12 @@ const buildGroupedPickups = (ordersWithDetails) => {
           const totalAmount = customer.orders.reduce((sum, order) => sum + order.totalAmount, 0);
           const amountPaid = customer.orders.reduce((sum, order) => sum + order.amountPaid, 0);
           const amountDue = customer.orders.reduce((sum, order) => sum + order.amountDue, 0);
-          const paymentSummary = amountDue > 0 ? `Due ${formatCurrency(amountDue)}` : 'Paid';
+          const hasDepositPayment = customer.orders.some(
+            (order) => order.paymentType === 'deposit'
+          );
+          const paymentSummary = hasDepositPayment
+            ? (amountDue > 0 ? `Due ${formatCurrency(amountDue)}` : 'Deposit')
+            : 'Paid';
           const activeOrderIds = customer.orders
             .filter((order) => normalizeStatus(order.status) !== 'cancelled')
             .map((order) => order.id);

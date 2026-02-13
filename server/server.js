@@ -317,7 +317,8 @@ registerAdminRoutes(app, {
     isValidEmail,
     sendEmailMessage,
     formatPickupDate,
-    handlePickupStockRequest
+    handlePickupStockRequest,
+    releaseReservedOrder
 });
 
 if (sentryEnabled) {

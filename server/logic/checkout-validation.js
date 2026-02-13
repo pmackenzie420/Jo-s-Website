@@ -70,7 +70,15 @@ const parseCheckoutContext = (req, deps) => {
 
 const resolvePickupDateId = async (pool, pickupDate, pickupLocation) => {
     const pickupCheck = await pool.query(
-        'SELECT id FROM pickup_dates WHERE is_active = true AND date_value = $1 AND location = $2',
+        `
+        SELECT id
+        FROM pickup_dates
+        WHERE is_active = true
+          AND date_value = $1
+          AND location = $2
+        ORDER BY created_at ASC, id ASC
+        LIMIT 1
+        `,
         [pickupDate, pickupLocation]
     );
     if (pickupCheck.rows.length === 0) {
