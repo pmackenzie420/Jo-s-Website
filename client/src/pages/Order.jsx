@@ -51,7 +51,9 @@ export default function Order({ lang }) {
       : 'Choisissez une date pour voir la disponibilité',
     pickupBlockedLamb: lang === 'en'
       ? 'Not available at this location.'
-      : 'Non disponible à cet emplacement.'
+      : 'Non disponible à cet emplacement.',
+    inStock: lang === 'en' ? 'Available' : 'Disponible',
+    outOfStock: lang === 'en' ? 'Out of stock' : 'Rupture de stock'
   };
 
   const pickupOptions = [
@@ -132,8 +134,8 @@ export default function Order({ lang }) {
             : isBlocked
               ? t.pickupBlockedLamb
               : isOutOfStock
-                ? (lang === 'en' ? 'Out of stock' : 'Rupture de stock')
-                : (lang === 'en' ? `Stock: ${maxStock}` : `Stock: ${maxStock}`);
+                ? t.outOfStock
+                : t.inStock;
 
           let imageUrl = '';
           let imageSrcSet = '';
