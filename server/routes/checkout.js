@@ -14,6 +14,7 @@ const registerCheckoutRoutes = (app, deps) => {
         pool,
         stripe,
         sendServerError,
+        checkoutLimiter: providedCheckoutLimiter,
         orderConfirmLimiter,
         getRequestBaseUrl,
         normalizeCheckoutItems,
@@ -44,14 +45,35 @@ const registerCheckoutRoutes = (app, deps) => {
         releaseReservedOrder,
         sweepExpiredReservedOrders
     } = deps;
+    const checkoutLimiter = typeof providedCheckoutLimiter === 'function'
+        ? providedCheckoutLimiter
+        : (_req, _res, next) => next();
+    const configuredSweepIntervalSeconds = Number(process.env.CHECKOUT_SWEEP_MIN_INTERVAL_SECONDS);
+    const checkoutSweepMinIntervalSeconds = Number.isFinite(configuredSweepIntervalSeconds)
+        ? Math.max(configuredSweepIntervalSeconds, 10)
+        : 60;
+    const checkoutSweepMinIntervalMs = checkoutSweepMinIntervalSeconds * 1000;
+    let checkoutSweepRunning = false;
+    let lastCheckoutSweepAt = 0;
+    const triggerCheckoutSweep = () => {
+        if (checkoutSweepRunning) return;
+        const now = Date.now();
+        if (now - lastCheckoutSweepAt < checkoutSweepMinIntervalMs) return;
+        checkoutSweepRunning = true;
+        lastCheckoutSweepAt = now;
+        Promise.resolve()
+            .then(() => sweepExpiredReservedOrders())
+            .catch((sweepError) => {
+                logError('Checkout-triggered reservation sweep failed', sweepError);
+            })
+            .finally(() => {
+                checkoutSweepRunning = false;
+            });
+    };
 
-    app.post('/api/checkout', async (req, res) => {
+    app.post('/api/checkout', checkoutLimiter, async (req, res) => {
         try {
-            try {
-                await sweepExpiredReservedOrders();
-            } catch (sweepError) {
-                logError('Reservation sweep failed', sweepError);
-            }
+            triggerCheckoutSweep();
 
             const checkoutContext = parseCheckoutContext(req, {
                 normalizeCheckoutItems,

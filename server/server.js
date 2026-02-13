@@ -75,6 +75,13 @@ const { registerWebhookRoutes } = require('./routes/webhook');
 const app = express();
 const port = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
+const parsePositiveInteger = (value, fallback) => {
+    const parsed = Number(value);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        return fallback;
+    }
+    return parsed;
+};
 const parseTrustProxySetting = (value) => {
     if (typeof value !== 'string' || value.trim().length === 0) {
         return isProduction ? 1 : false;
@@ -196,6 +203,13 @@ const orderConfirmLimiter = createRateLimiter({
     pool
 });
 
+const checkoutLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: parsePositiveInteger(process.env.CHECKOUT_RATE_LIMIT_MAX, 60),
+    keyPrefix: 'checkout',
+    pool
+});
+
 const {
     withTransaction,
     releaseReservedOrder,
@@ -261,6 +275,7 @@ registerCheckoutRoutes(app, {
     pool,
     stripe,
     sendServerError,
+    checkoutLimiter,
     orderConfirmLimiter,
     getRequestBaseUrl,
     normalizeCheckoutItems,

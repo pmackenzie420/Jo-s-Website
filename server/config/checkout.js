@@ -4,7 +4,10 @@ const CHECKOUT_RESERVATION_TTL_MINUTES = Math.max(
     Number(process.env.CHECKOUT_RESERVATION_TTL_MINUTES || 45),
     30
 );
-const EXPIRED_RESERVATION_BATCH_SIZE = 25;
+const EXPIRED_RESERVATION_BATCH_SIZE = Math.max(
+    Number(process.env.EXPIRED_RESERVATION_BATCH_SIZE || 100),
+    25
+);
 
 module.exports = {
     CHECKOUT_MAX_ITEM_ROWS,
