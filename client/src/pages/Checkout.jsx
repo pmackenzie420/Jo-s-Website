@@ -20,6 +20,8 @@ export default function Checkout({ lang }) {
     formatPickupDate,
     handlePhoneBlur,
     handleEmailBlur,
+    emailVerification,
+    resetEmailVerification,
     handleSubmit,
     formatPhone,
     normalizePhone,
@@ -200,6 +202,9 @@ export default function Checkout({ lang }) {
                     onChange={(e) => {
                       const nextEmail = e.target.value;
                       setFormData((prev) => ({ ...prev, email: nextEmail }));
+                      if (emailVerification.checkedEmail && nextEmail.trim().toLowerCase() !== emailVerification.checkedEmail) {
+                        resetEmailVerification();
+                      }
                       if (errors.email && isValidEmail(nextEmail)) {
                         setErrors((prev) => ({ ...prev, email: null }));
                       }
@@ -207,6 +212,14 @@ export default function Checkout({ lang }) {
                     onBlur={handleEmailBlur}
                   />
                   {errors.email && <p className="error-text">{errors.email}</p>}
+                  {!errors.email && emailVerification.status !== 'idle' && (
+                    <p
+                      className={`checkout-note checkout-note--${emailVerification.status}`}
+                      aria-live="polite"
+                    >
+                      {emailVerification.message}
+                    </p>
+                  )}
                 </div>
 
                 <div className="checkout-field">

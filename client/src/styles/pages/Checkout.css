@@ -198,6 +198,27 @@
   color: var(--color-error);
 }
 
+.checkout-note {
+  margin: 8px 0 0;
+  font-size: 14px;
+}
+
+.checkout-note--checking {
+  color: var(--color-text-muted);
+}
+
+.checkout-note--valid {
+  color: #1f5f36;
+}
+
+.checkout-note--warning {
+  color: #8a6400;
+}
+
+.checkout-note--invalid {
+  color: var(--color-error);
+}
+
 .payment-options {
   display: flex;
   flex-direction: column;

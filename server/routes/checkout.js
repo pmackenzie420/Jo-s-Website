@@ -15,6 +15,7 @@ const registerCheckoutRoutes = (app, deps) => {
         stripe,
         sendServerError,
         checkoutLimiter: providedCheckoutLimiter,
+        emailVerifyLimiter: providedEmailVerifyLimiter,
         orderConfirmLimiter,
         getRequestBaseUrl,
         normalizeCheckoutItems,
@@ -32,6 +33,7 @@ const registerCheckoutRoutes = (app, deps) => {
         parseCookies,
         signOrderConfirmToken,
         verifyOrderConfirmToken,
+        verifyCheckoutEmail,
         getCookieOptions,
         ORDER_CONFIRM_COOKIE,
         ORDER_CONFIRM_TTL_MS,
@@ -48,6 +50,20 @@ const registerCheckoutRoutes = (app, deps) => {
     const checkoutLimiter = typeof providedCheckoutLimiter === 'function'
         ? providedCheckoutLimiter
         : (_req, _res, next) => next();
+    const emailVerifyLimiter = typeof providedEmailVerifyLimiter === 'function'
+        ? providedEmailVerifyLimiter
+        : (_req, _res, next) => next();
+    const verifyEmail = typeof verifyCheckoutEmail === 'function'
+        ? verifyCheckoutEmail
+        : async () => ({
+            accepted: true,
+            shouldBlock: false,
+            status: 'warning',
+            reason: 'unconfigured',
+            message: 'Email verification unavailable.',
+            normalizedEmail: '',
+            suggestion: null
+        });
     const configuredSweepIntervalSeconds = Number(process.env.CHECKOUT_SWEEP_MIN_INTERVAL_SECONDS);
     const checkoutSweepMinIntervalSeconds = Number.isFinite(configuredSweepIntervalSeconds)
         ? Math.max(configuredSweepIntervalSeconds, 10)
@@ -70,6 +86,18 @@ const registerCheckoutRoutes = (app, deps) => {
                 checkoutSweepRunning = false;
             });
     };
+
+    app.post('/api/checkout/email-verify', emailVerifyLimiter, async (req, res) => {
+        try {
+            const email = typeof req.body?.email === 'string' ? req.body.email : '';
+            const requestedLanguage = req.body?.language || req.get('accept-language');
+            const language = normalizeLanguage(requestedLanguage);
+            const verification = await verifyEmail(email, { language });
+            return res.json(verification);
+        } catch (err) {
+            return sendServerError(res, err, 'Email verification failed');
+        }
+    });
 
     app.post('/api/checkout', checkoutLimiter, async (req, res) => {
         try {

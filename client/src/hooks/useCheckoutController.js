@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import axios from 'axios';
 import { useLocation } from 'react-router-dom';
 import useForm, {
   formatPhone,
@@ -7,6 +8,7 @@ import useForm, {
 } from './useForm';
 import useCheckout from './useCheckout';
 import { CHECKOUT_STORAGE_KEYS } from '../constants/checkout';
+import { API_URL } from '../constants/api';
 import {
   getDepositEligibleMinQty,
   getDepositRequiredAboveQty,
@@ -26,8 +28,16 @@ const DEFAULT_FORM_DATA = {
 };
 
 const toCents = (value) => Math.round(Number(value) * 100);
+const EMAIL_VERIFY_STATE_IDLE = {
+  status: 'idle',
+  checkedEmail: '',
+  message: '',
+  shouldBlock: false,
+  suggestion: null
+};
 
 export default function useCheckoutController(lang) {
+  const locale = lang === 'fr' ? 'fr' : 'en';
   const location = useLocation();
   const { cartItems } = location.state || {};
   const initialFormData = useMemo(() => {
@@ -85,7 +95,7 @@ export default function useCheckoutController(lang) {
 
   const {
     loading,
-    handleSubmit,
+    handleSubmit: submitCheckout,
     hasCart,
     goToOrder,
     formatPickupDate,
@@ -95,6 +105,80 @@ export default function useCheckoutController(lang) {
 
   const [termsAccepted, setTermsAccepted] = useState(false);
   const [termsError, setTermsError] = useState(null);
+  const [emailVerification, setEmailVerification] = useState(EMAIL_VERIFY_STATE_IDLE);
+
+  const resetEmailVerification = () => {
+    setEmailVerification(EMAIL_VERIFY_STATE_IDLE);
+  };
+
+  const verifyEmailAddress = async (rawEmail = formData.email, { force = false } = {}) => {
+    const normalizedEmail = String(rawEmail || '').trim().toLowerCase();
+    if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
+      setEmailVerification({
+        status: 'invalid',
+        checkedEmail: normalizedEmail,
+        message: locale === 'en' ? 'Invalid email address' : 'Adresse courriel invalide',
+        shouldBlock: true,
+        suggestion: null
+      });
+      return false;
+    }
+
+    if (
+      !force
+      && emailVerification.checkedEmail === normalizedEmail
+      && emailVerification.status !== 'idle'
+      && emailVerification.status !== 'checking'
+    ) {
+      return !emailVerification.shouldBlock;
+    }
+
+    setEmailVerification({
+      status: 'checking',
+      checkedEmail: normalizedEmail,
+      message: locale === 'en' ? 'Verifying email...' : 'Vérification du courriel...',
+      shouldBlock: false,
+      suggestion: null
+    });
+
+    try {
+      const response = await axios.post(`${API_URL}/checkout/email-verify`, {
+        email: normalizedEmail,
+        language: locale
+      });
+      const payload = response?.data || {};
+      const nextState = {
+        status: payload.status || (payload.shouldBlock ? 'invalid' : 'valid'),
+        checkedEmail: payload.normalizedEmail || normalizedEmail,
+        message: payload.message || '',
+        shouldBlock: Boolean(payload.shouldBlock),
+        suggestion: payload.suggestion || null
+      };
+      setEmailVerification(nextState);
+
+      if (nextState.shouldBlock) {
+        setErrors((prev) => ({
+          ...prev,
+          email: nextState.message || (locale === 'en' ? 'Invalid email address' : 'Adresse courriel invalide')
+        }));
+        return false;
+      }
+
+      setErrors((prev) => ({ ...prev, email: null }));
+      return true;
+    } catch {
+      setEmailVerification({
+        status: 'warning',
+        checkedEmail: normalizedEmail,
+        message: locale === 'en'
+          ? 'Email verification is temporarily unavailable. You can continue.'
+          : 'La vérification du courriel est temporairement indisponible. Vous pouvez continuer.',
+        shouldBlock: false,
+        suggestion: null
+      });
+      return true;
+    }
+  };
 
   const validateStep = (step) => {
     if (step !== 1) return true;
@@ -114,10 +198,13 @@ export default function useCheckoutController(lang) {
     window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
   };
 
-  const nextStep = () => {
-    if (validateStep(currentStep)) {
-      setCurrentStep((prev) => Math.min(prev + 1, 2));
+  const nextStep = async () => {
+    if (!validateStep(currentStep)) return;
+    if (currentStep === 1) {
+      const verified = await verifyEmailAddress(formData.email);
+      if (!verified) return;
     }
+    setCurrentStep((prev) => Math.min(prev + 1, 2));
   };
 
   const prevStep = () => {
@@ -284,8 +371,13 @@ export default function useCheckoutController(lang) {
     setFormData((prev) => ({ ...prev, phone: formattedPhone }));
   };
 
-  const handleEmailBlur = () => {
+  const handleEmailBlur = async () => {
     handleBlur('email');
+    const normalizedEmail = String(formData.email || '').trim();
+    if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
+      return;
+    }
+    await verifyEmailAddress(normalizedEmail);
   };
 
   return {
@@ -302,6 +394,8 @@ export default function useCheckoutController(lang) {
     formatPickupDate,
     handlePhoneBlur,
     handleEmailBlur,
+    emailVerification,
+    resetEmailVerification,
     paymentOption,
     setPaymentOption: (value) =>
       setFormData((prev) => ({
@@ -317,7 +411,7 @@ export default function useCheckoutController(lang) {
       }
     },
     termsError,
-    handleSubmit: (e) => {
+    handleSubmit: async (e) => {
       if (e?.preventDefault) {
         e.preventDefault();
       }
@@ -331,8 +425,12 @@ export default function useCheckoutController(lang) {
       }
       setTermsError(null);
       if (validateForm()) {
+        const verified = await verifyEmailAddress(formData.email, { force: true });
+        if (!verified) {
+          return;
+        }
         setSubmitError('');
-        handleSubmit(e, { paymentOption });
+        await submitCheckout(e, { paymentOption });
       }
     },
     formatPhone,

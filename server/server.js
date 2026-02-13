@@ -58,6 +58,7 @@ const {
     ORDER_CONFIRM_COOKIE,
     ORDER_CONFIRM_TTL_MS
 } = require('./middleware/auth');
+const { verifyCheckoutEmail } = require('./logic/email-verification');
 const { PAID_STATUSES } = require('./config/constants');
 const {
     CHECKOUT_MAX_ITEM_ROWS,
@@ -203,6 +204,13 @@ const orderConfirmLimiter = createRateLimiter({
     pool
 });
 
+const emailVerifyLimiter = createRateLimiter({
+    windowMs: 60 * 1000,
+    max: parsePositiveInteger(process.env.EMAIL_VERIFY_RATE_LIMIT_MAX, 120),
+    keyPrefix: 'email-verify',
+    pool
+});
+
 const checkoutLimiter = createRateLimiter({
     windowMs: 60 * 1000,
     max: parsePositiveInteger(process.env.CHECKOUT_RATE_LIMIT_MAX, 60),
@@ -276,6 +284,7 @@ registerCheckoutRoutes(app, {
     stripe,
     sendServerError,
     checkoutLimiter,
+    emailVerifyLimiter,
     orderConfirmLimiter,
     getRequestBaseUrl,
     normalizeCheckoutItems,
@@ -293,6 +302,7 @@ registerCheckoutRoutes(app, {
     parseCookies,
     signOrderConfirmToken,
     verifyOrderConfirmToken,
+    verifyCheckoutEmail,
     getCookieOptions,
     ORDER_CONFIRM_COOKIE,
     ORDER_CONFIRM_TTL_MS,
