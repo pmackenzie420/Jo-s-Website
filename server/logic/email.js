@@ -36,7 +36,17 @@ const CONFIRMATION_EMAIL_REPLY_TO = String(
     || EMAIL_REPLY_TO
     || getDefaultNoReplyAddress()
 ).trim();
+const CONFIRMATION_EMAIL_FROM = String(
+    process.env.CONFIRMATION_EMAIL_FROM
+    || getDefaultNoReplyAddress()
+    || EMAIL_FROM
+).trim();
 const SIMPLE_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CONFIRMATION_NO_REPLY_HEADERS = {
+    'Auto-Submitted': 'auto-generated',
+    'X-Auto-Response-Suppress': 'All',
+    Precedence: 'bulk'
+};
 
 const buildOrderConfirmationEmailText = ({ order, items }) => {
     const language = normalizeLanguage(order.language);
@@ -243,9 +253,21 @@ const normalizeResendAttachments = (attachments) => {
     return normalized.length > 0 ? normalized : undefined;
 };
 
-const sendEmailMessage = async ({ to, subject, text, html, attachments, replyTo }) => {
+const formatSender = (address) => {
+    const normalizedAddress = extractEmailAddress(address);
+    if (!SIMPLE_EMAIL_PATTERN.test(normalizedAddress)) {
+        return null;
+    }
+    return EMAIL_FROM_NAME ? `${EMAIL_FROM_NAME} <${normalizedAddress}>` : normalizedAddress;
+};
+
+const sendEmailMessage = async ({ to, subject, text, html, attachments, replyTo, from, headers }) => {
+    const formattedSender = formatSender(from || EMAIL_FROM);
+    if (!formattedSender) {
+        throw new Error('Email sender address is not configured.');
+    }
     const payload = {
-        from: EMAIL_FROM_NAME ? `${EMAIL_FROM_NAME} <${EMAIL_FROM}>` : EMAIL_FROM,
+        from: formattedSender,
         to: [to.name ? `${to.name} <${to.email}>` : to.email],
         subject,
         text: text || '',
@@ -254,6 +276,13 @@ const sendEmailMessage = async ({ to, subject, text, html, attachments, replyTo 
     const normalizedReplyTo = extractEmailAddress(replyTo);
     if (SIMPLE_EMAIL_PATTERN.test(normalizedReplyTo)) {
         payload.reply_to = normalizedReplyTo;
+    }
+    if (headers && typeof headers === 'object') {
+        payload.headers = Object.entries(headers).reduce((acc, [key, value]) => {
+            if (!key || value === undefined || value === null) return acc;
+            acc[String(key)] = String(value);
+            return acc;
+        }, {});
     }
 
     const resendAttachments = normalizeResendAttachments(attachments);
@@ -315,7 +344,9 @@ const sendOrderConfirmationEmail = async (orderId) => {
             subject: emailPayload.subject,
             text: emailPayload.text,
             html: emailPayload.html,
-            replyTo: CONFIRMATION_EMAIL_REPLY_TO
+            from: CONFIRMATION_EMAIL_FROM,
+            replyTo: CONFIRMATION_EMAIL_REPLY_TO,
+            headers: CONFIRMATION_NO_REPLY_HEADERS
         });
         return { sent: true };
     } catch (err) {
