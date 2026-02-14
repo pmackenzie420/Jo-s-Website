@@ -34,10 +34,11 @@ const createOrderLifecycle = ({
         }
     };
 
-    const releaseReservedOrder = async (orderId) => {
-        return withTransaction(pool, async (client) => {
+    const releaseReservedOrder = async (orderId, options = {}) => {
+        const expireStripeSession = options?.expireStripeSession === true;
+        const result = await withTransaction(pool, async (client) => {
             const orderResult = await client.query(
-                'SELECT status, items, pickup_date, pickup_location FROM orders WHERE id = $1 FOR UPDATE',
+                'SELECT status, items, pickup_date, pickup_location, stripe_payment_id FROM orders WHERE id = $1 FOR UPDATE',
                 [orderId]
             );
             if (orderResult.rows.length === 0) {
@@ -45,9 +46,20 @@ const createOrderLifecycle = ({
             }
             const order = orderResult.rows[0];
             const currentStatus = String(order.status || '').toLowerCase();
-            if (currentStatus !== RESERVED_ORDER_STATUS) {
+            if (currentStatus === 'cancelled') {
+                return { status: 'already_cancelled', orderId };
+            }
+
+            // We only track stock reservations for Stripe checkout orders, where stock is reserved
+            // at order creation (status=reserved) and later finalized to paid. "pending" is treated
+            // as legacy/admin-only and does not reliably imply stock was reserved.
+            const hasReservedStock =
+                currentStatus === RESERVED_ORDER_STATUS
+                || currentStatus === 'paid';
+            if (!hasReservedStock) {
                 return { status: 'not_reserved', orderId };
             }
+
             const items = getOrderItemTotals(parseOrderItems, collectOrderItemTotals, order.items);
             const pickupDateId = await findPickupDateIdByValue(
                 client,
@@ -59,8 +71,28 @@ const createOrderLifecycle = ({
                 'UPDATE orders SET status = $1 WHERE id = $2',
                 ['cancelled', orderId]
             );
-            return { status: 'released', orderId };
+            return {
+                status: 'released',
+                orderId,
+                previousStatus: currentStatus,
+                stripeSessionId: order.stripe_payment_id || null
+            };
         });
+
+        if (
+            result?.status === 'released'
+            && expireStripeSession
+            && result.previousStatus === RESERVED_ORDER_STATUS
+            && result.stripeSessionId
+        ) {
+            try {
+                await stripe.checkout.sessions.expire(result.stripeSessionId);
+            } catch (err) {
+                logError(`Failed to expire Stripe session ${result.stripeSessionId}`, err);
+            }
+        }
+
+        return result;
     };
 
     const finalizeOrderFromSession = async (session) => {
@@ -90,6 +122,10 @@ const createOrderLifecycle = ({
 
             const order = orderResult.rows[0];
             const currentStatus = String(order.status || 'pending').toLowerCase();
+
+            if (currentStatus === 'cancelled') {
+                return { status: 'cancelled', orderId };
+            }
             const alreadyPaid = PAID_STATUSES.has(currentStatus);
             const isReservedOrder = currentStatus === RESERVED_ORDER_STATUS;
 
@@ -112,6 +148,10 @@ const createOrderLifecycle = ({
         });
 
         if (result.status === 'missing_order') {
+            return result;
+        }
+        if (result.status === 'cancelled') {
+            logError(`Stripe session ${session?.id || '(unknown)'} completed for cancelled order ${orderId}`);
             return result;
         }
         try {

@@ -10,10 +10,15 @@ const COPY = {
         loadingMessage: 'We are checking your payment confirmation.',
         unverifiedTitle: 'Order status unavailable',
         unverifiedMessage: 'We could not verify this order from this link.',
+        unpaidTitle: 'Payment not completed',
+        unpaidMessage: 'We could not confirm your payment. If you completed checkout, refresh this page in a moment. Otherwise, please try again.',
+        cancelledTitle: 'Order cancelled',
+        cancelledMessage: 'This order has been cancelled.',
         title: '✓ Order Confirmed',
         thanks: 'Thank you for your order.',
         emailSent: (email) => `We've sent a confirmation email to ${email}.`,
         emailSentFallback: 'We have sent a confirmation email with your details.',
+        orderIdLabel: 'Order ID',
         pickupDetails: 'Pickup Details',
         customerInfo: 'Customer Info',
         orderTitle: 'Your Order',
@@ -43,10 +48,15 @@ const COPY = {
         loadingMessage: 'Nous vérifions votre confirmation de paiement.',
         unverifiedTitle: 'Statut de commande indisponible',
         unverifiedMessage: 'Nous ne pouvons pas vérifier cette commande depuis ce lien.',
+        unpaidTitle: 'Paiement non complété',
+        unpaidMessage: 'Nous ne pouvons pas confirmer votre paiement. Si vous avez terminé le paiement, rafraîchissez cette page dans quelques instants. Sinon, veuillez réessayer.',
+        cancelledTitle: 'Commande annulée',
+        cancelledMessage: 'Cette commande a été annulée.',
         title: '✓ Commande confirmée',
         thanks: 'Merci pour votre commande.',
         emailSent: (email) => `Un courriel de confirmation a été envoyé à ${email}.`,
         emailSentFallback: 'Un courriel de confirmation avec vos détails a été envoyé.',
+        orderIdLabel: 'ID de commande',
         pickupDetails: 'Détails du ramassage',
         customerInfo: 'Infos client',
         orderTitle: 'Votre commande',
@@ -147,6 +157,9 @@ function Success({ lang }) {
     const [order, setOrder] = useState(null);
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState(false);
+    const [confirmStatus, setConfirmStatus] = useState(null);
+    const [confirmed, setConfirmed] = useState(false);
+    const [orderRef, setOrderRef] = useState(null);
 
     const sessionId = useMemo(() => {
         const params = new URLSearchParams(location.search);
@@ -158,6 +171,9 @@ function Success({ lang }) {
             setOrder(null);
             setLoading(false);
             setLoadError(false);
+            setConfirmStatus(null);
+            setConfirmed(false);
+            setOrderRef(null);
             return;
         }
 
@@ -165,6 +181,9 @@ function Success({ lang }) {
         setOrder(null);
         setLoading(true);
         setLoadError(false);
+        setConfirmStatus(null);
+        setConfirmed(false);
+        setOrderRef(null);
         fetch(`${API_URL}/orders/confirm?session_id=${encodeURIComponent(sessionId)}`, {
             signal: controller.signal,
             credentials: 'include'
@@ -176,7 +195,14 @@ function Success({ lang }) {
                 return res.json();
             })
             .then((data) => {
-                setOrder(data.order || null);
+                const nextStatus = typeof data?.status === 'string' ? data.status.trim().toLowerCase() : null;
+                setConfirmStatus(nextStatus);
+                setConfirmed(Boolean(data?.success) && Boolean(data?.order));
+                setOrder(data?.order || null);
+                const ref = typeof data?.orderId === 'string'
+                    ? data.orderId
+                    : (typeof data?.order?.id === 'string' ? data.order.id : null);
+                setOrderRef(ref);
             })
             .catch((err) => {
                 if (err?.name === 'AbortError') {
@@ -194,14 +220,14 @@ function Success({ lang }) {
     }, [sessionId]);
 
     useEffect(() => {
-        if (order) {
+        if (confirmed && order) {
             try {
                 sessionStorage.removeItem('hen_cart_data');
             } catch {
                 // Ignore
             }
         }
-    }, [order]);
+    }, [confirmed, order]);
 
     const normalizedOrderLanguage = normalizeLanguage(order?.language);
     const language = normalizedOrderLanguage || (lang === 'fr' ? 'fr' : 'en');
@@ -242,17 +268,28 @@ function Success({ lang }) {
     } else if (dueAmount && Number(dueCents) > 0) {
         dueAtPickupText = `$${dueAmount}`;
     }
-    const hasVerifiedOrder = Boolean(order);
+    const isConfirmed = Boolean(confirmed && order);
+    const isCancelled = !isConfirmed && confirmStatus === 'cancelled';
+    const isUnpaid = !isConfirmed && confirmStatus === 'reserved';
+    const hasVerifiedOrder = isConfirmed;
     const titleText = loading
         ? copy.loadingTitle
-        : hasVerifiedOrder
+        : isConfirmed
             ? copy.title
-            : copy.unverifiedTitle;
+            : isCancelled
+                ? copy.cancelledTitle
+                : isUnpaid
+                    ? copy.unpaidTitle
+                    : copy.unverifiedTitle;
     const introText = loading
         ? copy.loadingMessage
-        : hasVerifiedOrder
+        : isConfirmed
             ? copy.thanks
-            : copy.unverifiedMessage;
+            : isCancelled
+                ? copy.cancelledMessage
+                : isUnpaid
+                    ? copy.unpaidMessage
+                    : copy.unverifiedMessage;
 
     return (
         <div className="success-container">
@@ -263,6 +300,11 @@ function Success({ lang }) {
                     {order?.customer_email
                         ? copy.emailSent(order.customer_email)
                         : copy.emailSentFallback}
+                </p>
+            )}
+            {!loading && orderRef && (
+                <p className="success-message">
+                    <strong>{copy.orderIdLabel}:</strong> {orderRef}
                 </p>
             )}
 

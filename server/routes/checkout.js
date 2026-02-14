@@ -225,8 +225,10 @@ const registerCheckoutRoutes = (app, deps) => {
         }
 
         let session;
+        let stripeSessionLoaded = false;
         try {
             session = await stripe.checkout.sessions.retrieve(sessionId);
+            stripeSessionLoaded = Boolean(session);
         } catch (err) {
             logError('Invalid Stripe session', err);
         }
@@ -264,6 +266,23 @@ const registerCheckoutRoutes = (app, deps) => {
             const summary = await getOrderSummary(orderId);
             if (!summary) {
                 return res.status(404).json({ error: 'Order not found' });
+            }
+
+            const normalizedStatus = String(orderStatus || summary.order?.status || 'pending')
+                .trim()
+                .toLowerCase();
+            const stripePaid = session?.payment_status === 'paid';
+            const isPaid =
+                normalizedStatus !== 'cancelled'
+                && (stripeSessionLoaded ? stripePaid : PAID_STATUSES.has(normalizedStatus));
+
+            if (!isPaid) {
+                return res.json({
+                    success: false,
+                    status: normalizedStatus,
+                    order: null,
+                    orderId
+                });
             }
 
             return res.json(

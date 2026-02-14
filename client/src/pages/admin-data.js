@@ -55,9 +55,21 @@ const buildOrdersWithDetails = (orders, hens) => {
     const amountPaid = paidCents / 100;
     const amountDue = dueCents / 100;
     const paymentType = normalizePaymentType(order.payment_type, dueCents);
-    const paymentSummary = paymentType === 'deposit'
-      ? (amountDue > 0 ? `Due ${formatCurrency(amountDue)}` : 'Deposit')
-      : 'Paid';
+    const status = String(order.status || '').trim().toLowerCase();
+    let paymentSummary = '';
+    if (status === 'cancelled') {
+      paymentSummary = 'Cancelled';
+    } else if (status === 'reserved') {
+      paymentSummary = 'Awaiting payment';
+    } else if (status === 'picked_up' || status === 'fulfilled') {
+      paymentSummary = 'Picked up';
+    } else {
+      paymentSummary = paymentType === 'deposit'
+        ? (amountDue > 0
+          ? `Deposit paid · Due ${formatCurrency(amountDue)}`
+          : 'Deposit paid')
+        : 'Paid in full';
+    }
 
     return {
       ...order,

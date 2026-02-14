@@ -835,7 +835,7 @@ const registerAdminRoutes = (app, deps) => {
             if (status === 'cancelled') {
                 const directUpdateIds = [];
                 for (const orderId of uniqueIds) {
-                    const releaseResult = await releaseReservedOrder(orderId);
+                    const releaseResult = await releaseReservedOrder(orderId, { expireStripeSession: true });
                     if (releaseResult?.status === 'not_reserved') {
                         directUpdateIds.push(orderId);
                     }

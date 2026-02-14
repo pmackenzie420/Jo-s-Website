@@ -1,5 +1,8 @@
 const isProduction = process.env.NODE_ENV === 'production';
-const isTest = process.env.NODE_ENV === 'test' || process.argv.includes('--test');
+const isNodeTestRunner = process.execArgv.some(
+    (arg) => arg === '--test' || arg.startsWith('--test-')
+);
+const isTest = process.env.NODE_ENV === 'test' || isNodeTestRunner;
 
 const toErrorObject = (error) => {
     if (!error) return undefined;

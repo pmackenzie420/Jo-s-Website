@@ -198,9 +198,16 @@ export default function useAdminController() {
     [orders, hens]
   );
 
-  const groupedPickups = useMemo(
-    () => buildGroupedPickups(ordersWithDetails),
+  const pickupOrdersWithDetails = useMemo(
+    () => ordersWithDetails.filter((order) =>
+      String(order?.status || '').trim().toLowerCase() !== 'reserved'
+    ),
     [ordersWithDetails]
+  );
+
+  const groupedPickups = useMemo(
+    () => buildGroupedPickups(pickupOrdersWithDetails),
+    [pickupOrdersWithDetails]
   );
 
   useEffect(() => {
