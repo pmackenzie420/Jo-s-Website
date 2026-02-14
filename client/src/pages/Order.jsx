@@ -1,5 +1,5 @@
 import useOrderController from '../hooks/useOrderController';
-import { getMinOrderQuantity } from '../utils/catalog';
+import { getMinOrderQuantity, isLambName } from '../utils/catalog';
 import './../styles/pages/Order.css';
 
 export default function Order({ lang }) {
@@ -52,6 +52,10 @@ export default function Order({ lang }) {
     pickupBlockedLamb: lang === 'en'
       ? 'Not available at this location.'
       : 'Non disponible à cet emplacement.',
+    lambDepositLabel: lang === 'en' ? '(deposit)' : '(dépôt)',
+    lambInfo: lang === 'en'
+      ? "$5.00/lb, 75-90 lb each. Please contact us if you're ordering ewes for breeding."
+      : "$5,00/lb, 75 à 90 lb chacun. Veuillez nous contacter si vous commandez des brebis pour la reproduction.",
     inStock: lang === 'en' ? 'Available' : 'Disponible',
     outOfStock: lang === 'en' ? 'Out of stock' : 'Rupture de stock'
   };
@@ -129,6 +133,7 @@ export default function Order({ lang }) {
           const safeQty = Math.min(qty, maxStock);
           const unitPrice = getTierPrice(hen.name, safeQty || 1);
           const minOrderQty = getMinOrderQuantity(hen.name);
+          const isLamb = isLambName(hen.name);
           const stockLabel = !pickupReady
             ? t.pickupNotSelected
             : isBlocked
@@ -143,7 +148,7 @@ export default function Order({ lang }) {
           const lowerName = (hen.name || '').toLowerCase();
           const lowerUrl = (hen.image_url || '').toLowerCase();
 
-          if (lowerName.includes('lamb') || lowerName.includes('agneau') || lowerUrl.includes('lamb')) {
+          if (isLamb || lowerUrl.includes('lamb')) {
             imageUrl = '/photos/lamb_cropped.jpg';
           } else if (lowerName.includes('meat') || lowerName.includes('chair') || lowerUrl.includes('broiler')) {
             imageUrl = '/photos/chicks_cropped.jpg';
@@ -175,8 +180,13 @@ export default function Order({ lang }) {
                 <div className="product-info">
                   <h3>{getBilingualText(hen.name)}</h3>
                   <div className="product-price">
-                    ${unitPrice.toFixed(2)} / {t.unit}
+                    ${unitPrice.toFixed(2)} / {t.unit} {isLamb ? t.lambDepositLabel : ''}
                   </div>
+                  {isLamb && (
+                    <div className="product-note">
+                      {t.lambInfo}
+                    </div>
+                  )}
                   <div className={`product-stock${isOutOfStock ? ' out-of-stock' : ''}`}>
                     {stockLabel}
                   </div>

@@ -13,7 +13,20 @@ const getBilingualText = (text, lang) => {
   if (!text) return '';
   const parts = text.split(' / ');
   if (parts.length !== 2) return text;
-  return lang === 'en' ? parts[0] : parts[1];
+  const en = parts[0];
+  const fr = parts[1];
+  if (lang === 'fr') {
+    const normalizedFr = String(fr || '').trim().toLowerCase();
+    if (normalizedFr === 'agneau') {
+      return 'Agneau vivant';
+    }
+    return fr;
+  }
+  const normalizedEn = String(en || '').trim().toLowerCase();
+  if (normalizedEn === 'lamb') {
+    return 'Live Lamb';
+  }
+  return en;
 };
 
 const { form: FORM_STORAGE_KEY } = CHECKOUT_STORAGE_KEYS;

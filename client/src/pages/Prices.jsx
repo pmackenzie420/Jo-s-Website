@@ -22,8 +22,9 @@ export default function Prices({ lang }) {
       meat_footer: "Availability: May and June",
 
       // Lamb Table
-      lamb_title: "LAMB: Alfalfa-fed",
+      lamb_title: "LIVE LAMBS: Alfalfa-fed",
       lamb_footer: "Deposit only — final price by weight at pickup",
+      lamb_specs: "$5.00/lb, 75–90 lb each. Please contact us if you're ordering ewes for breeding.",
 
       unit: "ea."
     },
@@ -46,8 +47,9 @@ export default function Prices({ lang }) {
       meat_footer: "Disponibilité : mai et juin",
 
       // Lamb Table
-      lamb_title: "AGNEAU : Élevé à la luzerne",
+      lamb_title: "AGNEAU VIVANT : Élevé à la luzerne",
       lamb_footer: "Dépôt seulement — prix final au poids au ramassage",
+      lamb_specs: "$5,00/lb, 75 à 90 lb chacun. Veuillez nous contacter si vous commandez des brebis pour la reproduction.",
 
       unit: "ch."
     }
@@ -146,6 +148,7 @@ export default function Prices({ lang }) {
               </tbody>
             </table>
             <p className="meat-footer">{t.lamb_footer}</p>
+            <p className="meat-footer">{t.lamb_specs}</p>
           </div>
         </div>
       </div>
