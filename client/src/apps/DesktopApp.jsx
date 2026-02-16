@@ -9,7 +9,8 @@ const isChunkLoadError = (err) => {
     message.includes('Failed to fetch dynamically imported module') ||
     message.includes('Importing a module script failed') ||
     message.includes('Loading chunk') ||
-    message.includes('ChunkLoadError')
+    message.includes('ChunkLoadError') ||
+    message.includes('Load failed')
   );
 };
 
