@@ -3,6 +3,7 @@ import { formatDateHeader, normalizeStatus } from '../admin-utils';
 export default function AdminPickupsPage({
   dataLoading,
   groupedPickups,
+  failedPickups,
   isMobile,
   optimisticStatuses,
   ordersHasMore,
@@ -16,7 +17,7 @@ export default function AdminPickupsPage({
   if (dataLoading) {
     return <div className="admin-panel">Loading pickups...</div>;
   }
-  if (groupedPickups.length === 0) {
+  if (groupedPickups.length === 0 && (!failedPickups || failedPickups.length === 0)) {
     return <div className="admin-panel">No pickups scheduled yet.</div>;
   }
 
@@ -57,6 +58,22 @@ export default function AdminPickupsPage({
           </div>
         </div>
       </div>
+    );
+  };
+
+  const renderFailedOrdersSection = () => {
+    if (!Array.isArray(failedPickups) || failedPickups.length === 0) return null;
+    return (
+      <section className="pickup-day stagger-item">
+        <div className="pickup-location">
+          <div className="pickup-location-header">
+            <div className="pickup-location-title">Failed Orders</div>
+          </div>
+          <div className="pickup-list">
+            {failedPickups.map((order) => renderPickupRow(order))}
+          </div>
+        </div>
+      </section>
     );
   };
 
@@ -129,6 +146,7 @@ export default function AdminPickupsPage({
             </section>
           ))
         )}
+        {renderFailedOrdersSection()}
       </div>
     );
   }
@@ -199,6 +217,7 @@ export default function AdminPickupsPage({
           </section>
         ))}
       </div>
+      {renderFailedOrdersSection()}
     </div>
   );
 }

@@ -47,6 +47,7 @@ export default function Admin() {
     optimisticStatuses,
     dateInputRef,
     groupedPickups,
+    failedPickups,
     filteredCustomers,
     orderCountByPickupKey,
     addDateButtonLabel,
@@ -165,6 +166,7 @@ export default function Admin() {
             <AdminPickupsPage
               dataLoading={dataLoading}
               groupedPickups={groupedPickups}
+              failedPickups={failedPickups}
               isMobile={isMobile}
               optimisticStatuses={optimisticStatuses}
               ordersHasMore={ordersHasMore}

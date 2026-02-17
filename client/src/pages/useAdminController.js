@@ -198,11 +198,21 @@ export default function useAdminController() {
     [orders, hens]
   );
 
+  const failedOrdersWithDetails = useMemo(
+    () => ordersWithDetails.filter((order) => normalizeStatus(order.status) === 'cancelled'),
+    [ordersWithDetails]
+  );
+
+  const nonFailedOrdersWithDetails = useMemo(
+    () => ordersWithDetails.filter((order) => normalizeStatus(order.status) !== 'cancelled'),
+    [ordersWithDetails]
+  );
+
   const pickupOrdersWithDetails = useMemo(
-    () => ordersWithDetails.filter((order) =>
+    () => nonFailedOrdersWithDetails.filter((order) =>
       String(order?.status || '').trim().toLowerCase() !== 'reserved'
     ),
-    [ordersWithDetails]
+    [nonFailedOrdersWithDetails]
   );
 
   const groupedPickups = useMemo(
@@ -230,8 +240,40 @@ export default function useAdminController() {
   }, [groupedPickups]);
 
   const customers = useMemo(
-    () => buildCustomers(ordersWithDetails),
-    [ordersWithDetails]
+    () => buildCustomers(nonFailedOrdersWithDetails),
+    [nonFailedOrdersWithDetails]
+  );
+
+  const failedPickups = useMemo(
+    () => failedOrdersWithDetails.map((order) => ({
+      key: `failed-${order.id}`,
+      customerName: order.customerName,
+      customerPhone: order.customerPhone,
+      customerEmail: order.customerEmail,
+      customerAddress: order.customerAddress,
+      pickupDate: order.pickupDate,
+      pickupLocation: order.pickupLocation,
+      pickupLocationLabel: order.pickupLocationLabel,
+      status: 'cancelled',
+      itemCount: order.itemCount,
+      itemSummary: order.itemSummary,
+      itemSummaryCompact: order.itemSummaryCompact,
+      itemSummaryShort: order.itemSummaryShort,
+      totalAmount: order.totalAmount,
+      amountPaid: order.amountPaid,
+      amountDue: order.amountDue,
+      paymentSummary: order.paymentSummary || 'Cancelled',
+      activeOrderIds: [],
+      orderIds: [order.id],
+      mergedItems: (order.orderItems || [])
+        .map((item) => ({
+          displayName: item.displayName,
+          quantity: Number(item.quantity || 0)
+        }))
+        .filter((item) => item.quantity > 0),
+      orders: [order]
+    })),
+    [failedOrdersWithDetails]
   );
 
   const filteredCustomers = useMemo(
@@ -240,8 +282,8 @@ export default function useAdminController() {
   );
 
   const orderCountByPickupKey = useMemo(
-    () => buildOrderCountByPickupKey(ordersWithDetails),
-    [ordersWithDetails]
+    () => buildOrderCountByPickupKey(nonFailedOrdersWithDetails),
+    [nonFailedOrdersWithDetails]
   );
 
   const handleLogin = useCallback(
@@ -665,6 +707,7 @@ export default function useAdminController() {
     optimisticStatuses,
     dateInputRef,
     groupedPickups,
+    failedPickups,
     filteredCustomers,
     orderCountByPickupKey,
     addDateButtonLabel,
