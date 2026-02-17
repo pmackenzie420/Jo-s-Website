@@ -1,7 +1,9 @@
 import { formatDateLong, formatCurrency, formatPhoneLink } from '../admin-utils';
+import { t, tf } from '../admin-i18n';
 
 export default function AdminCustomerModal({
   customer,
+  adminLanguage,
   onClose
 }) {
   if (!customer) return null;
@@ -12,7 +14,10 @@ export default function AdminCustomerModal({
           <div>
             <div className="detail-name">{customer.name}</div>
             <div className="detail-meta">
-              {customer.orderCount} orders - {formatCurrency(customer.totalSpend)} total
+              {tf('customer.orders', adminLanguage, {
+                count: customer.orderCount,
+                total: formatCurrency(customer.totalSpend)
+              })}
             </div>
           </div>
           <button
@@ -20,7 +25,7 @@ export default function AdminCustomerModal({
             className="admin-button ghost modal-close"
             onClick={onClose}
           >
-            Close
+            {t('btn.close', adminLanguage)}
           </button>
         </div>
         <div className="detail-links">
@@ -29,7 +34,7 @@ export default function AdminCustomerModal({
               className="detail-link"
               href={`tel:${formatPhoneLink(customer.phone)}`}
             >
-              Call
+              {t('customer.call', adminLanguage)}
             </a>
           )}
           {customer.email && (
@@ -37,7 +42,7 @@ export default function AdminCustomerModal({
               className="detail-link"
               href={`mailto:${customer.email}`}
             >
-              Email
+              {t('customer.email', adminLanguage)}
             </a>
           )}
         </div>
@@ -52,7 +57,7 @@ export default function AdminCustomerModal({
               <div key={order.id} className="history-row">
                 <div>
                   <div className="history-title">
-                    {formatDateLong(order.pickupDate || order.orderDate)}
+                    {formatDateLong(order.pickupDate || order.orderDate, adminLanguage)}
                   </div>
                   <div className="history-meta">
                     {order.itemSummary || `${order.itemCount} items`}

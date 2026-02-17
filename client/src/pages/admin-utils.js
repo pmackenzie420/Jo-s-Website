@@ -1,4 +1,5 @@
 import LOCATION_DETAILS from '../../../shared/locations.json';
+import { t } from './admin-i18n';
 
 const LOCATION_LABELS = Object.fromEntries(
   Object.entries(LOCATION_DETAILS).map(([key, value]) => [key, value.label || key])
@@ -17,13 +18,17 @@ const parsePickupKey = (value) => {
   return { date, location };
 };
 
-const TAB_CONFIG = [
-  { key: 'pickups', label: 'Pickups' },
-  { key: 'stock', label: 'Stock' },
-  { key: 'dates', label: 'Dates' },
-  { key: 'search', label: 'Search' },
-  { key: 'email', label: 'Email' }
+const TAB_KEYS = [
+  { key: 'pickups', i18nKey: 'tab.pickups' },
+  { key: 'stock',   i18nKey: 'tab.stock' },
+  { key: 'dates',   i18nKey: 'tab.dates' },
+  { key: 'create',  i18nKey: 'tab.create' },
+  { key: 'search',  i18nKey: 'tab.search' },
+  { key: 'email',   i18nKey: 'tab.email' }
 ];
+
+const getTabConfig = (lang) =>
+  TAB_KEYS.map((tab) => ({ key: tab.key, label: t(tab.i18nKey, lang) }));
 
 const pad2 = (value) => String(value).padStart(2, '0');
 
@@ -58,29 +63,31 @@ const parseLocalDate = (value) => {
   return null;
 };
 
-const formatDateHeader = (value) => {
+const dateLocale = (lang) => (lang === 'fr' ? 'fr-CA' : 'en-US');
+
+const formatDateHeader = (value, lang) => {
   const date = parseLocalDate(value);
   if (!date || Number.isNaN(date.getTime())) return 'Unknown';
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(dateLocale(lang), {
     month: 'long',
     day: 'numeric'
   }).format(date);
 };
 
-const formatDateLong = (value) => {
+const formatDateLong = (value, lang) => {
   const date = parseLocalDate(value);
   if (!date || Number.isNaN(date.getTime())) return 'Unknown';
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(dateLocale(lang), {
     month: 'long',
     day: 'numeric',
     year: 'numeric'
   }).format(date);
 };
 
-const formatDateShort = (value) => {
+const formatDateShort = (value, lang) => {
   const date = parseLocalDate(value);
   if (!date || Number.isNaN(date.getTime())) return 'Unknown';
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat(dateLocale(lang), {
     month: 'short',
     day: 'numeric'
   }).format(date);
@@ -110,10 +117,21 @@ const normalizePhoneKey = (phone) => {
   return phone.replace(/\D/g, '');
 };
 
-const getDisplayName = (name) => {
+const getLocalizedProductName = (name, language = 'en') => {
   if (!name) return 'Item';
-  return name.split(' / ')[0];
+  const parts = String(name)
+    .split(' / ')
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length === 0) return 'Item';
+  if (parts.length === 1) return parts[0];
+  if (String(language || '').toLowerCase() === 'fr') {
+    return parts[1] || parts[0];
+  }
+  return parts[0];
 };
+
+const getDisplayName = (name, language = 'en') => getLocalizedProductName(name, language);
 
 const formatLocationShort = (label) => {
   if (!label) return 'Unknown';
@@ -150,6 +168,7 @@ const normalizeStatus = (status) => {
   if (!status) return 'pending';
   if (status === 'reserved') return 'pending';
   if (status === 'cancelled') return 'cancelled';
+  if (status === 'archived') return 'archived';
   if (status === 'picked_up' || status === 'fulfilled') return 'picked_up';
   return 'pending';
 };
@@ -168,7 +187,12 @@ const STOCK_CATEGORIES = [
   {
     key: 'layers',
     label: 'Ready-to-Lay Hens',
-    matcher: (name) => name.includes('Lohmann') || name.includes('Ready-to-Lay')
+    matcher: (name) => (
+      /lohmann/i.test(name)
+      || /ready[-\s]?to[-\s]?lay/i.test(name)
+      || /pr[eê]tes?\s+à\s+pondre/i.test(name)
+      || /poules?\s+pr[eê]tes?/i.test(name)
+    )
   },
   {
     key: 'meat',
@@ -182,7 +206,8 @@ const STOCK_CATEGORIES = [
   }
 ];
 
-const buildShortSummary = (items, itemCount) => {
+const buildShortSummary = (items, itemCount, language = 'en') => {
+  const isFrench = String(language || '').toLowerCase() === 'fr';
   const counts = {
     hens: 0,
     chickens: 0,
@@ -204,32 +229,40 @@ const buildShortSummary = (items, itemCount) => {
   const parts = [];
   if (counts.hens) {
     parts.push(
-      `${counts.hens} ready-to-lay ${counts.hens === 1 ? 'hen' : 'hens'}`
+      isFrench
+        ? `${counts.hens} ${counts.hens === 1 ? 'poule prête à pondre' : 'poules prêtes à pondre'}`
+        : `${counts.hens} ready-to-lay ${counts.hens === 1 ? 'hen' : 'hens'}`
     );
   }
   if (counts.chickens) {
     parts.push(
-      `${counts.chickens} meat ${counts.chickens === 1 ? 'chicken' : 'chickens'}`
+      isFrench
+        ? `${counts.chickens} ${counts.chickens === 1 ? 'poulet de chair' : 'poulets de chair'}`
+        : `${counts.chickens} meat ${counts.chickens === 1 ? 'chicken' : 'chickens'}`
     );
   }
   if (counts.lamb) {
     parts.push(
-      `${counts.lamb} ${counts.lamb === 1 ? 'lamb' : 'lambs'}`
+      isFrench
+        ? `${counts.lamb} ${counts.lamb === 1 ? 'agneau' : 'agneaux'}`
+        : `${counts.lamb} ${counts.lamb === 1 ? 'lamb' : 'lambs'}`
     );
   }
   if (parts.length) {
     return parts.join(' · ');
   }
   if (itemCount > 0) {
-    return `${itemCount} ${itemCount === 1 ? 'item' : 'items'}`;
+    return isFrench
+      ? `${itemCount} ${itemCount === 1 ? 'article' : 'articles'}`
+      : `${itemCount} ${itemCount === 1 ? 'item' : 'items'}`;
   }
-  return 'Items';
+  return isFrench ? 'Articles' : 'Items';
 };
 
 export {
   LOCATION_LABELS,
   LOCATION_OPTIONS,
-  TAB_CONFIG,
+  getTabConfig,
   buildPickupKey,
   parsePickupKey,
   normalizeDate,
@@ -240,6 +273,7 @@ export {
   formatPhoneLink,
   formatPhoneDisplay,
   normalizePhoneKey,
+  getLocalizedProductName,
   getDisplayName,
   formatLocationShort,
   shortenItemLabel,

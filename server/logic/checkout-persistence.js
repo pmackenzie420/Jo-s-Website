@@ -88,7 +88,9 @@ const createCheckoutSession = async ({
     paymentType,
     lineItems,
     baseUrl,
-    CHECKOUT_RESERVATION_TTL_MINUTES
+    CHECKOUT_RESERVATION_TTL_MINUTES,
+    successUrl,
+    cancelUrl
 }) => {
     const reservationExpiresAt = Math.floor(Date.now() / 1000)
         + (CHECKOUT_RESERVATION_TTL_MINUTES * 60);
@@ -97,8 +99,8 @@ const createCheckoutSession = async ({
         line_items: lineItems,
         mode: 'payment',
         metadata: { order_id: orderId, payment_type: paymentType },
-        success_url: `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${baseUrl}?canceled=true`,
+        success_url: successUrl || `${baseUrl}/success?session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: cancelUrl || `${baseUrl}?canceled=true`,
         expires_at: reservationExpiresAt
     });
 };

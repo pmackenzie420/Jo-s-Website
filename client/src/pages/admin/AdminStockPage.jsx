@@ -2,8 +2,10 @@ import {
   LOCATION_LABELS,
   buildPickupKey,
   normalizeDate,
-  formatDateHeader
+  formatDateHeader,
+  getLocalizedProductName
 } from '../admin-utils';
+import { t } from '../admin-i18n';
 
 export default function AdminStockPage({
   dataLoading,
@@ -11,13 +13,14 @@ export default function AdminStockPage({
   hens,
   allPickupStocks,
   allPickupReserved,
+  adminLanguage,
   pickupStockSaving,
   dirtyStockKeys,
   onPickupStockChange,
   onPickupStockSave
 }) {
   if (dataLoading) {
-    return <div className="admin-panel">Loading stock...</div>;
+    return <div className="admin-panel">{t('stock.loading', adminLanguage)}</div>;
   }
 
   const toNonNegativeInt = (value) => {
@@ -57,10 +60,10 @@ export default function AdminStockPage({
             <div className="pickup-location">
               <div className="pickup-location-header">
                 <div className="pickup-location-title">
-                  {formatDateHeader(dateValue)} {locationLabel}
+                  {formatDateHeader(dateValue, adminLanguage)} {locationLabel}
                 </div>
                 <div className="pickup-location-meta">
-                  Reserved {summary.reserved} · Available {summary.available} · Total {summary.total}
+                  {t('stock.reserved', adminLanguage)} {summary.reserved} · {t('stock.available', adminLanguage)} {summary.available} · {t('stock.total', adminLanguage)} {summary.total}
                 </div>
               </div>
               <div className="pickup-day-body">
@@ -73,9 +76,11 @@ export default function AdminStockPage({
                     return (
                       <div key={hen.id} className="pickup-stock-row">
                         <div className="pickup-stock-name-block">
-                          <div className="pickup-stock-name">{hen.name}</div>
+                          <div className="pickup-stock-name">
+                            {getLocalizedProductName(hen.name, adminLanguage)}
+                          </div>
                           <div className="pickup-stock-meta">
-                            Reserved {reserved} · Available {available} · Total {total}
+                            {t('stock.reserved', adminLanguage)} {reserved} · {t('stock.available', adminLanguage)} {available} · {t('stock.total', adminLanguage)} {total}
                           </div>
                         </div>
                         <input
@@ -104,7 +109,7 @@ export default function AdminStockPage({
                     onClick={() => onPickupStockSave(pickupKey)}
                     disabled={isSaving || !dirtyStockKeys.has(pickupKey)}
                   >
-                    {isSaving ? 'Updating...' : 'Update Stock'}
+                    {isSaving ? t('stock.updating', adminLanguage) : t('stock.updateStock', adminLanguage)}
                   </button>
                 </div>
               </div>

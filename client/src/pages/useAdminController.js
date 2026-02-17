@@ -7,6 +7,7 @@ import {
   formatDateLong,
   normalizeStatus
 } from './admin-utils';
+import { t, tf } from './admin-i18n';
 import {
   login,
   checkSession,
@@ -16,7 +17,10 @@ import {
   addPickupDate,
   updatePickupDate,
   deletePickupDate,
-  updateOrdersStatus
+  updateOrdersStatus,
+  createAdminOrder,
+  updateAdminOrder,
+  finalizeAdminOrder
 } from './admin-api';
 import {
   buildOrdersWithDetails,
@@ -30,6 +34,7 @@ import useAdminNotice from './admin-hooks/useAdminNotice';
 import useAdminEmailComposer from './admin-hooks/useAdminEmailComposer';
 
 const ORDERS_PAGE_LIMIT = 500;
+const ADMIN_LANGUAGE_STORAGE_KEY = 'admin_product_language';
 const ADMIN_ALLOWED_ORDER_STATUSES = new Set([
   'reserved',
   'pending',
@@ -47,7 +52,6 @@ const formatEmailOutcomeSummary = ({ total, sent, failed }) => (
 
 export default function useAdminController() {
   const [password, setPassword] = useState('');
-  const [otp, setOtp] = useState('');
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [orders, setOrders] = useState([]);
   const [ordersHasMore, setOrdersHasMore] = useState(false);
@@ -58,8 +62,17 @@ export default function useAdminController() {
   const [scheduleLoading, setScheduleLoading] = useState(null);
   const [activeTab, setActiveTab] = useState('pickups');
   const [searchQuery, setSearchQuery] = useState('');
+  const [adminLanguage, setAdminLanguageState] = useState(() => {
+    try {
+      const stored = String(window.localStorage.getItem(ADMIN_LANGUAGE_STORAGE_KEY) || '').trim().toLowerCase();
+      return stored === 'en' ? 'en' : 'fr';
+    } catch {
+      return 'fr';
+    }
+  });
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [selectedPickup, setSelectedPickup] = useState(null);
+  const [editingOrder, setEditingOrder] = useState(null);
   const [newPickupDate, setNewPickupDate] = useState('');
   const [newPickupLocation, setNewPickupLocation] = useState(LOCATION_OPTIONS[0]?.value || '');
   const [changingDateId, setChangingDateId] = useState(null);
@@ -86,6 +99,16 @@ export default function useAdminController() {
     handleToggleEmailGroup,
     handleSendGroupEmail
   } = useAdminEmailComposer(showToast);
+
+  const setAdminLanguage = useCallback((value) => {
+    const next = String(value || '').toLowerCase() === 'en' ? 'en' : 'fr';
+    setAdminLanguageState(next);
+    try {
+      window.localStorage.setItem(ADMIN_LANGUAGE_STORAGE_KEY, next);
+    } catch {
+      // ignore storage issues
+    }
+  }, []);
 
   const applyMetaPayload = useCallback((payload) => {
     setHens(Array.isArray(payload?.hens) ? payload.hens : []);
@@ -114,10 +137,10 @@ export default function useAdminController() {
       applyMetaPayload(response.data || {});
       return true;
     } catch {
-      showToast({ type: 'error', text: 'Failed to refresh admin metadata.' });
+      showToast({ type: 'error', text: t('toast.refreshMetaFailed', adminLanguage) });
       return false;
     }
-  }, [applyMetaPayload, showToast]);
+  }, [applyMetaPayload, showToast, adminLanguage]);
 
   const refreshOrders = useCallback(
     async ({ quiet = true } = {}) => {
@@ -133,7 +156,7 @@ export default function useAdminController() {
         applyOrdersPayload(response.data || {}, { append: false });
         return true;
       } catch {
-        showToast({ type: 'error', text: 'Failed to refresh admin orders.' });
+        showToast({ type: 'error', text: t('toast.refreshOrdersFailed', adminLanguage) });
         return false;
       } finally {
         if (!quiet) {
@@ -141,7 +164,7 @@ export default function useAdminController() {
         }
       }
     },
-    [applyOrdersPayload, orders.length, showToast]
+    [applyOrdersPayload, orders.length, showToast, adminLanguage]
   );
 
   const fetchInitialData = useCallback(async () => {
@@ -155,12 +178,12 @@ export default function useAdminController() {
       applyOrdersPayload(ordersResponse.data || {}, { append: false });
       return true;
     } catch {
-      showToast({ type: 'error', text: 'Failed to load admin data.' });
+      showToast({ type: 'error', text: t('toast.loadFailed', adminLanguage) });
       return false;
     } finally {
       setDataLoading(false);
     }
-  }, [applyMetaPayload, applyOrdersPayload, showToast]);
+  }, [applyMetaPayload, applyOrdersPayload, showToast, adminLanguage]);
 
   const handleLoadMoreOrders = useCallback(async () => {
     if (ordersLoadingMore || dataLoading || !ordersHasMore) {
@@ -174,11 +197,11 @@ export default function useAdminController() {
       });
       applyOrdersPayload(response.data || {}, { append: true });
     } catch {
-      showToast({ type: 'error', text: 'Failed to load more orders.' });
+      showToast({ type: 'error', text: t('toast.loadMoreFailed', adminLanguage) });
     } finally {
       setOrdersLoadingMore(false);
     }
-  }, [ordersLoadingMore, dataLoading, ordersHasMore, orders.length, applyOrdersPayload, showToast]);
+  }, [ordersLoadingMore, dataLoading, ordersHasMore, orders.length, applyOrdersPayload, showToast, adminLanguage]);
 
   useEffect(() => {
     const run = async () => {
@@ -186,6 +209,19 @@ export default function useAdminController() {
         await checkSession();
         setIsLoggedIn(true);
         await fetchInitialData();
+
+        const params = new URLSearchParams(window.location.search);
+        const stripeOrderId = params.get('stripe_order');
+        if (stripeOrderId) {
+          window.history.replaceState({}, '', window.location.pathname);
+          try {
+            await finalizeAdminOrder(stripeOrderId);
+            await refreshOrders({ quiet: true });
+            showToast({ type: 'success', text: tf('toast.stripeConfirmed', adminLanguage, { id: stripeOrderId }) });
+          } catch {
+            showToast({ type: 'error', text: t('toast.stripeConfirmFailed', adminLanguage) });
+          }
+        }
       } catch {
         setIsLoggedIn(false);
       }
@@ -194,8 +230,8 @@ export default function useAdminController() {
   }, [fetchInitialData]);
 
   const ordersWithDetails = useMemo(
-    () => buildOrdersWithDetails(orders, hens),
-    [orders, hens]
+    () => buildOrdersWithDetails(orders, hens, adminLanguage),
+    [orders, hens, adminLanguage]
   );
 
   const failedOrdersWithDetails = useMemo(
@@ -204,7 +240,10 @@ export default function useAdminController() {
   );
 
   const nonFailedOrdersWithDetails = useMemo(
-    () => ordersWithDetails.filter((order) => normalizeStatus(order.status) !== 'cancelled'),
+    () => ordersWithDetails.filter((order) => {
+      const s = normalizeStatus(order.status);
+      return s !== 'cancelled' && s !== 'archived';
+    }),
     [ordersWithDetails]
   );
 
@@ -216,8 +255,8 @@ export default function useAdminController() {
   );
 
   const groupedPickups = useMemo(
-    () => buildGroupedPickups(pickupOrdersWithDetails),
-    [pickupOrdersWithDetails]
+    () => buildGroupedPickups(pickupOrdersWithDetails, adminLanguage),
+    [pickupOrdersWithDetails, adminLanguage]
   );
 
   useEffect(() => {
@@ -276,6 +315,46 @@ export default function useAdminController() {
     [failedOrdersWithDetails]
   );
 
+  useEffect(() => {
+    if (!selectedPickup) return;
+    const groupedOrders = groupedPickups
+      .flatMap((group) => group.locations || [])
+      .flatMap((locationGroup) => locationGroup.orders || []);
+    const nextPickup = [...groupedOrders, ...failedPickups]
+      .find((pickup) => pickup.key === selectedPickup.key);
+    if (!nextPickup) {
+      setSelectedPickup(null);
+      return;
+    }
+    if (nextPickup !== selectedPickup) {
+      setSelectedPickup(nextPickup);
+    }
+  }, [groupedPickups, failedPickups, selectedPickup]);
+
+  useEffect(() => {
+    if (!selectedCustomer) return;
+    const nextCustomer = customers.find((customer) => customer.key === selectedCustomer.key);
+    if (!nextCustomer) {
+      setSelectedCustomer(null);
+      return;
+    }
+    if (nextCustomer !== selectedCustomer) {
+      setSelectedCustomer(nextCustomer);
+    }
+  }, [customers, selectedCustomer]);
+
+  useEffect(() => {
+    if (!editingOrder) return;
+    const nextOrder = ordersWithDetails.find((order) => String(order.id) === String(editingOrder.id));
+    if (!nextOrder) {
+      setEditingOrder(null);
+      return;
+    }
+    if (nextOrder !== editingOrder) {
+      setEditingOrder(nextOrder);
+    }
+  }, [ordersWithDetails, editingOrder]);
+
   const filteredCustomers = useMemo(
     () => filterCustomers(customers, searchQuery),
     [customers, searchQuery]
@@ -290,42 +369,41 @@ export default function useAdminController() {
     async (event) => {
       event.preventDefault();
       try {
-        await login(password, otp);
+        await login(password);
         setIsLoggedIn(true);
         setNotice(null);
         setPassword('');
-        setOtp('');
         await fetchInitialData();
       } catch (error) {
         if (error.response) {
           if (error.response.status === 401) {
-            showToast({ type: 'error', text: 'Wrong password. Try again.' });
+            showToast({ type: 'error', text: t('toast.wrongPassword', adminLanguage) });
           } else if (error.response.status === 429) {
-            showToast({ type: 'error', text: 'Too many attempts. Try later.' });
+            showToast({ type: 'error', text: t('toast.tooManyAttempts', adminLanguage) });
           } else {
-            showToast({ type: 'error', text: 'Server error. Check connection.' });
+            showToast({ type: 'error', text: t('toast.serverError', adminLanguage) });
           }
         } else {
-          showToast({ type: 'error', text: 'Login failed. Check connection.' });
+          showToast({ type: 'error', text: t('toast.loginFailed', adminLanguage) });
         }
       }
     },
-    [password, otp, fetchInitialData, setNotice, showToast]
+    [password, fetchInitialData, setNotice, showToast, adminLanguage]
   );
 
   const handleExportDownload = useCallback(
     async (groupDate, locationGroup) => {
       if (dataLoading) {
-        showToast({ type: 'error', text: 'Orders are still loading.' });
+        showToast({ type: 'error', text: t('toast.ordersStillLoading', adminLanguage) });
         return;
       }
       try {
         await exportOrdersPdf({ groupedPickups, groupDate, locationGroup });
       } catch {
-        showToast({ type: 'error', text: 'Failed to export orders.' });
+        showToast({ type: 'error', text: t('toast.exportFailed', adminLanguage) });
       }
     },
-    [dataLoading, groupedPickups, showToast]
+    [dataLoading, groupedPickups, showToast, adminLanguage]
   );
 
   const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
@@ -365,15 +443,15 @@ export default function useAdminController() {
           next.delete(pickupKey);
           return next;
         });
-        showToast({ type: 'success', text: 'Stock updated.' });
+        showToast({ type: 'success', text: t('toast.stockUpdated', adminLanguage) });
         await refreshMeta();
       } catch {
-        showToast({ type: 'error', text: 'Failed to update pickup stock.' });
+        showToast({ type: 'error', text: t('toast.stockFailed', adminLanguage) });
       } finally {
         setPickupStockSaving(null);
       }
     },
-    [allPickupStocks, hens, refreshMeta, showToast]
+    [allPickupStocks, hens, refreshMeta, showToast, adminLanguage]
   );
 
   const addDate = useCallback(
@@ -382,17 +460,17 @@ export default function useAdminController() {
       setScheduleLoading('add');
       try {
         await addPickupDate({ dateValue, location: locationValue });
-        showToast({ type: 'success', text: 'Pickup date added.' });
+        showToast({ type: 'success', text: t('toast.dateAdded', adminLanguage) });
         await refreshMeta();
         return true;
       } catch {
-        showToast({ type: 'error', text: 'Failed to add pickup date.' });
+        showToast({ type: 'error', text: t('toast.dateAddFailed', adminLanguage) });
         return false;
       } finally {
         setScheduleLoading(null);
       }
     },
-    [refreshMeta, showToast]
+    [refreshMeta, showToast, adminLanguage]
   );
 
   const startDateChange = useCallback((dateItem) => {
@@ -412,17 +490,18 @@ export default function useAdminController() {
     async (dateItem) => {
       if (!dateItem?.id) return;
       if (!changePickupDate) {
-        showToast({ type: 'error', text: 'Please select a new date.' });
+        showToast({ type: 'error', text: t('toast.selectNewDate', adminLanguage) });
         return;
       }
 
       const fromDate = normalizeDate(dateItem.date_value);
-      const fromDateLabel = formatDateLong(fromDate);
-      const toDateLabel = formatDateLong(changePickupDate);
+      const fromDateLabel = formatDateLong(fromDate, adminLanguage);
+      const toDateLabel = formatDateLong(changePickupDate, adminLanguage);
 
-      const warningText = changeEmailUsers
-        ? `Email users with pickup date change from ${fromDateLabel} to ${toDateLabel}?`
-        : `Apply pickup date change from ${fromDateLabel} to ${toDateLabel} without emailing users?`;
+      const confirmKey = changeEmailUsers
+        ? 'confirm.changeDateEmail'
+        : 'confirm.changeDateNoEmail';
+      const warningText = tf(confirmKey, adminLanguage, { from: fromDateLabel, to: toDateLabel });
       const confirmed = window.confirm(warningText);
       if (!confirmed) return;
 
@@ -437,7 +516,7 @@ export default function useAdminController() {
 
         const payload = response?.data || {};
         const movedOrders = Number(payload.movedOrders || 0);
-        const mergedText = payload.merged ? ' Merged with existing date.' : '';
+        const mergedText = payload.merged ? ` ${t('result.merged', adminLanguage)}` : '';
         const emailSentCount = Number(payload.emailSent || 0);
         const emailFailedCount = Number(payload.emailFailed || 0);
         const emailTotalCount = (
@@ -453,7 +532,7 @@ export default function useAdminController() {
           : '';
         showToast({
           type: 'success',
-          text: `Pickup date updated.${mergedText} ${movedOrders} orders moved.${emailSummary}`.trim()
+          text: `${t('toast.dateUpdated', adminLanguage)}${mergedText} ${tf('result.ordersMoved', adminLanguage, { count: movedOrders })}${emailSummary}`.trim()
         });
 
         await Promise.all([
@@ -466,16 +545,17 @@ export default function useAdminController() {
         if (status === 400 || status === 404 || status === 409) {
           showToast({
             type: 'error',
-            text: error?.response?.data?.error || 'Failed to update pickup date.'
+            text: error?.response?.data?.error || t('toast.dateUpdateFailed', adminLanguage)
           });
         } else {
-          showToast({ type: 'error', text: 'Failed to update pickup date.' });
+          showToast({ type: 'error', text: t('toast.dateUpdateFailed', adminLanguage) });
         }
       } finally {
         setScheduleLoading(null);
       }
     },
     [
+      adminLanguage,
       cancelDateChange,
       changeEmailUsers,
       changePickupDate,
@@ -488,32 +568,32 @@ export default function useAdminController() {
   const deleteDate = useCallback(
     async (dateItem, orderCount) => {
       if (orderCount > 0) {
-        const confirmed = window.confirm('This date has existing orders. Remove it anyway?');
+        const confirmed = window.confirm(t('confirm.deleteDate', adminLanguage));
         if (!confirmed) return;
       }
       setScheduleLoading(dateItem.id);
       try {
         await deletePickupDate(dateItem.id);
-        showToast({ type: 'success', text: 'Pickup date removed.' });
+        showToast({ type: 'success', text: t('toast.dateRemoved', adminLanguage) });
         await refreshMeta();
         if (changingDateId === dateItem.id) {
           cancelDateChange();
         }
       } catch {
-        showToast({ type: 'error', text: 'Failed to remove pickup date.' });
+        showToast({ type: 'error', text: t('toast.dateRemoveFailed', adminLanguage) });
       } finally {
         setScheduleLoading(null);
       }
     },
-    [cancelDateChange, changingDateId, refreshMeta, showToast]
+    [adminLanguage, cancelDateChange, changingDateId, refreshMeta, showToast]
   );
 
   const updateOrderStatus = useCallback(
     async (orderIds, newStatus, _loadingKey, options = {}) => {
       if (!Array.isArray(orderIds) || orderIds.length === 0) return false;
       const {
-        successMessage = 'Pickup status updated.',
-        errorMessage = 'Failed to update pickup status.',
+        successMessage = t('toast.statusUpdated', adminLanguage),
+        errorMessage = t('toast.statusFailed', adminLanguage),
         showToast: shouldToast = true
       } = options;
       try {
@@ -530,7 +610,7 @@ export default function useAdminController() {
         return false;
       }
     },
-    [refreshOrders, showToast]
+    [adminLanguage, refreshOrders, showToast]
   );
 
   const handleMarkPickedUp = useCallback(
@@ -560,14 +640,14 @@ export default function useAdminController() {
           delete next[order.key];
           return next;
         });
-        showToast({ type: 'error', text: 'Failed to mark picked up.' });
+        showToast({ type: 'error', text: t('toast.markFailed', adminLanguage) });
         return;
       }
 
       showToast({
         type: 'success',
-        text: 'Marked picked up.',
-        actionLabel: 'Undo',
+        text: t('toast.markedPickedUp', adminLanguage),
+        actionLabel: t('toast.undo', adminLanguage),
         duration: 5000,
         action: async () => {
           setOptimisticStatuses((prev) => ({ ...prev, [order.key]: previousMergedStatus }));
@@ -594,12 +674,12 @@ export default function useAdminController() {
             });
           } catch {
             setOptimisticStatuses((prev) => ({ ...prev, [order.key]: 'picked_up' }));
-            showToast({ type: 'error', text: 'Failed to undo pickup.' });
+            showToast({ type: 'error', text: t('toast.undoFailed', adminLanguage) });
           }
         }
       });
     },
-    [showToast, updateOrderStatus, refreshOrders]
+    [adminLanguage, showToast, updateOrderStatus, refreshOrders]
   );
 
   const handleRowClick = useCallback((order) => {
@@ -609,16 +689,18 @@ export default function useAdminController() {
   const handleBulkPickup = useCallback(
     async (orderIds, label, loadingKey) => {
       if (!Array.isArray(orderIds) || orderIds.length === 0) {
-        showToast({ type: 'error', text: 'No active pickups in this group.' });
+        showToast({ type: 'error', text: t('toast.noActivePickups', adminLanguage) });
         return;
       }
-      const confirmed = window.confirm(
-        `Mark all ${orderIds.length} pickups as picked up${label ? ` (${label})` : ''}?`
-      );
+      const confirmText = tf('confirm.bulkPickup', adminLanguage, {
+        count: orderIds.length,
+        label: label ? ` (${label})` : ''
+      });
+      const confirmed = window.confirm(confirmText);
       if (!confirmed) return;
       await updateOrderStatus(orderIds, 'picked_up', loadingKey || label || 'bulk');
     },
-    [showToast, updateOrderStatus]
+    [adminLanguage, showToast, updateOrderStatus]
   );
 
   const handleAddDateClick = useCallback(async () => {
@@ -627,16 +709,16 @@ export default function useAdminController() {
       return;
     }
     if (!newPickupDate) {
-      showToast({ type: 'error', text: 'Please select a date.' });
+      showToast({ type: 'error', text: t('toast.selectDate', adminLanguage) });
       return;
     }
     if (!newPickupLocation) {
-      showToast({ type: 'error', text: 'Select a pickup location.' });
+      showToast({ type: 'error', text: t('toast.selectLocation', adminLanguage) });
       return;
     }
-    const confirmLabel = formatDateLong(newPickupDate);
+    const confirmLabel = formatDateLong(newPickupDate, adminLanguage);
     const locationLabel = LOCATION_LABELS[newPickupLocation] || newPickupLocation;
-    const confirmed = window.confirm(`Add pickup date: ${confirmLabel} (${locationLabel})?`);
+    const confirmed = window.confirm(tf('confirm.addDate', adminLanguage, { date: confirmLabel, location: locationLabel }));
     if (!confirmed) {
       return;
     }
@@ -646,6 +728,7 @@ export default function useAdminController() {
       setIsAddingDate(false);
     }
   }, [
+    adminLanguage,
     isAddingDate,
     newPickupDate,
     newPickupLocation,
@@ -654,15 +737,97 @@ export default function useAdminController() {
   ]);
 
   const addDateButtonLabel = scheduleLoading === 'add'
-    ? 'Adding...'
+    ? t('dates.addBtn.adding', adminLanguage)
     : isAddingDate
-      ? 'Confirm Pickup Date'
-      : 'Add Pickup Date';
+      ? t('dates.addBtn.confirm', adminLanguage)
+      : t('dates.addBtn.add', adminLanguage);
+
+  const handleCreateAdminOrder = useCallback(
+    async (payload) => {
+      try {
+        const response = await createAdminOrder(payload);
+        const data = response.data || {};
+        if (data.stripeUrl) {
+          return data;
+        }
+        const orderId = data.orderId;
+        showToast({
+          type: 'success',
+          text: orderId ? tf('toast.orderCreatedId', adminLanguage, { id: orderId }) : t('toast.orderCreated', adminLanguage)
+        });
+        await Promise.all([refreshMeta(), refreshOrders({ quiet: true })]);
+        return data.success ? data : { success: true, orderId };
+      } catch (error) {
+        const status = error?.response?.status;
+        const errData = error?.response?.data;
+        const message = (() => {
+          if (status === 401) return t('toast.unauthorized', adminLanguage);
+          if (status === 404) return t('toast.endpointNotFound', adminLanguage);
+          if (errData && typeof errData === 'object' && typeof errData.error === 'string') return errData.error;
+          return t('toast.createFailed', adminLanguage);
+        })();
+        showToast({ type: 'error', text: message });
+        throw error;
+      }
+    },
+    [adminLanguage, showToast, refreshMeta, refreshOrders]
+  );
+
+  const handleArchiveOrder = useCallback(
+    async (order) => {
+      if (!order?.orderIds?.length) return;
+      const confirmed = window.confirm(t('confirm.archiveDraft', adminLanguage));
+      if (!confirmed) return;
+      const success = await updateOrderStatus(order.orderIds, 'archived', order.key, {
+        successMessage: t('toast.orderArchived', adminLanguage),
+        errorMessage: t('toast.archiveFailed', adminLanguage)
+      });
+      if (success) {
+        setSelectedPickup(null);
+      }
+    },
+    [adminLanguage, updateOrderStatus]
+  );
+
+  const handleEditOrder = useCallback((order) => {
+    if (!order) return;
+    setSelectedPickup(null);
+    setEditingOrder(order);
+  }, []);
+
+  const handleUpdateAdminOrder = useCallback(
+    async (orderId, payload) => {
+      try {
+        const response = await updateAdminOrder({ orderId, payload });
+        showToast({
+          type: 'success',
+          text: tf('toast.orderUpdated', adminLanguage, { id: orderId })
+        });
+        setEditingOrder(null);
+        setSelectedPickup(null);
+        await Promise.all([refreshMeta(), refreshOrders({ quiet: true })]);
+        return response.data || {};
+      } catch (error) {
+        const status = error?.response?.status;
+        const data = error?.response?.data;
+        const message = (() => {
+          if (status === 401) return t('toast.unauthorized', adminLanguage);
+          if (status === 404) return t('toast.orderNotFound', adminLanguage);
+          if (data && typeof data === 'object' && typeof data.error === 'string') return data.error;
+          return t('toast.updateFailed', adminLanguage);
+        })();
+        showToast({ type: 'error', text: message });
+        throw error;
+      }
+    },
+    [adminLanguage, showToast, refreshMeta, refreshOrders]
+  );
 
   const handleTabChange = useCallback((key) => {
     setActiveTab(key);
     setSelectedCustomer(null);
     setSelectedPickup(null);
+    setEditingOrder(null);
     if (key !== 'stock') {
       cancelDateChange();
     }
@@ -676,7 +841,6 @@ export default function useAdminController() {
 
   return {
     password,
-    otp,
     isLoggedIn,
     dates,
     hens,
@@ -686,9 +850,11 @@ export default function useAdminController() {
     scheduleLoading,
     notice,
     activeTab,
+    adminLanguage,
     searchQuery,
     selectedCustomer,
     selectedPickup,
+    editingOrder,
     newPickupDate,
     newPickupLocation,
     changingDateId,
@@ -712,10 +878,11 @@ export default function useAdminController() {
     orderCountByPickupKey,
     addDateButtonLabel,
     setPassword,
-    setOtp,
+    setAdminLanguage,
     setSearchQuery,
     setSelectedCustomer,
     setSelectedPickup,
+    setEditingOrder,
     setIsAddingDate,
     setNewPickupLocation,
     setNewPickupDate,
@@ -739,6 +906,10 @@ export default function useAdminController() {
     handleSendGroupEmail,
     handleRowClick,
     handleBulkPickup,
-    handleMarkPickedUp
+    handleMarkPickedUp,
+    handleCreateAdminOrder,
+    handleArchiveOrder,
+    handleEditOrder,
+    handleUpdateAdminOrder
   };
 }

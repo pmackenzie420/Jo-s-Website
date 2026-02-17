@@ -478,6 +478,11 @@ export default function Checkout({ lang }) {
                   ? 'Please note that at pickup, we cannot split a single order among multiple people. Each order must be picked up in full by the purchaser.'
                   : "Veuillez noter que lors du ramassage, nous ne pouvons pas diviser une même commande entre plusieurs personnes. Chaque commande doit être ramassée en entièreté par l'acheteur."}
               </p>
+              <p className="terms-subnote">
+                {lang === 'en'
+                  ? 'Payments, including deposits, are non-refundable.'
+                  : 'Les paiements, y compris les dépôts, ne sont pas remboursables.'}
+              </p>
             </div>
             <button className="btn-continue" onClick={() => setShowTerms(false)}>
               {lang === 'en' ? 'I Understand' : 'Je comprends'}

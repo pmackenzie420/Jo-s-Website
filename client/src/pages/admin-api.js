@@ -3,8 +3,8 @@ import { API_URL } from '../constants/api';
 
 const withAuth = { withCredentials: true };
 
-const login = (password, otp = '') =>
-  axios.post(`${API_URL}/admin/login`, { password, otp }, withAuth);
+const login = (password) =>
+  axios.post(`${API_URL}/admin/login`, { password }, withAuth);
 
 const checkSession = () => axios.get(`${API_URL}/admin/session`, withAuth);
 
@@ -36,6 +36,15 @@ const deletePickupDate = (dateId) =>
 const updateOrdersStatus = ({ ids, status }) =>
   axios.put(`${API_URL}/admin/orders/status`, { ids, status }, withAuth);
 
+const createAdminOrder = (payload) =>
+  axios.post(`${API_URL}/admin/orders`, payload, withAuth);
+
+const updateAdminOrder = ({ orderId, payload }) =>
+  axios.put(`${API_URL}/admin/orders/${orderId}`, payload, withAuth);
+
+const finalizeAdminOrder = (orderId) =>
+  axios.post(`${API_URL}/admin/orders/${orderId}/finalize-payment`, {}, withAuth);
+
 const sendGroupEmail = ({ messages }) =>
   axios.post(`${API_URL}/admin/email`, { messages }, withAuth);
 
@@ -49,5 +58,8 @@ export {
   updatePickupDate,
   deletePickupDate,
   updateOrdersStatus,
+  createAdminOrder,
+  updateAdminOrder,
+  finalizeAdminOrder,
   sendGroupEmail
 };

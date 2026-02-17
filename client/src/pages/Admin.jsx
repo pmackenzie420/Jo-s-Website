@@ -8,15 +8,17 @@ import AdminStockPage from './admin/AdminStockPage';
 import AdminDatesPage from './admin/AdminDatesPage';
 import AdminSearchPage from './admin/AdminSearchPage';
 import AdminEmailPage from './admin/AdminEmailPage';
+import AdminCreateOrderPage from './admin/AdminCreateOrderPage';
 import AdminCustomerModal from './admin/AdminCustomerModal';
 import AdminPickupModal from './admin/AdminPickupModal';
-import { TAB_CONFIG } from './admin-utils';
+import AdminEditOrderModal from './admin/AdminEditOrderModal';
+import { getTabConfig } from './admin-utils';
+import { t } from './admin-i18n';
 import useAdminController from './useAdminController';
 
 export default function Admin() {
   const {
     password,
-    otp,
     isLoggedIn,
     dates,
     hens,
@@ -26,9 +28,11 @@ export default function Admin() {
     scheduleLoading,
     notice,
     activeTab,
+    adminLanguage,
     searchQuery,
     selectedCustomer,
     selectedPickup,
+    editingOrder,
     newPickupDate,
     newPickupLocation,
     changingDateId,
@@ -52,10 +56,11 @@ export default function Admin() {
     orderCountByPickupKey,
     addDateButtonLabel,
     setPassword,
-    setOtp,
+    setAdminLanguage,
     setSearchQuery,
     setSelectedCustomer,
     setSelectedPickup,
+    setEditingOrder,
     setIsAddingDate,
     setNewPickupLocation,
     setNewPickupDate,
@@ -79,7 +84,11 @@ export default function Admin() {
     handleSendGroupEmail,
     handleRowClick,
     handleBulkPickup,
-    handleMarkPickedUp
+    handleMarkPickedUp,
+    handleCreateAdminOrder,
+    handleArchiveOrder,
+    handleEditOrder,
+    handleUpdateAdminOrder
   } = useAdminController();
 
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -108,29 +117,25 @@ export default function Admin() {
   }, []);
 
   useEffect(() => {
-    const hasModal = Boolean(selectedCustomer || selectedPickup);
+    const hasModal = Boolean(selectedCustomer || selectedPickup || editingOrder);
     if (hasModal) {
       document.body.classList.add('admin-modal-open');
     } else {
       document.body.classList.remove('admin-modal-open');
     }
     return () => document.body.classList.remove('admin-modal-open');
-  }, [selectedCustomer, selectedPickup]);
+  }, [selectedCustomer, selectedPickup, editingOrder]);
 
   if (!isLoggedIn) {
     return (
       <AdminLoginView
         password={password}
-        otp={otp}
         notice={notice}
         onPasswordChange={(event) => setPassword(event.target.value)}
-        onOtpChange={(event) => setOtp(event.target.value)}
         onLogin={handleLogin}
       />
     );
   }
-
-  const activeTabConfig = TAB_CONFIG.find((tab) => tab.key === activeTab);
 
   return (
     <div className="admin-container">
@@ -138,12 +143,28 @@ export default function Admin() {
         <AdminToast notice={notice} onAction={handleNoticeAction} />
         <header className="admin-topbar">
           <div className="admin-topbar-row">
-            <div className="admin-brand">
-              <div className="admin-page-title">{activeTabConfig?.label}</div>
+            <div className="admin-language-toggle" role="group" aria-label={t('toggle.ariaLabel', adminLanguage)}>
+              <button
+                type="button"
+                className={`admin-language-toggle-button ${adminLanguage === 'en' ? 'active' : ''}`}
+                onClick={() => setAdminLanguage('en')}
+                aria-pressed={adminLanguage === 'en'}
+              >
+                EN
+              </button>
+              {' | '}
+              <button
+                type="button"
+                className={`admin-language-toggle-button ${adminLanguage === 'fr' ? 'active' : ''}`}
+                onClick={() => setAdminLanguage('fr')}
+                aria-pressed={adminLanguage === 'fr'}
+              >
+                FR
+              </button>
             </div>
           </div>
           <nav className="admin-tabs" aria-label="Admin sections">
-            {TAB_CONFIG.map((tab) => (
+            {getTabConfig(adminLanguage).map((tab) => (
               <button
                 key={tab.key}
                 className={`admin-tab-button ${activeTab === tab.key ? 'active' : ''}`}
@@ -171,6 +192,7 @@ export default function Admin() {
               optimisticStatuses={optimisticStatuses}
               ordersHasMore={ordersHasMore}
               ordersLoadingMore={ordersLoadingMore}
+              adminLanguage={adminLanguage}
               onRowClick={handleRowClick}
               onLoadMoreOrders={handleLoadMoreOrders}
               onExportAll={() => handleExportDownload()}
@@ -187,6 +209,7 @@ export default function Admin() {
               hens={hens}
               allPickupStocks={allPickupStocks}
               allPickupReserved={allPickupReserved}
+              adminLanguage={adminLanguage}
               pickupStockSaving={pickupStockSaving}
               dirtyStockKeys={dirtyStockKeys}
               onPickupStockChange={handlePickupStockChange}
@@ -206,6 +229,7 @@ export default function Admin() {
               changeEmailUsers={changeEmailUsers}
               dateInputRef={dateInputRef}
               orderCountByPickupKey={orderCountByPickupKey}
+              adminLanguage={adminLanguage}
               onDeleteDate={deleteDate}
               onStartDateChange={startDateChange}
               onCancelDateChange={cancelDateChange}
@@ -219,6 +243,17 @@ export default function Admin() {
               addDateButtonLabel={addDateButtonLabel}
             />
           )}
+          {activeTab === 'create' && (
+            <AdminCreateOrderPage
+              dataLoading={dataLoading}
+              hens={hens}
+              dates={dates}
+              allPickupStocks={allPickupStocks}
+              allPickupReserved={allPickupReserved}
+              adminLanguage={adminLanguage}
+              onCreateOrder={handleCreateAdminOrder}
+            />
+          )}
           {activeTab === 'search' && (
             <AdminSearchPage
               dataLoading={dataLoading}
@@ -227,6 +262,7 @@ export default function Admin() {
               filteredCustomers={filteredCustomers}
               ordersHasMore={ordersHasMore}
               ordersLoadingMore={ordersLoadingMore}
+              adminLanguage={adminLanguage}
               onLoadMoreOrders={handleLoadMoreOrders}
               onSelectCustomer={setSelectedCustomer}
             />
@@ -240,6 +276,7 @@ export default function Admin() {
               emailMessage={emailMessage}
               emailSending={emailSending}
               emailFailedRecipients={emailFailedRecipients}
+              adminLanguage={adminLanguage}
               onToggleGroup={handleToggleEmailGroup}
               onSubjectChange={setEmailSubject}
               onMessageChange={setEmailMessage}
@@ -249,7 +286,7 @@ export default function Admin() {
         </main>
 
         <nav className="admin-nav admin-nav-mobile">
-          {TAB_CONFIG.map((tab) => (
+          {getTabConfig(adminLanguage).map((tab) => (
             <button
               key={tab.key}
               className={`admin-nav-button ${activeTab === tab.key ? 'active' : ''}`}
@@ -265,13 +302,26 @@ export default function Admin() {
 
       <AdminCustomerModal
         customer={selectedCustomer}
+        adminLanguage={adminLanguage}
         onClose={() => setSelectedCustomer(null)}
       />
       <AdminPickupModal
         pickup={selectedPickup}
+        adminLanguage={adminLanguage}
         optimisticStatuses={optimisticStatuses}
         onClose={() => setSelectedPickup(null)}
         onMarkPickedUp={handleMarkPickedUp}
+        onEditOrder={handleEditOrder}
+        onArchiveOrder={handleArchiveOrder}
+      />
+      <AdminEditOrderModal
+        order={editingOrder}
+        dates={dates}
+        hens={hens}
+        allPickupStocks={allPickupStocks}
+        adminLanguage={adminLanguage}
+        onClose={() => setEditingOrder(null)}
+        onSave={handleUpdateAdminOrder}
       />
     </div>
   );

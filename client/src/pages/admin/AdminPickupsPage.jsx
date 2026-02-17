@@ -1,4 +1,5 @@
 import { formatDateHeader, normalizeStatus } from '../admin-utils';
+import { t } from '../admin-i18n';
 
 export default function AdminPickupsPage({
   dataLoading,
@@ -8,6 +9,7 @@ export default function AdminPickupsPage({
   optimisticStatuses,
   ordersHasMore,
   ordersLoadingMore,
+  adminLanguage,
   onRowClick,
   onLoadMoreOrders,
   onExportAll,
@@ -15,10 +17,10 @@ export default function AdminPickupsPage({
   onBulkPickup
 }) {
   if (dataLoading) {
-    return <div className="admin-panel">Loading pickups...</div>;
+    return <div className="admin-panel">{t('pickups.loading', adminLanguage)}</div>;
   }
   if (groupedPickups.length === 0 && (!failedPickups || failedPickups.length === 0)) {
-    return <div className="admin-panel">No pickups scheduled yet.</div>;
+    return <div className="admin-panel">{t('pickups.empty', adminLanguage)}</div>;
   }
 
   const pickupCards = groupedPickups.flatMap((group) =>
@@ -31,6 +33,12 @@ export default function AdminPickupsPage({
       activeOrderIds: locationGroup.activeOrderIds
     }))
   );
+
+  const loadMoreLabel = ordersLoadingMore
+    ? t('pickups.loading_short', adminLanguage)
+    : ordersHasMore
+      ? t('pickups.loadMore', adminLanguage)
+      : t('pickups.allLoaded', adminLanguage);
 
   const renderPickupRow = (order) => {
     const optimisticStatus = optimisticStatuses[order.key];
@@ -67,7 +75,7 @@ export default function AdminPickupsPage({
       <section className="pickup-day stagger-item">
         <div className="pickup-location">
           <div className="pickup-location-header">
-            <div className="pickup-location-title">Failed Orders</div>
+            <div className="pickup-location-title">{t('pickups.failedOrders', adminLanguage)}</div>
           </div>
           <div className="pickup-list">
             {failedPickups.map((order) => renderPickupRow(order))}
@@ -88,7 +96,7 @@ export default function AdminPickupsPage({
               onClick={onExportAll}
               disabled={dataLoading}
             >
-              Export All
+              {t('pickups.exportAll', adminLanguage)}
             </button>
             <button
               className="admin-button ghost"
@@ -96,7 +104,7 @@ export default function AdminPickupsPage({
               onClick={onLoadMoreOrders}
               disabled={!ordersHasMore || ordersLoadingMore}
             >
-              {ordersLoadingMore ? 'Loading...' : ordersHasMore ? 'Load More Orders' : 'All Orders Loaded'}
+              {loadMoreLabel}
             </button>
           </div>
         </div>
@@ -110,14 +118,14 @@ export default function AdminPickupsPage({
                 <div className="pickup-location-header">
                   <div>
                     <div className="pickup-location-title">
-                      {formatDateHeader(group.date)} {locationGroup.locationLabel}
+                      {formatDateHeader(group.date, adminLanguage)} {locationGroup.locationLabel}
                     </div>
                   </div>
                   <div className="pickup-location-actions">
                     <button
                       type="button"
                       className="admin-button ghost small"
-                      title="Mark All Picked Up"
+                      title={t('pickups.markAllTitle', adminLanguage)}
                       onClick={() =>
                         onBulkPickup(
                           locationGroup.activeOrderIds,
@@ -132,7 +140,7 @@ export default function AdminPickupsPage({
                     <button
                       type="button"
                       className="admin-button ghost small"
-                      title="Export List"
+                      title={t('pickups.exportTitle', adminLanguage)}
                       onClick={() => onExportGroup(group.date, locationGroup)}
                     >
                       ↓
@@ -161,7 +169,7 @@ export default function AdminPickupsPage({
             onClick={onExportAll}
             disabled={dataLoading}
           >
-            Export All
+            {t('pickups.exportAll', adminLanguage)}
           </button>
           <button
             className="admin-button ghost"
@@ -169,7 +177,7 @@ export default function AdminPickupsPage({
             onClick={onLoadMoreOrders}
             disabled={!ordersHasMore || ordersLoadingMore}
           >
-            {ordersLoadingMore ? 'Loading...' : ordersHasMore ? 'Load More Orders' : 'All Orders Loaded'}
+            {loadMoreLabel}
           </button>
         </div>
       </div>
@@ -181,13 +189,13 @@ export default function AdminPickupsPage({
           >
             <div className="pickup-card-header">
               <div className="pickup-card-title">
-                {formatDateHeader(card.date)} {card.locationLabel}
+                {formatDateHeader(card.date, adminLanguage)} {card.locationLabel}
               </div>
               <div className="pickup-card-actions">
                 <button
                   type="button"
                   className="admin-button ghost small"
-                  title="Mark All Picked Up"
+                  title={t('pickups.markAllTitle', adminLanguage)}
                   onClick={() =>
                     onBulkPickup(card.activeOrderIds, card.locationLabel, card.location)
                   }
@@ -198,7 +206,7 @@ export default function AdminPickupsPage({
                 <button
                   type="button"
                   className="admin-button ghost small"
-                  title="Export List"
+                  title={t('pickups.exportTitle', adminLanguage)}
                   onClick={() =>
                     onExportGroup(card.date, {
                       location: card.location,

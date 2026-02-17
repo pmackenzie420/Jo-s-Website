@@ -1,4 +1,5 @@
 import { formatDateLong } from '../admin-utils';
+import { t, tf } from '../admin-i18n';
 
 export default function AdminEmailPage({
   dataLoading,
@@ -8,13 +9,14 @@ export default function AdminEmailPage({
   emailMessage,
   emailSending,
   emailFailedRecipients,
+  adminLanguage,
   onToggleGroup,
   onSubjectChange,
   onMessageChange,
   onSendGroupEmail
 }) {
   if (dataLoading) {
-    return <div className="admin-panel">Loading email groups...</div>;
+    return <div className="admin-panel">{t('email.loading', adminLanguage)}</div>;
   }
 
   return (
@@ -22,12 +24,12 @@ export default function AdminEmailPage({
       <section className="admin-panel stagger-item">
         <div className="panel-header">
           <div>
-            <div className="panel-title">Emailing</div>
-            <div className="panel-subtitle">Send a note to each pickup group.</div>
+            <div className="panel-title">{t('email.title', adminLanguage)}</div>
+            <div className="panel-subtitle">{t('email.subtitle', adminLanguage)}</div>
           </div>
         </div>
         {groupedPickups.length === 0 ? (
-          <div className="empty-state">No pickup groups yet.</div>
+          <div className="empty-state">{t('email.empty', adminLanguage)}</div>
         ) : (
           <div className="email-group-list">
             {groupedPickups.flatMap((group) =>
@@ -70,27 +72,32 @@ export default function AdminEmailPage({
                     >
                       <div>
                         <div className="email-group-title">
-                          {formatDateLong(group.date)} - {locationGroup.locationLabel}
+                          {formatDateLong(group.date, adminLanguage)} - {locationGroup.locationLabel}
                         </div>
                         <div className="email-group-meta">
-                          {locationGroup.orders.length} orders - {recipients.size} emails
+                          {tf('email.orders', adminLanguage, {
+                            orders: locationGroup.orders.length,
+                            emails: recipients.size
+                          })}
                         </div>
                       </div>
-                      <span className="email-group-action">{isActive ? 'Close' : 'Email'}</span>
+                      <span className="email-group-action">
+                        {isActive ? t('email.close', adminLanguage) : t('email.emailBtn', adminLanguage)}
+                      </span>
                     </button>
                     {isActive && (
                       <div className="email-group-form">
                         <input
                           className="admin-input"
                           type="text"
-                          placeholder="Subject"
+                          placeholder={t('email.subject', adminLanguage)}
                           value={emailSubject}
                           onChange={(event) => onSubjectChange(event.target.value)}
                         />
                         <textarea
                           className="admin-textarea"
                           rows={5}
-                          placeholder="Message"
+                          placeholder={t('email.message', adminLanguage)}
                           value={emailMessage}
                           onChange={(event) => onMessageChange(event.target.value)}
                         />
@@ -109,7 +116,7 @@ export default function AdminEmailPage({
                             )
                           }
                         >
-                          {emailSending === groupKey ? 'Sending...' : 'Send Email'}
+                          {emailSending === groupKey ? t('email.sending', adminLanguage) : t('email.sendEmail', adminLanguage)}
                         </button>
                       </div>
                     )}
@@ -124,8 +131,13 @@ export default function AdminEmailPage({
         <section className="admin-panel stagger-item email-failed-panel">
           <div className="panel-header">
             <div>
-              <div className="panel-title email-failed-title">Failed to send</div>
-              <div className="panel-subtitle">{emailFailedRecipients.length} recipient{emailFailedRecipients.length !== 1 ? 's' : ''} did not receive the email.</div>
+              <div className="panel-title email-failed-title">{t('email.failedTitle', adminLanguage)}</div>
+              <div className="panel-subtitle">
+                {tf('email.failedSubtitle', adminLanguage, {
+                  count: emailFailedRecipients.length,
+                  s: emailFailedRecipients.length !== 1 ? 's' : ''
+                })}
+              </div>
             </div>
           </div>
           <div className="email-failed-list">

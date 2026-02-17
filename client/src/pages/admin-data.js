@@ -24,17 +24,20 @@ const parseCalendarDateKey = (value) => {
   };
 };
 
-const buildOrdersWithDetails = (orders, hens) => {
+const buildOrdersWithDetails = (orders, hens, language = 'en') => {
   const henNameById = new Map(hens.map((henItem) => [Number(henItem.id), henItem.name]));
 
   return orders.map((order) => {
     const items = parseItems(order.items);
     const orderItems = items.map((item) => {
       const quantity = Number(item.quantity ?? item.qty ?? 0);
-      const name = henNameById.get(Number(item.id)) || item.name || 'Item';
+      const id = Number(item.id);
+      const name = henNameById.get(id) || item.name || 'Item';
       return {
+        id,
+        name,
         quantity,
-        displayName: getDisplayName(name)
+        displayName: getDisplayName(name, language)
       };
     });
     const itemCount = orderItems.reduce((total, item) => total + item.quantity, 0);
@@ -44,7 +47,7 @@ const buildOrdersWithDetails = (orders, hens) => {
     const itemSummaryCompact = orderItems
       .map((item) => `${item.quantity} x ${shortenItemLabel(item.displayName)}`)
       .join(', ');
-    const itemSummaryShort = buildShortSummary(orderItems, itemCount);
+    const itemSummaryShort = buildShortSummary(orderItems, itemCount, language);
     const totalCents = Number(order.total_cents || 0);
     const paidCentsRaw = Number(order.amount_paid_cents);
     const dueCentsRaw = Number(order.amount_due_cents);
@@ -56,6 +59,15 @@ const buildOrdersWithDetails = (orders, hens) => {
     const amountDue = dueCents / 100;
     const paymentType = normalizePaymentType(order.payment_type, dueCents);
     const status = String(order.status || '').trim().toLowerCase();
+    const PAYMENT_METHOD_LABELS = {
+      etransfer: 'E-transfer',
+      cash: 'Cash',
+      cheque: 'Cheque',
+      credit_card: 'Credit card'
+    };
+    const methodLabel = order.payment_method
+      ? PAYMENT_METHOD_LABELS[order.payment_method] || order.payment_method
+      : '';
     let paymentSummary = '';
     if (status === 'cancelled') {
       paymentSummary = 'Cancelled';
@@ -64,11 +76,12 @@ const buildOrdersWithDetails = (orders, hens) => {
     } else if (status === 'picked_up' || status === 'fulfilled') {
       paymentSummary = 'Picked up';
     } else {
-      paymentSummary = paymentType === 'deposit'
+      const detail = paymentType === 'deposit'
         ? (amountDue > 0
           ? `Deposit paid · Due ${formatCurrency(amountDue)}`
           : 'Deposit paid')
         : 'Paid in full';
+      paymentSummary = methodLabel ? `${methodLabel} · ${detail}` : detail;
     }
 
     return {
@@ -96,7 +109,7 @@ const buildOrdersWithDetails = (orders, hens) => {
   });
 };
 
-const buildGroupedPickups = (ordersWithDetails) => {
+const buildGroupedPickups = (ordersWithDetails, language = 'en') => {
   const dateMap = new Map();
   ordersWithDetails.forEach((order) => {
     const dateKey = order.pickupDate || 'Unknown';
@@ -172,7 +185,7 @@ const buildGroupedPickups = (ordersWithDetails) => {
                 .map((item) => `${item.quantity} x ${shortenItemLabel(item.displayName)}`)
                 .join(', ')
             : fallbackSummary;
-          const itemSummaryShort = buildShortSummary(mergedItems, itemCount);
+          const itemSummaryShort = buildShortSummary(mergedItems, itemCount, language);
           const totalAmount = customer.orders.reduce((sum, order) => sum + order.totalAmount, 0);
           const amountPaid = customer.orders.reduce((sum, order) => sum + order.amountPaid, 0);
           const amountDue = customer.orders.reduce((sum, order) => sum + order.amountDue, 0);

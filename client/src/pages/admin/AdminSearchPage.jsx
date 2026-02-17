@@ -1,4 +1,5 @@
 import { formatDateLong } from '../admin-utils';
+import { t, tf } from '../admin-i18n';
 
 export default function AdminSearchPage({
   dataLoading,
@@ -7,18 +8,26 @@ export default function AdminSearchPage({
   filteredCustomers,
   ordersHasMore,
   ordersLoadingMore,
+  adminLanguage,
   onLoadMoreOrders,
   onSelectCustomer
 }) {
   if (dataLoading) {
-    return <div className="admin-panel">Loading customers...</div>;
+    return <div className="admin-panel">{t('search.loading', adminLanguage)}</div>;
   }
+
+  const loadMoreLabel = ordersLoadingMore
+    ? t('pickups.loading_short', adminLanguage)
+    : ordersHasMore
+      ? t('search.loadMore', adminLanguage)
+      : t('search.allLoaded', adminLanguage);
+
   return (
     <div className="admin-stack">
       <div className="admin-search-bar">
         <input
           className="admin-input"
-          placeholder="Search by name, phone, email"
+          placeholder={t('search.placeholder', adminLanguage)}
           value={searchQuery}
           onChange={(event) => onSearchChange(event.target.value)}
         />
@@ -26,12 +35,12 @@ export default function AdminSearchPage({
       <section className="admin-panel stagger-item">
         <div className="panel-header">
           <div>
-            <div className="panel-title">Customers</div>
+            <div className="panel-title">{t('search.title', adminLanguage)}</div>
           </div>
         </div>
         <div className="customer-list">
           {filteredCustomers.length === 0 && (
-            <div className="empty-state">No customers match that search.</div>
+            <div className="empty-state">{t('search.empty', adminLanguage)}</div>
           )}
           {filteredCustomers.map((customer) => (
             <button
@@ -42,7 +51,10 @@ export default function AdminSearchPage({
             >
               <div className="customer-row-name">{customer.name}</div>
               <div className="customer-row-meta">
-                {customer.orderCount} orders - last {formatDateLong(customer.lastOrderDate)}
+                {tf('search.orders', adminLanguage, {
+                  count: customer.orderCount,
+                  date: formatDateLong(customer.lastOrderDate, adminLanguage)
+                })}
               </div>
             </button>
           ))}
@@ -53,7 +65,7 @@ export default function AdminSearchPage({
               onClick={onLoadMoreOrders}
               disabled={!ordersHasMore || ordersLoadingMore}
             >
-              {ordersLoadingMore ? 'Loading...' : ordersHasMore ? 'Load More Customer Data' : 'All Customer Data Loaded'}
+              {loadMoreLabel}
             </button>
           </div>
         </div>

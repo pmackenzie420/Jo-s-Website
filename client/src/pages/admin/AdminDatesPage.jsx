@@ -5,6 +5,7 @@ import {
   normalizeDate,
   formatDateLong
 } from '../admin-utils';
+import { t, tf } from '../admin-i18n';
 
 export default function AdminDatesPage({
   dataLoading,
@@ -18,6 +19,7 @@ export default function AdminDatesPage({
   changeEmailUsers,
   dateInputRef,
   orderCountByPickupKey,
+  adminLanguage,
   onDeleteDate,
   onStartDateChange,
   onCancelDateChange,
@@ -31,7 +33,7 @@ export default function AdminDatesPage({
   addDateButtonLabel
 }) {
   if (dataLoading) {
-    return <div className="admin-panel">Loading dates...</div>;
+    return <div className="admin-panel">{t('dates.loading', adminLanguage)}</div>;
   }
 
   return (
@@ -39,16 +41,16 @@ export default function AdminDatesPage({
       <section className="pickup-day stagger-item">
         <div className="pickup-location">
           <div className="pickup-location-header">
-            <div className="pickup-location-title">Manage Dates</div>
+            <div className="pickup-location-title">{t('dates.title', adminLanguage)}</div>
           </div>
           <div className="pickup-day-body">
             <div className="date-list">
               {dates.length === 0 && (
-                <div className="empty-state">No pickup dates yet.</div>
+                <div className="empty-state">{t('dates.empty', adminLanguage)}</div>
               )}
               {dates.map((dateItem) => {
                 const dateValue = normalizeDate(dateItem.date_value);
-                const dateLabel = formatDateLong(dateValue);
+                const dateLabel = formatDateLong(dateValue, adminLanguage);
                 const locationLabel =
                   LOCATION_LABELS[dateItem.location] ||
                   dateItem.location ||
@@ -59,13 +61,13 @@ export default function AdminDatesPage({
                 const isChanging = changingDateId === dateItem.id;
                 const changeLoadingKey = `change:${dateItem.id}`;
                 const changeSaving = scheduleLoading === changeLoadingKey;
-                const targetDateLabel = changePickupDate ? formatDateLong(changePickupDate) : 'Select date';
+                const targetDateLabel = changePickupDate ? formatDateLong(changePickupDate, adminLanguage) : '';
                 return (
                   <div key={dateItem.id} className="date-row">
                     <div>
                       <div className="date-title">{dateLabel}</div>
                       <div className="date-meta">
-                        {locationLabel} · {orderCount} pickups
+                        {locationLabel} · {tf('dates.pickups', adminLanguage, { count: orderCount })}
                       </div>
                     </div>
                     <div className="date-row-actions">
@@ -74,20 +76,20 @@ export default function AdminDatesPage({
                         onClick={() => onStartDateChange(dateItem)}
                         disabled={Boolean(scheduleLoading) && !isChanging}
                       >
-                        Change
+                        {t('dates.change', adminLanguage)}
                       </button>
                       <button
                         className="admin-button ghost"
                         onClick={() => onDeleteDate(dateItem, orderCount)}
                         disabled={scheduleLoading === dateItem.id || changeSaving}
                       >
-                        Remove
+                        {t('dates.remove', adminLanguage)}
                       </button>
                     </div>
                     {isChanging && (
                       <div className="date-change-panel">
                         <label className="admin-label" htmlFor={`change-date-${dateItem.id}`}>
-                          New pickup date
+                          {t('dates.newPickupDate', adminLanguage)}
                         </label>
                         <input
                           id={`change-date-${dateItem.id}`}
@@ -103,12 +105,12 @@ export default function AdminDatesPage({
                             checked={changeEmailUsers}
                             onChange={(event) => onSetChangeEmailUsers(event.target.checked)}
                           />
-                          <span>Email users about this pickup date change</span>
+                          <span>{t('dates.emailSwitch', adminLanguage)}</span>
                         </label>
 
                         {changeEmailUsers && (
                           <div className="date-change-warning">
-                            Email users with pickup date change from {dateLabel} to {targetDateLabel}.
+                            {tf('dates.emailWarning', adminLanguage, { from: dateLabel, to: targetDateLabel })}
                           </div>
                         )}
 
@@ -118,14 +120,14 @@ export default function AdminDatesPage({
                             onClick={onCancelDateChange}
                             disabled={changeSaving}
                           >
-                            Cancel
+                            {t('btn.cancel', adminLanguage)}
                           </button>
                           <button
                             className="admin-button"
                             onClick={() => onApplyDateChange(dateItem)}
                             disabled={changeSaving}
                           >
-                            {changeSaving ? 'Applying...' : 'Apply Date Change'}
+                            {changeSaving ? t('dates.applying', adminLanguage) : t('dates.applyChange', adminLanguage)}
                           </button>
                         </div>
                       </div>
@@ -138,7 +140,7 @@ export default function AdminDatesPage({
               {isAddingDate && (
                 <>
                   <label className="admin-label" htmlFor="pickup-location-select">
-                    Pickup location
+                    {t('dates.pickupLocation', adminLanguage)}
                   </label>
                   <select
                     id="pickup-location-select"
@@ -169,7 +171,7 @@ export default function AdminDatesPage({
                     className="admin-button ghost"
                     onClick={() => onSetIsAddingDate(false)}
                   >
-                    Cancel
+                    {t('btn.cancel', adminLanguage)}
                   </button>
                 )}
                 <button
@@ -182,7 +184,7 @@ export default function AdminDatesPage({
               </div>
               {newPickupDate && isAddingDate && (
                 <div className="date-selected">
-                  Selected: {formatDateLong(newPickupDate)}
+                  {tf('dates.selected', adminLanguage, { date: formatDateLong(newPickupDate, adminLanguage) })}
                 </div>
               )}
             </div>

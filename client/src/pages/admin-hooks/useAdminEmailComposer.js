@@ -1,12 +1,6 @@
 import { useCallback, useState } from 'react';
 import { sendGroupEmail as sendGroupEmailRequest } from '../admin-api';
 
-const normalizeReminderLanguage = (value) => {
-  const normalized = String(value || '').trim().toLowerCase();
-  if (normalized.startsWith('fr')) return 'fr';
-  return 'en';
-};
-
 const parseLocalDate = (value) => {
   if (!value) return null;
   if (value instanceof Date) return value;
@@ -37,28 +31,22 @@ const formatEmailOutcomeSummary = ({ total, sent, failed }) => (
   `Sent ${total} ${pluralize(total, 'email')}: ${sent} ${pluralize(sent, 'success', 'successes')}, ${failed} ${pluralize(failed, 'failure')}.`
 );
 
-const buildReminderTemplate = ({ language, groupDate, locationLabel }) => {
-  const normalizedLanguage = normalizeReminderLanguage(language);
-  const dateLabel = formatReminderDate(groupDate, normalizedLanguage);
+const buildReminderTemplate = ({ groupDate, locationLabel }) => {
+  const frDate = formatReminderDate(groupDate, 'fr');
+  const enDate = formatReminderDate(groupDate, 'en');
   const location = String(locationLabel || 'Unknown').trim() || 'Unknown';
 
-  if (normalizedLanguage === 'fr') {
-    return {
-      subject: `Rappel de ramassage - ${dateLabel} (${location})`,
-      text:
-        `Bonjour,\n` +
-        `Ceci est un rappel pour votre ramassage le ${dateLabel} a ${location}, de ${REMINDER_TIME_PLACEHOLDER} a ${REMINDER_TIME_PLACEHOLDER}.\n\n` +
-        `Veuillez apporter des cages ou des boites pour votre volaille. Nous n'en fournirons PAS.\n\n` +
-        'Merci.'
-    };
-  }
-
   return {
-    subject: `Pickup reminder - ${dateLabel} (${location})`,
+    subject: `Rappel de ramassage / Pickup reminder - ${frDate} (${location})`,
     text:
+      `Bonjour,\n` +
+      `Ceci est un rappel pour votre ramassage le ${frDate} a ${location}, de ${REMINDER_TIME_PLACEHOLDER} a ${REMINDER_TIME_PLACEHOLDER}.\n\n` +
+      `Veuillez apporter des cages ou des boites pour votre volaille. Nous n'en fournirons PAS.\n\n` +
+      `Merci.\n\n` +
+      `---\n\n` +
       `Hello,\n` +
-      `This is a reminder for your pickup on ${dateLabel} at ${location}, from ${REMINDER_TIME_PLACEHOLDER} to ${REMINDER_TIME_PLACEHOLDER}.\n\n` +
-      'Please make sure to bring crates or boxes for your poultry. We will NOT provide any.\n\n' +
+      `This is a reminder for your pickup on ${enDate} at ${location}, from ${REMINDER_TIME_PLACEHOLDER} to ${REMINDER_TIME_PLACEHOLDER}.\n\n` +
+      `Please make sure to bring crates or boxes for your poultry. We will NOT provide any.\n\n` +
       'Thank you.'
   };
 };
@@ -69,26 +57,14 @@ export default function useAdminEmailComposer(showToast) {
   const [emailMessage, setEmailMessage] = useState('');
   const [emailSending, setEmailSending] = useState(null);
   const [emailFailedRecipients, setEmailFailedRecipients] = useState([]);
-  const [defaultReminderDraft, setDefaultReminderDraft] = useState({
-    subject: '',
-    message: ''
-  });
 
   const handleToggleEmailGroup = useCallback(({ groupKey, groupDate, locationLabel, isActive }) => {
     const nextActive = isActive ? null : groupKey;
     setEmailGroupKey(nextActive);
     if (!isActive) {
-      const previewDraft = buildReminderTemplate({
-        language: 'en',
-        groupDate,
-        locationLabel
-      });
+      const previewDraft = buildReminderTemplate({ groupDate, locationLabel });
       setEmailSubject(previewDraft.subject);
       setEmailMessage(previewDraft.text);
-      setDefaultReminderDraft({
-        subject: previewDraft.subject,
-        message: previewDraft.text
-      });
       setEmailFailedRecipients([]);
     }
   }, []);
@@ -103,38 +79,16 @@ export default function useAdminEmailComposer(showToast) {
       const locationLabel = groupMeta?.locationLabel || 'Unknown';
       const normalizedSubject = String(emailSubject || '').trim();
       const normalizedMessage = String(emailMessage || '').trim();
-      const fallbackDraft = buildReminderTemplate({
-        language: 'en',
-        groupDate,
-        locationLabel
-      });
-      const shouldUseLocalizedTemplate = (
-        normalizedSubject === defaultReminderDraft.subject
-        && normalizedMessage === defaultReminderDraft.message
-      );
+      const fallbackDraft = buildReminderTemplate({ groupDate, locationLabel });
 
       setEmailSending(groupKey);
       setEmailFailedRecipients([]);
       try {
-        const messages = recipients.map((recipient) => {
-          if (shouldUseLocalizedTemplate) {
-            const localizedDraft = buildReminderTemplate({
-              language: recipient.language,
-              groupDate,
-              locationLabel
-            });
-            return {
-              to: { email: recipient.email, name: recipient.name },
-              subject: localizedDraft.subject,
-              text: localizedDraft.text
-            };
-          }
-          return {
-            to: { email: recipient.email, name: recipient.name },
-            subject: normalizedSubject || fallbackDraft.subject,
-            text: normalizedMessage || fallbackDraft.text
-          };
-        });
+        const messages = recipients.map((recipient) => ({
+          to: { email: recipient.email, name: recipient.name },
+          subject: normalizedSubject || fallbackDraft.subject,
+          text: normalizedMessage || fallbackDraft.text
+        }));
 
         const response = await sendGroupEmailRequest({
           messages
@@ -161,7 +115,7 @@ export default function useAdminEmailComposer(showToast) {
         setEmailSending(null);
       }
     },
-    [defaultReminderDraft, emailSubject, emailMessage, showToast]
+    [emailSubject, emailMessage, showToast]
   );
 
   return {

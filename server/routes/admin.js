@@ -13,8 +13,21 @@ const {
     normalizeLanguage,
     formatPickupDateLong,
     escapeHtml,
-    extractEmailAddress
+    extractEmailAddress,
+    parseOrderItems
 } = require('../utils/helpers');
+const { normalizePhoneForStorage } = require('../logic/checkout-validation');
+const { reserveStockForItems } = require('../logic/order-stock');
+const {
+    calculateItemPrice,
+    isLohmannHenName,
+    getMinimumOrderQuantity,
+    getDepositEligibleMinQty,
+    getDepositRequiredAboveQty,
+    isPickupLocationRestricted,
+    isLambName
+} = require('../logic/pricing');
+const { createCheckoutSession } = require('../logic/checkout-persistence');
 const {
     LOCATION_DETAILS,
     COMPANY_CONTACT
@@ -27,8 +40,11 @@ const ADMIN_ALLOWED_ORDER_STATUSES = new Set([
     'paid',
     'fulfilled',
     'picked_up',
-    'cancelled'
+    'cancelled',
+    'archived'
 ]);
+const ADMIN_EDITABLE_ORDER_STATUSES = new Set(['pending', 'paid']);
+const VALID_ADMIN_PAYMENT_METHODS = new Set(['etransfer', 'cash', 'cheque', 'credit_card']);
 
 const parsePositiveInt = (value, fallback) => {
     const parsed = Number(value);
@@ -70,6 +86,84 @@ const getLocationLabel = (value) => {
     const key = String(value || '').trim();
     if (!key) return 'Unknown';
     return LOCATION_DETAILS[key]?.label || key;
+};
+
+const formatCents = (cents) => {
+    const numeric = Number(cents);
+    const safe = Number.isFinite(numeric) ? numeric : 0;
+    return `$${(safe / 100).toFixed(2)}`;
+};
+
+const normalizeOrderItems = (rawItems) => {
+    if (!Array.isArray(rawItems)) return [];
+    const totals = new Map();
+    for (const item of rawItems) {
+        const id = Number(item?.id);
+        const quantityRaw = Number(item?.quantity ?? item?.qty);
+        const quantity = Number.isFinite(quantityRaw) ? Math.floor(quantityRaw) : 0;
+        if (!Number.isInteger(id) || id <= 0 || quantity <= 0) {
+            continue;
+        }
+        totals.set(id, (totals.get(id) || 0) + quantity);
+    }
+    return Array.from(totals.entries())
+        .map(([id, quantity]) => ({ id, quantity }))
+        .sort((a, b) => a.id - b.id);
+};
+
+const normalizeStoredOrderItems = (rawItems) => {
+    const parsed = parseOrderItems(rawItems);
+    if (!Array.isArray(parsed)) return [];
+    const totalsById = new Map();
+    for (const item of parsed) {
+        const id = Number(item?.id);
+        const quantityRaw = Number(item?.quantity ?? item?.qty);
+        const quantity = Number.isFinite(quantityRaw) ? Math.floor(quantityRaw) : 0;
+        if (!Number.isInteger(id) || id <= 0 || quantity <= 0) {
+            continue;
+        }
+        const current = totalsById.get(id) || { id, quantity: 0, name: '' };
+        totalsById.set(id, {
+            id,
+            quantity: current.quantity + quantity,
+            name: current.name || String(item?.name || '').trim().slice(0, 200)
+        });
+    }
+    return Array.from(totalsById.values())
+        .sort((first, second) => first.id - second.id);
+};
+
+const buildStatusEditBlockedMessage = (status) => {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (normalized === 'reserved') {
+        return 'This order is awaiting Stripe payment and cannot be edited.';
+    }
+    if (normalized === 'picked_up' || normalized === 'fulfilled') {
+        return 'Picked-up orders cannot be edited.';
+    }
+    if (normalized === 'cancelled') {
+        return 'Cancelled orders cannot be edited.';
+    }
+    return `Orders with status "${normalized || 'unknown'}" cannot be edited.`;
+};
+
+const createInsufficientStockError = ({
+    henName,
+    required,
+    available,
+    pickupDate,
+    pickupLocation
+}) => {
+    const err = new Error('Insufficient pickup stock while updating order.');
+    err.code = 'ADMIN_ORDER_INSUFFICIENT_STOCK';
+    err.meta = {
+        henName: String(henName || 'Item'),
+        required: Math.max(Number(required) || 0, 0),
+        available: Math.max(Number(available) || 0, 0),
+        pickupDate: String(pickupDate || ''),
+        pickupLocation: String(pickupLocation || '')
+    };
+    return err;
 };
 
 const PICKUP_DATE_CHANGE_COPY = {
@@ -231,7 +325,11 @@ const registerAdminRoutes = (app, deps) => {
         formatPickupDate,
         handlePickupStockRequest,
         releaseReservedOrder = async () => ({ status: 'not_reserved' }),
-        verifyCheckoutEmail
+        verifyCheckoutEmail,
+        stripe,
+        CHECKOUT_RESERVATION_TTL_MINUTES = 30,
+        getRequestBaseUrl,
+        finalizeOrderFromSession
     } = deps;
     const verifyEmail = typeof verifyCheckoutEmail === 'function'
         ? verifyCheckoutEmail
@@ -258,8 +356,8 @@ const registerAdminRoutes = (app, deps) => {
         const pageSize = Math.min(parsePositiveInt(limit, 500), 2000);
         const pageOffset = parseNonNegativeInt(offset, 0);
         const query = `
-            SELECT 
-                orders.*, 
+            SELECT
+                orders.*,
                 customers.name as customer_name,
                 customers.phone as customer_phone,
                 customers.address as customer_address
@@ -347,7 +445,7 @@ const registerAdminRoutes = (app, deps) => {
     };
 
     app.post('/api/admin/login', adminLoginLimiter, (req, res) => {
-        const { password, otp } = req.body || {};
+        const { password } = req.body || {};
         const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
         const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
         if (!ADMIN_PASSWORD && !ADMIN_PASSWORD_HASH) {
@@ -356,10 +454,6 @@ const registerAdminRoutes = (app, deps) => {
         const allowlist = parseAllowlist(process.env.ADMIN_LOGIN_IP_ALLOWLIST);
         if (!isIpAllowed(req, allowlist)) {
             return res.status(403).json({ error: 'Admin login blocked from this IP.' });
-        }
-        const ADMIN_LOGIN_2FA_CODE = process.env.ADMIN_LOGIN_2FA_CODE;
-        if (ADMIN_LOGIN_2FA_CODE && String(otp || '') !== ADMIN_LOGIN_2FA_CODE) {
-            return res.status(401).send('Wrong password');
         }
         const valid = verifyPassword({
             candidate: password,
@@ -391,6 +485,933 @@ const registerAdminRoutes = (app, deps) => {
             return res.json(orders);
         } catch (err) {
             return sendServerError(res, err, 'Failed to load admin orders');
+        }
+    });
+
+    app.post('/api/admin/orders', checkAuth, async (req, res) => {
+        try {
+            const headerLanguage = req.get('accept-language') || '';
+            const orderLanguage = normalizeLanguage(req.body?.language || headerLanguage);
+
+            const customerName = sanitizeText(req.body?.customer?.name, 200);
+            const customerPhoneRaw = sanitizeText(req.body?.customer?.phone, 50);
+            const customerPhone = normalizePhoneForStorage(customerPhoneRaw);
+            const customerEmailRaw = sanitizeText(req.body?.customer?.email, 320);
+            const customerEmail = customerEmailRaw ? customerEmailRaw.toLowerCase() : '';
+            const customerAddress = sanitizeText(req.body?.customer?.address, 300);
+
+            const pickupDate = sanitizeText(req.body?.pickup?.date, 40);
+            const pickupLocation = sanitizeText(req.body?.pickup?.location, 40);
+
+            const paymentMethodRaw = sanitizeText(req.body?.payment?.method, 30).toLowerCase();
+            const paymentMethod = VALID_ADMIN_PAYMENT_METHODS.has(paymentMethodRaw)
+                ? paymentMethodRaw
+                : 'etransfer';
+            const isCreditCard = paymentMethod === 'credit_card';
+
+            const requestedPaymentType = sanitizeText(req.body?.payment?.payment_type, 20).toLowerCase() || 'full';
+
+            const items = normalizeOrderItems(req.body?.items);
+
+            if (!customerName) {
+                return res.status(400).json({ error: 'Customer name is required.' });
+            }
+            if (!customerPhone || customerPhone.length < 7) {
+                return res.status(400).json({ error: 'Valid customer phone is required.' });
+            }
+            if (customerEmail && !isValidEmail(customerEmail)) {
+                return res.status(400).json({ error: 'Customer email is invalid.' });
+            }
+            if (isCreditCard && !customerEmail) {
+                return res.status(400).json({ error: 'Customer email is required for credit card orders.' });
+            }
+            if (!pickupDate || !pickupLocation) {
+                return res.status(400).json({ error: 'Pickup date and location are required.' });
+            }
+            if (items.length === 0) {
+                return res.status(400).json({ error: 'At least one order item is required.' });
+            }
+
+            const pickupDateId = await findPickupDateId(pool, pickupDate, pickupLocation);
+            if (!pickupDateId) {
+                return res.status(400).json({ error: 'Selected pickup date is not available.' });
+            }
+
+            const itemIds = items.map((item) => item.id);
+            const hensResult = await pool.query(
+                'SELECT id, name FROM hens WHERE is_active = true AND id = ANY($1::int[])',
+                [itemIds]
+            );
+            const henMap = new Map(hensResult.rows.map((row) => [Number(row.id), row]));
+            if (henMap.size !== itemIds.length) {
+                return res.status(400).json({ error: 'Some requested items are unavailable.' });
+            }
+
+            const stockResult = await pool.query(
+                'SELECT hen_id, stock FROM pickup_stock WHERE pickup_date_id = $1 AND hen_id = ANY($2::int[])',
+                [pickupDateId, itemIds]
+            );
+            const stockMap = new Map(
+                stockResult.rows.map((row) => [Number(row.hen_id), Number(row.stock || 0)])
+            );
+
+            const orderItemsForStorage = [];
+            let totalCents = 0;
+            let lohmannQty = 0;
+            let lohmannSubtotalCents = 0;
+            let nonLohmannSubtotalCents = 0;
+            let hasLambItems = false;
+
+            for (const item of items) {
+                const hen = henMap.get(Number(item.id));
+                if (!hen) continue;
+
+                const quantity = item.quantity;
+                if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+                if (isPickupLocationRestricted(hen.name, pickupLocation)) {
+                    return res.status(400).json({
+                        error: `Item is not available for ${getLocationLabel(pickupLocation)} pickups.`
+                    });
+                }
+
+                const minimumOrderQty = getMinimumOrderQuantity(hen.name);
+                if (minimumOrderQty > 0 && quantity < minimumOrderQty) {
+                    return res.status(400).json({
+                        error: `Minimum order is ${minimumOrderQty} for ${hen.name}.`
+                    });
+                }
+
+                const availableStock = stockMap.get(Number(hen.id)) ?? 0;
+                if (availableStock < quantity) {
+                    return res.status(409).json({
+                        error: `Insufficient stock for ${hen.name}.`
+                    });
+                }
+
+                const unitCents = calculateItemPrice(hen.name, quantity);
+                const lineCents = unitCents * quantity;
+                totalCents += lineCents;
+                if (isLohmannHenName(hen.name)) {
+                    lohmannQty += quantity;
+                    lohmannSubtotalCents += lineCents;
+                } else {
+                    nonLohmannSubtotalCents += lineCents;
+                    if (isLambName(hen.name)) {
+                        hasLambItems = true;
+                    }
+                }
+                orderItemsForStorage.push({
+                    id: Number(hen.id),
+                    quantity,
+                    name: hen.name,
+                    unit_cents: unitCents,
+                    line_cents: lineCents
+                });
+            }
+
+            if (orderItemsForStorage.length === 0 || totalCents <= 0) {
+                return res.status(400).json({ error: 'At least one purchasable item is required.' });
+            }
+
+            // Deposit eligibility — same logic as regular checkout
+            const depositEligibleMinQty = Math.max(Number(getDepositEligibleMinQty() || 13), 1);
+            const lohmannDepositEligible = lohmannQty >= depositEligibleMinQty;
+            const depositEligible = lohmannDepositEligible || hasLambItems;
+            const isDeposit = requestedPaymentType === 'deposit' && depositEligible;
+
+            const lohmannDepositCents = lohmannDepositEligible
+                ? Math.floor(lohmannSubtotalCents / 4)
+                : 0;
+            const depositNowCents = nonLohmannSubtotalCents + lohmannDepositCents;
+            const depositDueCents = lohmannDepositEligible
+                ? lohmannSubtotalCents - lohmannDepositCents
+                : 0;
+
+            let amountPaidCents;
+            let amountDueCents;
+            let paymentType;
+            let status;
+
+            if (isCreditCard) {
+                if (isDeposit) {
+                    amountPaidCents = depositNowCents;
+                    amountDueCents = depositDueCents;
+                    paymentType = 'deposit';
+                } else {
+                    amountPaidCents = totalCents;
+                    amountDueCents = 0;
+                    paymentType = 'full';
+                }
+                status = 'reserved';
+            } else {
+                if (isDeposit) {
+                    amountPaidCents = depositNowCents;
+                    amountDueCents = depositDueCents;
+                    paymentType = 'deposit';
+                } else {
+                    amountPaidCents = totalCents;
+                    amountDueCents = 0;
+                    paymentType = 'full';
+                }
+                status = 'paid';
+            }
+
+            const orderId = await runInTransaction(async (client) => {
+                let customerId;
+                const existingCust = await client.query(
+                    'SELECT id FROM customers WHERE phone = $1 FOR UPDATE',
+                    [customerPhone]
+                );
+
+                if (existingCust.rows.length > 0) {
+                    customerId = existingCust.rows[0].id;
+                    await client.query(
+                        'UPDATE customers SET name=$1, email=$2, address=$3 WHERE id=$4',
+                        [customerName, customerEmail || null, customerAddress || null, customerId]
+                    );
+                } else {
+                    const newCust = await client.query(
+                        'INSERT INTO customers (name, phone, email, address) VALUES ($1, $2, $3, $4) RETURNING id',
+                        [customerName, customerPhone, customerEmail || null, customerAddress || null]
+                    );
+                    customerId = newCust.rows[0].id;
+                }
+
+                await reserveStockForItems(client, {
+                    pickupDateId,
+                    items,
+                    orderId: 'admin'
+                });
+
+                const newOrder = await client.query(
+                    `INSERT INTO orders (
+                        customer_id,
+                        customer_email,
+                        total_cents,
+                        items,
+                        status,
+                        pickup_date,
+                        pickup_location,
+                        payment_type,
+                        amount_paid_cents,
+                        amount_due_cents,
+                        language,
+                        payment_method
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    RETURNING id`,
+                    [
+                        customerId,
+                        customerEmail || null,
+                        totalCents,
+                        JSON.stringify(orderItemsForStorage),
+                        status,
+                        pickupDate,
+                        pickupLocation,
+                        paymentType,
+                        amountPaidCents,
+                        amountDueCents,
+                        orderLanguage,
+                        paymentMethod
+                    ]
+                );
+                return newOrder.rows[0].id;
+            });
+
+            if (isCreditCard && stripe) {
+                let stripeLineItems;
+                if (paymentType === 'deposit') {
+                    // Non-Lohmann items at full price, Lohmann deposit as single line
+                    stripeLineItems = orderItemsForStorage
+                        .filter((item) => !isLohmannHenName(item.name))
+                        .map((item) => ({
+                            price_data: {
+                                currency: 'cad',
+                                product_data: { name: item.name },
+                                unit_amount: item.unit_cents
+                            },
+                            quantity: item.quantity
+                        }));
+                    if (lohmannDepositCents > 0) {
+                        stripeLineItems.push({
+                            price_data: {
+                                currency: 'cad',
+                                product_data: {
+                                    name: 'Lohmann hen deposit (25%)',
+                                    description: `${lohmannQty} hens`
+                                },
+                                unit_amount: lohmannDepositCents
+                            },
+                            quantity: 1
+                        });
+                    }
+                } else {
+                    stripeLineItems = orderItemsForStorage.map((item) => ({
+                        price_data: {
+                            currency: 'cad',
+                            product_data: { name: item.name },
+                            unit_amount: item.unit_cents
+                        },
+                        quantity: item.quantity
+                    }));
+                }
+
+                const baseUrl = getRequestBaseUrl(req) || `${req.protocol}://${req.get('host')}`;
+                const session = await createCheckoutSession({
+                    stripe,
+                    orderId,
+                    paymentType,
+                    lineItems: stripeLineItems,
+                    baseUrl,
+                    CHECKOUT_RESERVATION_TTL_MINUTES,
+                    successUrl: `${baseUrl}/admin?stripe_order=${orderId}`,
+                    cancelUrl: `${baseUrl}/admin?stripe_cancelled=true`
+                });
+
+                await pool.query(
+                    'UPDATE orders SET stripe_payment_id = $1 WHERE id = $2',
+                    [session.id, orderId]
+                );
+
+                return res.json({ success: true, orderId, stripeUrl: session.url });
+            }
+
+            return res.json({ success: true, orderId });
+        } catch (err) {
+            if (String(err?.message || '').includes('Insufficient pickup stock')) {
+                return res.status(409).json({ error: 'Insufficient stock for one or more items.' });
+            }
+            return sendServerError(res, err, 'Failed to create admin order');
+        }
+    });
+
+    app.put('/api/admin/orders/status', checkAuth, async (req, res) => {
+        const { ids } = req.body || {};
+        const status = sanitizeText(req.body?.status, 50).toLowerCase();
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ error: 'ids array is required' });
+        }
+        const uniqueIds = Array.from(
+            new Set(
+                ids.map((value) => String(value || '').trim())
+                    .filter(Boolean)
+            )
+        );
+        if (uniqueIds.length === 0) {
+            return res.status(400).json({ error: 'ids array is required' });
+        }
+        if (!ADMIN_ALLOWED_ORDER_STATUSES.has(status)) {
+            return res.status(400).json({ error: 'Invalid status value.' });
+        }
+        try {
+            if (status === 'cancelled') {
+                const directUpdateIds = [];
+                for (const orderId of uniqueIds) {
+                    const releaseResult = await releaseReservedOrder(orderId, { expireStripeSession: true });
+                    if (releaseResult?.status === 'not_reserved') {
+                        directUpdateIds.push(orderId);
+                    }
+                }
+                if (directUpdateIds.length > 0) {
+                    await pool.query(
+                        'UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])',
+                        [status, directUpdateIds]
+                    );
+                }
+            } else {
+                await pool.query(
+                    'UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])',
+                    [status, uniqueIds]
+                );
+            }
+            return res.json({ success: true, message: 'Status updated' });
+        } catch (err) {
+            return sendServerError(res, err, 'Failed to update order statuses');
+        }
+    });
+
+    app.put('/api/admin/orders/:id', checkAuth, async (req, res) => {
+        const body = req.body || {};
+        const orderId = sanitizeText(req.params?.id, 120);
+        const pickupDate = sanitizeText(body?.pickup?.date, 40);
+        const pickupLocation = sanitizeText(body?.pickup?.location, 40);
+        const hasTotalField = Boolean(
+            (body?.order && Object.prototype.hasOwnProperty.call(body.order, 'total_cents'))
+            || Object.prototype.hasOwnProperty.call(body, 'total_cents')
+        );
+        const totalCentsRaw = Number(body?.order?.total_cents ?? body?.total_cents);
+        const hasItemsField = Object.prototype.hasOwnProperty.call(body, 'items');
+        const requestedItems = hasItemsField ? normalizeOrderItems(body?.items) : [];
+        const hasAmountPaidField = Boolean(
+            body?.payment
+            && Object.prototype.hasOwnProperty.call(body.payment, 'amount_paid_cents')
+        );
+        const amountPaidCentsRaw = Number(body?.payment?.amount_paid_cents);
+        const hasCustomerEmailField = Boolean(
+            body?.customer
+            && Object.prototype.hasOwnProperty.call(body.customer, 'email')
+        );
+        const customerEmailRaw = hasCustomerEmailField
+            ? sanitizeText(body?.customer?.email, 320)
+            : '';
+        const customerEmail = customerEmailRaw ? customerEmailRaw.toLowerCase() : '';
+
+        if (!orderId) {
+            return res.status(400).json({ error: 'Order id is required.' });
+        }
+        if (!pickupDate || !pickupLocation) {
+            return res.status(400).json({ error: 'Pickup date and location are required.' });
+        }
+        if (!isIsoDateValue(pickupDate)) {
+            return res.status(400).json({ error: 'Pickup date must use YYYY-MM-DD format.' });
+        }
+        if (!hasTotalField && !hasItemsField) {
+            return res.status(400).json({ error: 'Order amount is required.' });
+        }
+        if (hasTotalField) {
+            if (!Number.isFinite(totalCentsRaw)) {
+                return res.status(400).json({ error: 'Order amount is required.' });
+            }
+            if (totalCentsRaw <= 0) {
+                return res.status(400).json({ error: 'Order amount must be greater than $0.00.' });
+            }
+        }
+        if (hasItemsField && requestedItems.length === 0) {
+            return res.status(400).json({ error: 'At least one order item is required.' });
+        }
+        if (hasAmountPaidField) {
+            if (!Number.isFinite(amountPaidCentsRaw)) {
+                return res.status(400).json({ error: 'Amount paid must be a valid number.' });
+            }
+            if (amountPaidCentsRaw < 0) {
+                return res.status(400).json({ error: 'Amount paid cannot be negative.' });
+            }
+        }
+        if (hasCustomerEmailField && customerEmail && !isValidEmail(customerEmail)) {
+            return res.status(400).json({ error: 'Customer email is invalid.' });
+        }
+
+        const reserveStockForItemsAtPickup = async ({
+            client,
+            pickupDateId,
+            pickupDateValue,
+            pickupLocationValue,
+            items
+        }) => {
+            if (!pickupDateId || items.length === 0) return;
+
+            const itemIds = items.map((item) => item.id);
+            const targetStockResult = await client.query(
+                'SELECT hen_id, stock FROM pickup_stock WHERE pickup_date_id = $1 AND hen_id = ANY($2::int[])',
+                [pickupDateId, itemIds]
+            );
+            const targetStockByHenId = new Map(
+                targetStockResult.rows.map((row) => [Number(row.hen_id), Number(row.stock || 0)])
+            );
+
+            for (const item of items) {
+                const required = Number(item.quantity || 0);
+                const available = targetStockByHenId.get(Number(item.id)) ?? 0;
+                if (required <= 0) continue;
+                if (available < required) {
+                    throw createInsufficientStockError({
+                        henName: item.name || `Item #${item.id}`,
+                        required,
+                        available,
+                        pickupDate: pickupDateValue,
+                        pickupLocation: pickupLocationValue
+                    });
+                }
+            }
+
+            for (const item of items) {
+                const required = Number(item.quantity || 0);
+                if (required <= 0) continue;
+                const reserveResult = await client.query(
+                    `
+                    UPDATE pickup_stock
+                    SET stock = stock - $1
+                    WHERE pickup_date_id = $2
+                      AND hen_id = $3
+                      AND stock >= $1
+                    RETURNING stock
+                    `,
+                    [required, pickupDateId, item.id]
+                );
+                if (reserveResult.rowCount > 0) continue;
+
+                const currentStockResult = await client.query(
+                    `
+                    SELECT stock
+                    FROM pickup_stock
+                    WHERE pickup_date_id = $1
+                      AND hen_id = $2
+                    `,
+                    [pickupDateId, item.id]
+                );
+                const available = Number(currentStockResult.rows[0]?.stock || 0);
+                throw createInsufficientStockError({
+                    henName: item.name || `Item #${item.id}`,
+                    required,
+                    available,
+                    pickupDate: pickupDateValue,
+                    pickupLocation: pickupLocationValue
+                });
+            }
+        };
+
+        const releaseStockForItemsAtPickup = async ({ client, pickupDateId, items }) => {
+            if (!pickupDateId || items.length === 0) return;
+            for (const item of items) {
+                const quantity = Number(item.quantity || 0);
+                if (!Number.isInteger(quantity) || quantity <= 0) continue;
+                await client.query(
+                    `
+                    INSERT INTO pickup_stock (pickup_date_id, hen_id, stock)
+                    VALUES ($1, $2, $3)
+                    ON CONFLICT (pickup_date_id, hen_id)
+                    DO UPDATE SET stock = pickup_stock.stock + EXCLUDED.stock
+                    `,
+                    [pickupDateId, item.id, quantity]
+                );
+            }
+        };
+
+        try {
+            const updateResult = await runInTransaction(async (client) => {
+                const existingOrderResult = await client.query(
+                    `
+                    SELECT
+                        id,
+                        customer_id,
+                        customer_email,
+                        status,
+                        pickup_date,
+                        pickup_location,
+                        items,
+                        total_cents,
+                        amount_paid_cents,
+                        amount_due_cents,
+                        payment_type
+                    FROM orders
+                    WHERE id = $1
+                    FOR UPDATE
+                    `,
+                    [orderId]
+                );
+                if (existingOrderResult.rows.length === 0) {
+                    return { status: 'missing_order' };
+                }
+
+                const existingOrder = existingOrderResult.rows[0];
+                const existingStatus = String(existingOrder.status || 'pending').trim().toLowerCase();
+                if (!ADMIN_EDITABLE_ORDER_STATUSES.has(existingStatus)) {
+                    return {
+                        status: 'blocked_status',
+                        existingStatus
+                    };
+                }
+
+                const targetPickupDateId = await findPickupDateId(client, pickupDate, pickupLocation);
+                if (!targetPickupDateId) {
+                    return { status: 'pickup_unavailable' };
+                }
+
+                const sourcePickupDate = formatPickupDate(existingOrder.pickup_date);
+                const sourcePickupLocation = sanitizeText(existingOrder.pickup_location, 40);
+                if (!sourcePickupDate || !sourcePickupLocation) {
+                    return { status: 'source_pickup_missing' };
+                }
+
+                const pickupChanged = (
+                    sourcePickupDate !== pickupDate
+                    || sourcePickupLocation !== pickupLocation
+                );
+
+                const storedItems = normalizeStoredOrderItems(existingOrder.items);
+                if (storedItems.length === 0 && pickupChanged && !hasItemsField) {
+                    return {
+                        status: 'missing_items'
+                    };
+                }
+
+                const storedItemsById = new Map(
+                    storedItems.map((item) => [Number(item.id), item])
+                );
+                let nextItemsForStock = storedItems;
+                let nextItemsJson = null;
+                let calculatedItemsTotalCents = null;
+                let hasLambItems = storedItems.some((item) => isLambName(item.name));
+
+                if (hasItemsField) {
+                    if (requestedItems.length === 0) {
+                        return {
+                            status: 'validation_error',
+                            error: 'At least one order item is required.'
+                        };
+                    }
+
+                    const requestedItemIds = requestedItems.map((item) => item.id);
+                    const hensResult = await client.query(
+                        'SELECT id, name, is_active FROM hens WHERE id = ANY($1::int[])',
+                        [requestedItemIds]
+                    );
+                    const hensById = new Map(
+                        hensResult.rows.map((row) => [Number(row.id), row])
+                    );
+
+                    const updatedItemsForStorage = [];
+                    let updatedTotalCents = 0;
+                    let invalidItemMessage = '';
+                    for (const requestedItem of requestedItems) {
+                        const existingItem = storedItemsById.get(Number(requestedItem.id)) || null;
+                        const matchingHen = hensById.get(Number(requestedItem.id)) || null;
+                        if (!matchingHen && !existingItem) {
+                            invalidItemMessage = 'Some requested items are unavailable.';
+                            break;
+                        }
+                        const henIsActive = matchingHen
+                            ? parseBoolean(matchingHen.is_active, true)
+                            : false;
+                        if (!henIsActive && !existingItem) {
+                            invalidItemMessage = 'Some requested items are unavailable.';
+                            break;
+                        }
+
+                        const henName = sanitizeText(
+                            matchingHen?.name || existingItem?.name || `Item #${requestedItem.id}`,
+                            200
+                        );
+                        if (!henName) {
+                            invalidItemMessage = 'Some requested items are unavailable.';
+                            break;
+                        }
+
+                        if (isPickupLocationRestricted(henName, pickupLocation)) {
+                            return {
+                                status: 'validation_error',
+                                error: `${henName} is not available for ${getLocationLabel(pickupLocation)} pickups.`
+                            };
+                        }
+
+                        const minimumOrderQty = getMinimumOrderQuantity(henName);
+                        if (minimumOrderQty > 0 && requestedItem.quantity < minimumOrderQty) {
+                            return {
+                                status: 'validation_error',
+                                error: `Minimum order is ${minimumOrderQty} for ${henName}.`
+                            };
+                        }
+
+                        const unitCents = calculateItemPrice(henName, requestedItem.quantity);
+                        const lineCents = unitCents * requestedItem.quantity;
+                        if (!Number.isFinite(unitCents) || unitCents <= 0 || lineCents <= 0) {
+                            return {
+                                status: 'validation_error',
+                                error: `Unable to price ${henName}.`
+                            };
+                        }
+
+                        updatedTotalCents += lineCents;
+                        updatedItemsForStorage.push({
+                            id: Number(requestedItem.id),
+                            quantity: Number(requestedItem.quantity),
+                            name: henName,
+                            unit_cents: unitCents,
+                            line_cents: lineCents
+                        });
+                    }
+
+                    if (invalidItemMessage) {
+                        return {
+                            status: 'validation_error',
+                            error: invalidItemMessage
+                        };
+                    }
+                    if (updatedItemsForStorage.length === 0 || updatedTotalCents <= 0) {
+                        return {
+                            status: 'validation_error',
+                            error: 'At least one purchasable item is required.'
+                        };
+                    }
+
+                    calculatedItemsTotalCents = updatedTotalCents;
+                    hasLambItems = updatedItemsForStorage.some((item) => isLambName(item.name));
+                    nextItemsForStock = updatedItemsForStorage.map((item) => ({
+                        id: item.id,
+                        quantity: item.quantity,
+                        name: item.name
+                    }));
+                    nextItemsJson = JSON.stringify(updatedItemsForStorage);
+                }
+
+                const nextTotalCents = hasTotalField
+                    ? Math.floor(totalCentsRaw)
+                    : Math.floor(Number(calculatedItemsTotalCents || 0));
+                if (!Number.isFinite(nextTotalCents) || nextTotalCents <= 0) {
+                    return {
+                        status: 'validation_error',
+                        error: 'Order amount must be greater than $0.00.'
+                    };
+                }
+
+                const nextItemsById = new Map(
+                    nextItemsForStock.map((item) => [Number(item.id), item])
+                );
+                const allItemIds = new Set([
+                    ...storedItemsById.keys(),
+                    ...nextItemsById.keys()
+                ]);
+                const itemsChanged = Array.from(allItemIds).some((itemId) => {
+                    const storedQty = Number(storedItemsById.get(itemId)?.quantity || 0);
+                    const nextQty = Number(nextItemsById.get(itemId)?.quantity || 0);
+                    return storedQty !== nextQty;
+                });
+
+                if (pickupChanged || itemsChanged) {
+                    const sourcePickupDateId = await findPickupDateId(
+                        client,
+                        sourcePickupDate,
+                        sourcePickupLocation
+                    );
+                    if (!sourcePickupDateId) {
+                        return { status: 'source_pickup_missing' };
+                    }
+
+                    if (pickupChanged) {
+                        await reserveStockForItemsAtPickup({
+                            client,
+                            pickupDateId: targetPickupDateId,
+                            pickupDateValue: pickupDate,
+                            pickupLocationValue: pickupLocation,
+                            items: nextItemsForStock
+                        });
+
+                        await releaseStockForItemsAtPickup({
+                            client,
+                            pickupDateId: sourcePickupDateId,
+                            items: storedItems
+                        });
+                    } else {
+                        const itemsToReserve = [];
+                        const itemsToRelease = [];
+                        for (const itemId of allItemIds) {
+                            const storedItem = storedItemsById.get(itemId) || null;
+                            const nextItem = nextItemsById.get(itemId) || null;
+                            const storedQty = Number(storedItem?.quantity || 0);
+                            const nextQty = Number(nextItem?.quantity || 0);
+                            const delta = nextQty - storedQty;
+                            if (delta > 0) {
+                                itemsToReserve.push({
+                                    id: itemId,
+                                    quantity: delta,
+                                    name: nextItem?.name || storedItem?.name || `Item #${itemId}`
+                                });
+                            } else if (delta < 0) {
+                                itemsToRelease.push({
+                                    id: itemId,
+                                    quantity: Math.abs(delta),
+                                    name: storedItem?.name || nextItem?.name || `Item #${itemId}`
+                                });
+                            }
+                        }
+
+                        await reserveStockForItemsAtPickup({
+                            client,
+                            pickupDateId: targetPickupDateId,
+                            pickupDateValue: pickupDate,
+                            pickupLocationValue: pickupLocation,
+                            items: itemsToReserve
+                        });
+
+                        await releaseStockForItemsAtPickup({
+                            client,
+                            pickupDateId: sourcePickupDateId,
+                            items: itemsToRelease
+                        });
+                    }
+                }
+
+                const storedTotalRaw = Number(existingOrder.total_cents);
+                const storedTotalCents = (
+                    Number.isFinite(storedTotalRaw) && storedTotalRaw >= 0
+                ) ? Math.floor(storedTotalRaw) : 0;
+                const storedPaidRaw = Number(existingOrder.amount_paid_cents);
+                const storedDueRaw = Number(existingOrder.amount_due_cents);
+                let amountPaidCents;
+                if (Number.isFinite(storedPaidRaw) && storedPaidRaw >= 0) {
+                    amountPaidCents = Math.floor(storedPaidRaw);
+                } else if (Number.isFinite(storedDueRaw) && storedDueRaw >= 0) {
+                    amountPaidCents = Math.max(storedTotalCents - Math.floor(storedDueRaw), 0);
+                } else {
+                    amountPaidCents = storedTotalCents;
+                }
+
+                if (hasAmountPaidField) {
+                    const requestedPaidCents = Math.max(Math.floor(amountPaidCentsRaw), 0);
+                    if (requestedPaidCents < amountPaidCents) {
+                        return {
+                            status: 'paid_reduction_not_allowed',
+                            existingPaidCents: amountPaidCents,
+                            requestedPaidCents,
+                            reductionCents: amountPaidCents - requestedPaidCents
+                        };
+                    }
+                    amountPaidCents = requestedPaidCents;
+                }
+
+                if (nextTotalCents < amountPaidCents) {
+                    return {
+                        status: 'total_below_paid',
+                        totalCents: nextTotalCents,
+                        amountPaidCents,
+                        shortfallCents: amountPaidCents - nextTotalCents
+                    };
+                }
+
+                const amountDueCents = Math.max(nextTotalCents - amountPaidCents, 0);
+                const paymentType = (amountDueCents > 0 || hasLambItems) ? 'deposit' : 'full';
+                const nextStatus = amountPaidCents > 0 ? 'paid' : 'pending';
+                const customerEmailToStore = hasCustomerEmailField ? (customerEmail || null) : null;
+
+                await client.query(
+                    `
+                    UPDATE orders
+                    SET
+                        total_cents = $1,
+                        status = $2,
+                        pickup_date = $3,
+                        pickup_location = $4,
+                        payment_type = $5,
+                        amount_paid_cents = $6,
+                        amount_due_cents = $7,
+                        items = CASE WHEN $8::boolean THEN $9 ELSE items END,
+                        customer_email = CASE WHEN $10::boolean THEN $11::text ELSE customer_email END
+                    WHERE id = $12
+                    `,
+                    [
+                        nextTotalCents,
+                        nextStatus,
+                        pickupDate,
+                        pickupLocation,
+                        paymentType,
+                        amountPaidCents,
+                        amountDueCents,
+                        hasItemsField,
+                        nextItemsJson,
+                        hasCustomerEmailField,
+                        customerEmailToStore,
+                        orderId
+                    ]
+                );
+                if (hasCustomerEmailField && existingOrder.customer_id) {
+                    await client.query(
+                        'UPDATE customers SET email = $1 WHERE id = $2',
+                        [customerEmailToStore, existingOrder.customer_id]
+                    );
+                }
+
+                return {
+                    status: 'updated',
+                    orderId,
+                    pickupDate,
+                    pickupLocation,
+                    totalCents: nextTotalCents,
+                    amountPaidCents,
+                    amountDueCents,
+                    paymentType,
+                    nextStatus,
+                    customerEmail: hasCustomerEmailField
+                        ? customerEmailToStore
+                        : (existingOrder.customer_email || null)
+                };
+            });
+
+            if (updateResult.status === 'missing_order') {
+                return res.status(404).json({ error: 'Order not found.' });
+            }
+            if (updateResult.status === 'blocked_status') {
+                return res.status(400).json({
+                    error: buildStatusEditBlockedMessage(updateResult.existingStatus)
+                });
+            }
+            if (updateResult.status === 'pickup_unavailable') {
+                return res.status(400).json({
+                    error: 'Selected pickup date is not available.'
+                });
+            }
+            if (updateResult.status === 'source_pickup_missing') {
+                return res.status(409).json({
+                    error: 'Current pickup inventory record is missing. Please refresh pickup dates before editing this order.'
+                });
+            }
+            if (updateResult.status === 'missing_items') {
+                return res.status(400).json({
+                    error: 'This order has no valid items and cannot be moved to a different pickup date.'
+                });
+            }
+            if (updateResult.status === 'validation_error') {
+                return res.status(400).json({
+                    error: updateResult.error || 'Invalid order update request.'
+                });
+            }
+            if (updateResult.status === 'total_below_paid') {
+                return res.status(400).json({
+                    error: `Order total (${formatCents(updateResult.totalCents)}) cannot be less than amount already paid (${formatCents(updateResult.amountPaidCents)}). Short by ${formatCents(updateResult.shortfallCents)}.`
+                });
+            }
+            if (updateResult.status === 'paid_reduction_not_allowed') {
+                return res.status(400).json({
+                    error: `Amount paid cannot be reduced below the already recorded amount (${formatCents(updateResult.existingPaidCents)}). Reduction requested: ${formatCents(updateResult.reductionCents)}.`
+                });
+            }
+
+            return res.json({
+                success: true,
+                orderId: updateResult.orderId,
+                pickup_date: updateResult.pickupDate,
+                pickup_location: updateResult.pickupLocation,
+                total_cents: updateResult.totalCents,
+                amount_paid_cents: updateResult.amountPaidCents,
+                amount_due_cents: updateResult.amountDueCents,
+                payment_type: updateResult.paymentType,
+                status: updateResult.nextStatus,
+                customer_email: updateResult.customerEmail
+            });
+        } catch (err) {
+            if (err?.code === 'ADMIN_ORDER_INSUFFICIENT_STOCK') {
+                const meta = err.meta || {};
+                return res.status(409).json({
+                    error: `Insufficient stock for ${meta.henName || 'this item'} on ${meta.pickupDate || 'the selected date'} (${getLocationLabel(meta.pickupLocation)}). Need ${meta.required || 0}, available ${meta.available || 0}.`
+                });
+            }
+            return sendServerError(res, err, 'Failed to update admin order');
+        }
+    });
+
+    app.post('/api/admin/orders/:id/finalize-payment', checkAuth, async (req, res) => {
+        try {
+            const orderId = req.params.id;
+            const orderResult = await pool.query(
+                'SELECT stripe_payment_id, status FROM orders WHERE id = $1',
+                [orderId]
+            );
+            if (orderResult.rows.length === 0) {
+                return res.status(404).json({ error: 'Order not found' });
+            }
+            const order = orderResult.rows[0];
+            const stripeSessionId = order.stripe_payment_id;
+            if (!stripeSessionId) {
+                return res.status(400).json({ error: 'No Stripe session for this order' });
+            }
+            const session = await stripe.checkout.sessions.retrieve(stripeSessionId);
+            if (session.payment_status === 'paid') {
+                const result = await finalizeOrderFromSession(session);
+                return res.json({ success: true, status: result.status });
+            }
+            return res.json({ success: true, status: order.status, payment_status: session.payment_status });
+        } catch (err) {
+            return sendServerError(res, err, 'Failed to finalize payment');
         }
     });
 
@@ -810,51 +1831,6 @@ const registerAdminRoutes = (app, deps) => {
             return res.json({ success: true });
         } catch (err) {
             return sendServerError(res, err, 'Failed to update pickup stock');
-        }
-    });
-
-    app.put('/api/admin/orders/status', checkAuth, async (req, res) => {
-        const { ids } = req.body || {};
-        const status = sanitizeText(req.body?.status, 50).toLowerCase();
-        if (!Array.isArray(ids) || ids.length === 0) {
-            return res.status(400).json({ error: 'ids array is required' });
-        }
-        const uniqueIds = Array.from(
-            new Set(
-                ids.map((value) => String(value || '').trim())
-                    .filter(Boolean)
-            )
-        );
-        if (uniqueIds.length === 0) {
-            return res.status(400).json({ error: 'ids array is required' });
-        }
-        if (!ADMIN_ALLOWED_ORDER_STATUSES.has(status)) {
-            return res.status(400).json({ error: 'Invalid status value.' });
-        }
-        try {
-            if (status === 'cancelled') {
-                const directUpdateIds = [];
-                for (const orderId of uniqueIds) {
-                    const releaseResult = await releaseReservedOrder(orderId, { expireStripeSession: true });
-                    if (releaseResult?.status === 'not_reserved') {
-                        directUpdateIds.push(orderId);
-                    }
-                }
-                if (directUpdateIds.length > 0) {
-                    await pool.query(
-                        'UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])',
-                        [status, directUpdateIds]
-                    );
-                }
-            } else {
-                await pool.query(
-                    'UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])',
-                    [status, uniqueIds]
-                );
-            }
-            return res.json({ success: true, message: 'Status updated' });
-        } catch (err) {
-            return sendServerError(res, err, 'Failed to update order statuses');
         }
     });
 

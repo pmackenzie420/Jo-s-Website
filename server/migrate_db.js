@@ -119,10 +119,20 @@ async function migrate() {
 
         // Add language
         await pool.query(`
-            DO $$ 
-            BEGIN 
+            DO $$
+            BEGIN
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='language') THEN
                     ALTER TABLE orders ADD COLUMN language TEXT DEFAULT 'en';
+                END IF;
+            END $$;
+        `);
+
+        // Add payment_method
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='payment_method') THEN
+                    ALTER TABLE orders ADD COLUMN payment_method TEXT;
                 END IF;
             END $$;
         `);

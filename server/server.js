@@ -344,7 +344,11 @@ registerAdminRoutes(app, {
     formatPickupDate,
     handlePickupStockRequest,
     releaseReservedOrder,
-    verifyCheckoutEmail
+    verifyCheckoutEmail,
+    stripe,
+    CHECKOUT_RESERVATION_TTL_MINUTES,
+    getRequestBaseUrl,
+    finalizeOrderFromSession
 });
 
 if (sentryEnabled) {
