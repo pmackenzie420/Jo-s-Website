@@ -252,7 +252,7 @@ const ADMIN_STRINGS = {
   'stonks.paid':            { en: 'Paid',                fr: 'Payé' },
   'stonks.due':             { en: 'Outstanding',         fr: 'Solde dû' },
   'stonks.fees':            { en: 'Stripe Fees',         fr: 'Frais Stripe' },
-  'stonks.net':             { en: 'Revenue',              fr: 'Revenus' },
+  'stonks.net':             { en: 'Net Revenue',           fr: 'Revenu net' },
   'stonks.orders':          { en: 'Orders',              fr: 'Commandes' },
 
   // Date change result messages

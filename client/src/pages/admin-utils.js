@@ -93,7 +93,11 @@ const formatDateShort = (value, lang) => {
   }).format(date);
 };
 
-const formatCurrency = (amount) => `$${amount.toFixed(2)}`;
+const formatCurrency = (amount) => {
+  const parts = amount.toFixed(2).split('.');
+  parts[0] = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  return `$${parts.join('.')}`;
+};
 
 const formatPhoneLink = (phone) => {
   if (!phone) return '';
