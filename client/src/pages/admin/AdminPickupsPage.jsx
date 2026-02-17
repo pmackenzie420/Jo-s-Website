@@ -1,4 +1,4 @@
-import { formatDateHeader, normalizeStatus } from '../admin-utils';
+import { formatDateHeader, normalizeStatus, formatCurrency } from '../admin-utils';
 import { t } from '../admin-i18n';
 
 export default function AdminPickupsPage({
@@ -10,6 +10,7 @@ export default function AdminPickupsPage({
   ordersHasMore,
   ordersLoadingMore,
   adminLanguage,
+  stats,
   onRowClick,
   onLoadMoreOrders,
   onExportAll,
@@ -66,6 +67,29 @@ export default function AdminPickupsPage({
           </div>
         </div>
       </div>
+    );
+  };
+
+  const renderStonksCard = () => {
+    if (!stats) return null;
+    const feeCents = stats.stripeFeeCents || 0;
+    const netCents = stats.totalExpectedCents - feeCents;
+    return (
+      <section className="stonks-card stagger-item">
+        <div className="stonks-hero">
+          <span className="stonks-hero-value">{formatCurrency(netCents / 100)}</span>
+          <span className="stonks-hero-label">{t('stonks.net', adminLanguage)}</span>
+        </div>
+        <div className="stonks-details">
+          <span>{t('stonks.paid', adminLanguage)} {formatCurrency(stats.totalPaidCents / 100)}</span>
+          <span className="stonks-sep" aria-hidden="true" />
+          <span>{t('stonks.due', adminLanguage)} {formatCurrency(stats.totalDueCents / 100)}</span>
+          <span className="stonks-sep" aria-hidden="true" />
+          <span>{t('stonks.fees', adminLanguage)} {formatCurrency(feeCents / 100)}</span>
+          <span className="stonks-sep" aria-hidden="true" />
+          <span>{stats.orderCount} {t('stonks.orders', adminLanguage).toLowerCase()}</span>
+        </div>
+      </section>
     );
   };
 
@@ -155,6 +179,7 @@ export default function AdminPickupsPage({
           ))
         )}
         {renderFailedOrdersSection()}
+        {renderStonksCard()}
       </div>
     );
   }
@@ -226,6 +251,7 @@ export default function AdminPickupsPage({
         ))}
       </div>
       {renderFailedOrdersSection()}
+      {renderStonksCard()}
     </div>
   );
 }

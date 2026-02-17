@@ -246,6 +246,15 @@ const ADMIN_STRINGS = {
   'confirm.changeDateEmail':    { en: 'Email users with pickup date change from {from} to {to}?', fr: 'Aviser les clients du changement de date de {from} à {to}\u00a0?' },
   'confirm.changeDateNoEmail':  { en: 'Apply pickup date change from {from} to {to} without emailing users?', fr: 'Appliquer le changement de date de {from} à {to} sans aviser les clients\u00a0?' },
 
+  // Stonks card
+  'stonks.title':           { en: 'Revenue',            fr: 'Revenus' },
+  'stonks.expected':        { en: 'Expected',            fr: 'Prévu' },
+  'stonks.paid':            { en: 'Paid',                fr: 'Payé' },
+  'stonks.due':             { en: 'Outstanding',         fr: 'Solde dû' },
+  'stonks.fees':            { en: 'Stripe Fees',         fr: 'Frais Stripe' },
+  'stonks.net':             { en: 'Revenue',              fr: 'Revenus' },
+  'stonks.orders':          { en: 'Orders',              fr: 'Commandes' },
+
   // Date change result messages
   'result.merged':              { en: 'Merged with existing date.', fr: 'Fusionné avec une date existante.' },
   'result.ordersMoved':         { en: '{count} orders moved.', fr: '{count} commandes déplacées.' },

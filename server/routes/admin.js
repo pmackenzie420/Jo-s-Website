@@ -1791,6 +1791,36 @@ const registerAdminRoutes = (app, deps) => {
         }
     });
 
+    app.get('/api/admin/stats', checkAuth, async (req, res) => {
+        try {
+            const result = await pool.query(`
+                SELECT
+                    COUNT(*)::int AS order_count,
+                    COALESCE(SUM(total_cents), 0)::bigint AS total_expected_cents,
+                    COALESCE(SUM(amount_paid_cents), 0)::bigint AS total_paid_cents,
+                    COALESCE(SUM(amount_due_cents), 0)::bigint AS total_due_cents,
+                    COALESCE(SUM(
+                        CASE WHEN stripe_payment_id IS NOT NULL
+                             THEN ROUND(amount_paid_cents * 0.029) + 30
+                             ELSE 0
+                        END
+                    ), 0)::bigint AS stripe_fee_cents
+                FROM orders
+                WHERE LOWER(COALESCE(status, 'pending')) NOT IN ('cancelled', 'archived', 'reserved')
+            `);
+            const row = result.rows[0] || {};
+            return res.json({
+                orderCount: Number(row.order_count || 0),
+                totalExpectedCents: Number(row.total_expected_cents || 0),
+                totalPaidCents: Number(row.total_paid_cents || 0),
+                totalDueCents: Number(row.total_due_cents || 0),
+                stripeFeeCents: Number(row.stripe_fee_cents || 0)
+            });
+        } catch (err) {
+            return sendServerError(res, err, 'Failed to load admin stats');
+        }
+    });
+
     app.get('/api/admin/pickup-stock', checkAuth, handlePickupStockRequest);
 
     app.put('/api/admin/pickup-stock', checkAuth, async (req, res) => {

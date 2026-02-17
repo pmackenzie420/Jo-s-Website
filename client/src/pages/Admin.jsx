@@ -49,6 +49,7 @@ export default function Admin() {
     dirtyStockKeys,
     isAddingDate,
     optimisticStatuses,
+    stats,
     dateInputRef,
     groupedPickups,
     failedPickups,
@@ -193,6 +194,7 @@ export default function Admin() {
               ordersHasMore={ordersHasMore}
               ordersLoadingMore={ordersLoadingMore}
               adminLanguage={adminLanguage}
+              stats={stats}
               onRowClick={handleRowClick}
               onLoadMoreOrders={handleLoadMoreOrders}
               onExportAll={() => handleExportDownload()}

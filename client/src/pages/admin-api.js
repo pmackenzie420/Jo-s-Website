@@ -45,6 +45,8 @@ const updateAdminOrder = ({ orderId, payload }) =>
 const finalizeAdminOrder = (orderId) =>
   axios.post(`${API_URL}/admin/orders/${orderId}/finalize-payment`, {}, withAuth);
 
+const fetchAdminStats = () => axios.get(`${API_URL}/admin/stats`, withAuth);
+
 const sendGroupEmail = ({ messages }) =>
   axios.post(`${API_URL}/admin/email`, { messages }, withAuth);
 
@@ -60,6 +62,7 @@ export {
   updateOrdersStatus,
   createAdminOrder,
   updateAdminOrder,
+  fetchAdminStats,
   finalizeAdminOrder,
   sendGroupEmail
 };

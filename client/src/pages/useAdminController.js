@@ -13,6 +13,7 @@ import {
   checkSession,
   fetchAdminMeta,
   fetchOrdersPage,
+  fetchAdminStats,
   updatePickupStock,
   addPickupDate,
   updatePickupDate,
@@ -84,6 +85,7 @@ export default function useAdminController() {
   const [dirtyStockKeys, setDirtyStockKeys] = useState(new Set());
   const [isAddingDate, setIsAddingDate] = useState(false);
   const [optimisticStatuses, setOptimisticStatuses] = useState({});
+  const [stats, setStats] = useState(null);
 
   const dateInputRef = useRef(null);
   const { notice, setNotice, showToast, handleNoticeAction } = useAdminNotice();
@@ -170,12 +172,14 @@ export default function useAdminController() {
   const fetchInitialData = useCallback(async () => {
     setDataLoading(true);
     try {
-      const [metaResponse, ordersResponse] = await Promise.all([
+      const [metaResponse, ordersResponse, statsResponse] = await Promise.all([
         fetchAdminMeta(),
-        fetchOrdersPage({ limit: ORDERS_PAGE_LIMIT, offset: 0 })
+        fetchOrdersPage({ limit: ORDERS_PAGE_LIMIT, offset: 0 }),
+        fetchAdminStats().catch(() => null)
       ]);
       applyMetaPayload(metaResponse.data || {});
       applyOrdersPayload(ordersResponse.data || {}, { append: false });
+      if (statsResponse) setStats(statsResponse.data || null);
       return true;
     } catch {
       showToast({ type: 'error', text: t('toast.loadFailed', adminLanguage) });
@@ -871,6 +875,7 @@ export default function useAdminController() {
     dirtyStockKeys,
     isAddingDate,
     optimisticStatuses,
+    stats,
     dateInputRef,
     groupedPickups,
     failedPickups,
