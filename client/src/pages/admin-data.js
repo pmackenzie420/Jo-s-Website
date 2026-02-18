@@ -33,11 +33,15 @@ const buildOrdersWithDetails = (orders, hens, language = 'en') => {
       const quantity = Number(item.quantity ?? item.qty ?? 0);
       const id = Number(item.id);
       const name = henNameById.get(id) || item.name || 'Item';
+      const unitCents = Number(item.unit_cents ?? item.unitCents ?? 0);
+      const lineCents = Number(item.line_cents ?? item.lineCents ?? 0);
       return {
         id,
         name,
         quantity,
-        displayName: getDisplayName(name, language)
+        displayName: getDisplayName(name, language),
+        unitCents: Number.isFinite(unitCents) ? unitCents : 0,
+        lineCents: Number.isFinite(lineCents) ? lineCents : 0
       };
     });
     const itemCount = orderItems.reduce((total, item) => total + item.quantity, 0);
