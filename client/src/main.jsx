@@ -14,10 +14,12 @@ if (import.meta.env.PROD) {
   // Auto-recover from chunk/preload failures right after a deploy.
   window.addEventListener('vite:preloadError', () => {
     const key = 'jowebsite:preload-reload-attempted';
-    if (!window.sessionStorage.getItem(key)) {
-      window.sessionStorage.setItem(key, '1');
-      window.location.reload();
-    }
+    try {
+      if (!window.sessionStorage.getItem(key)) {
+        window.sessionStorage.setItem(key, '1');
+        window.location.reload();
+      }
+    } catch { /* storage blocked (e.g. Facebook in-app browser) */ }
   });
 
   inject()

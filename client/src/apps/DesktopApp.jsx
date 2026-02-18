@@ -23,10 +23,12 @@ const lazyWithRetry = (importer) =>
     } catch (err) {
       if (typeof window !== 'undefined' && isChunkLoadError(err)) {
         const key = 'jowebsite:chunk-reload-attempted';
-        if (!window.sessionStorage.getItem(key)) {
-          window.sessionStorage.setItem(key, '1');
-          window.location.reload();
-        }
+        try {
+          if (!window.sessionStorage.getItem(key)) {
+            window.sessionStorage.setItem(key, '1');
+            window.location.reload();
+          }
+        } catch { /* storage blocked */ }
       }
       throw err;
     }
@@ -46,15 +48,17 @@ export default function DesktopApp() {
     if (typeof window === 'undefined') {
       return 'fr';
     }
-    const stored = window.localStorage.getItem('site-lang');
-    return stored === 'en' || stored === 'fr' ? stored : 'fr';
+    try {
+      const stored = window.localStorage.getItem('site-lang');
+      return stored === 'en' || stored === 'fr' ? stored : 'fr';
+    } catch { return 'fr'; }
   });
 
   useEffect(() => {
     if (typeof window === 'undefined') {
       return;
     }
-    window.localStorage.setItem('site-lang', lang);
+    try { window.localStorage.setItem('site-lang', lang); } catch { /* storage blocked */ }
   }, [lang]);
 
   return (
