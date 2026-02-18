@@ -390,28 +390,30 @@ export default function AdminEditOrderModal({
     };
   }, [orderItems]);
 
+  // Deposit is only switchable if existing paid doesn't exceed the deposit amount
+  const canSwitchToDeposit = depositInfo.depositEligible && existingPaidCents <= depositInfo.depositNowCents;
+
   // Initialize paymentType from order data
   useEffect(() => {
     if (!order) return;
     const orderPaid = getOrderPaidCents(order);
-    // If existing paid < total and deposit-eligible, default to deposit
-    if (orderPaid < totalCents && depositInfo.depositEligible) {
+    if (orderPaid < totalCents && depositInfo.depositEligible && orderPaid <= depositInfo.depositNowCents) {
       setPaymentType('deposit');
     } else {
       setPaymentType('full');
     }
   }, [order]);
 
-  // Auto-force deposit when required
+  // Auto-force deposit when required; reset to full when deposit is no longer valid
   useEffect(() => {
     if (depositInfo.depositRequired && paymentType !== 'deposit') {
       setPaymentType('deposit');
       return;
     }
-    if (!depositInfo.depositEligible && paymentType === 'deposit') {
+    if (!canSwitchToDeposit && !depositInfo.depositRequired && paymentType === 'deposit') {
       setPaymentType('full');
     }
-  }, [depositInfo.depositEligible, depositInfo.depositRequired, paymentType]);
+  }, [canSwitchToDeposit, depositInfo.depositRequired, paymentType]);
 
   const paidParse = useMemo(() => parseAmountToCents(paidAmount, { allowZero: true }), [paidAmount]);
 
@@ -595,22 +597,15 @@ export default function AdminEditOrderModal({
             <div className="pickup-location-title" style={{ fontSize: 16 }}>
               {t('edit.items', adminLanguage)}
             </div>
-            <div className="admin-table" style={{ marginTop: 10 }}>
-              <div
-                className="admin-table-row admin-table-header"
-                style={{ gridTemplateColumns: 'minmax(0, 2.2fr) 90px 120px 120px' }}
-              >
+            <div className="admin-table admin-edit-order-table" style={{ marginTop: 10 }}>
+              <div className="admin-table-row admin-table-header">
                 <div>{t('edit.product', adminLanguage)}</div>
                 <div>{t('edit.qty', adminLanguage)}</div>
-                <div>{t('edit.unit', adminLanguage)}</div>
+                <div className="admin-edit-order-unit">{t('edit.unit', adminLanguage)}</div>
                 <div>{t('edit.line', adminLanguage)}</div>
               </div>
               {lineItems.map((row) => (
-                <div
-                  key={row.id}
-                  className="admin-table-row"
-                  style={{ gridTemplateColumns: 'minmax(0, 2.2fr) 90px 120px 120px' }}
-                >
+                <div key={row.id} className="admin-table-row">
                   <div style={{ fontWeight: 600 }}>
                     {row.displayName}
                     {row.isLegacy && (
@@ -625,15 +620,14 @@ export default function AdminEditOrderModal({
                       inputMode="numeric"
                       min="0"
                       max={row.availableForEdit}
-                      className="admin-input"
-                      style={{ width: 90 }}
+                      className="admin-input admin-edit-order-qty"
                       value={row.qty === 0 ? '' : row.qty}
                       placeholder="0"
                       onFocus={(event) => event.target.select()}
                       onChange={(event) => handleQtyChange(row.id, event.target.value)}
                     />
                   </div>
-                  <div>{row.qty > 0 ? formatCurrency(row.unitCents / 100) : ''}</div>
+                  <div className="admin-edit-order-unit">{row.qty > 0 ? formatCurrency(row.unitCents / 100) : ''}</div>
                   <div>{row.qty > 0 ? formatCurrency(row.lineCents / 100) : ''}</div>
                 </div>
               ))}
@@ -649,7 +643,7 @@ export default function AdminEditOrderModal({
             </div>
           </div>
 
-          {depositInfo.depositEligible && orderItems.length > 0 && (
+          {(canSwitchToDeposit || depositInfo.depositRequired) && orderItems.length > 0 && (
             <div style={{ marginTop: 14, maxWidth: 390 }}>
               <label className="admin-label" htmlFor="edit-order-payment-type">
                 {t('edit.paymentType', adminLanguage)}

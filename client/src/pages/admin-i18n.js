@@ -31,7 +31,6 @@ const ADMIN_STRINGS = {
   'pickups.exportTitle':    { en: 'Export List',     fr: 'Exporter la liste' },
   'pickups.failedOrders':   { en: 'Order Drafts',     fr: 'Brouillons de commandes' },
   'pickups.items':          { en: '{count} items',    fr: '{count} articles' },
-
   // Pickup modal
   'pickup.pickupLabel':     { en: 'Pickup',          fr: 'Ramassage' },
   'pickup.call':            { en: 'Call',             fr: 'Appeler' },
@@ -235,7 +234,7 @@ const ADMIN_STRINGS = {
   'toast.createFailed':         { en: 'Failed to create order.', fr: 'Échec de la création de la commande.' },
   'toast.updateFailed':         { en: 'Failed to update order.', fr: 'Échec de la mise à jour de la commande.' },
   'toast.orderNotFound':        { en: 'Order not found. Refresh and try again.', fr: 'Commande introuvable. Rafraîchissez et réessayez.' },
-  'toast.noEmails':             { en: 'No email addresses for this group.', fr: 'Aucune adresse courriel pour ce groupe.' },
+'toast.noEmails':             { en: 'No email addresses for this group.', fr: 'Aucune adresse courriel pour ce groupe.' },
   'toast.emailSendFailed':      { en: 'Failed to send group email.', fr: 'Échec de l\'envoi du courriel de groupe.' },
 
   // Confirm dialogs

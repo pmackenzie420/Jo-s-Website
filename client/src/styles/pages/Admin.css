@@ -916,6 +916,14 @@ body.admin-modal-open .admin-main {
   max-width: 900px;
 }
 
+.admin-edit-order-table .admin-table-row {
+  grid-template-columns: minmax(0, 2.2fr) 90px 120px 120px;
+}
+
+.admin-edit-order-qty {
+  width: 90px;
+}
+
 .admin-edit-order-original {
   margin: 10px 0 6px;
   padding: 8px 0;
@@ -1108,6 +1116,82 @@ body.admin-modal-open .admin-main {
 }
 
 
+/* ── Hamburger toggle ── */
+.admin-menu-toggle {
+  display: none;
+  background: transparent;
+  border: none;
+  width: 44px;
+  height: 44px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 5px;
+  cursor: pointer;
+  margin-left: auto;
+  padding: 0;
+  flex-shrink: 0;
+}
+
+.admin-menu-bar {
+  display: block;
+  width: 24px;
+  height: 2px;
+  background: var(--admin-ink);
+  border-radius: 2px;
+}
+
+/* ── Mobile dropdown ── */
+.admin-mobile-menu {
+  display: none;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  background: var(--admin-surface);
+  border-bottom: 1px solid var(--admin-border);
+  overflow: hidden;
+  max-height: 0;
+  transition: max-height 0.2s ease;
+  z-index: 15;
+}
+
+.admin-mobile-menu.open {
+  max-height: 400px;
+  padding: 8px 0 12px;
+}
+
+.admin-mobile-menu-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 12px;
+}
+
+.admin-mobile-nav-button {
+  width: 100%;
+  text-align: left;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  color: var(--admin-muted);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  border-radius: var(--admin-radius);
+  font-family: var(--admin-font-body);
+}
+
+.admin-mobile-nav-button.active {
+  background: var(--admin-brand-soft);
+  color: var(--admin-brand);
+}
+
+.admin-mobile-nav-button:hover {
+  background: var(--color-surface-subtle);
+  color: var(--admin-ink);
+}
+
 .admin-tabs {
   display: none;
   gap: 20px;
@@ -1137,26 +1221,31 @@ body.admin-modal-open .admin-main {
   background: var(--admin-surface);
   border-top: 1px solid var(--admin-border);
   display: flex;
-  justify-content: center;
-  gap: 15px;
-  padding: 8px 10px calc(12px + env(safe-area-inset-bottom));
+  justify-content: stretch;
+  gap: 0;
+  padding: 0 0 calc(env(safe-area-inset-bottom));
   z-index: 20;
   flex-shrink: 0;
 }
 
 .admin-nav-button {
+  flex: 1;
+  min-width: 0;
   border: none;
   background: transparent;
   color: var(--admin-muted);
-  font-size: 12px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 12px 6px;
+  padding: 10px 4px 12px;
   cursor: pointer;
   border-bottom: 3px solid transparent;
 }
 
 .nav-label {
   display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .admin-nav-button.active {
@@ -1265,6 +1354,18 @@ body.admin-modal-open .admin-main {
 }
 
 @media (max-width: 767px) {
+  .admin-menu-toggle {
+    display: inline-flex;
+  }
+
+  .admin-mobile-menu {
+    display: block;
+  }
+
+  .admin-nav-mobile {
+    display: none;
+  }
+
   .admin-main-pickups {
     padding: 12px 0;
     gap: 0;
@@ -1332,7 +1433,8 @@ body.admin-modal-open .admin-main {
   }
 
   .pickup-day,
-  .admin-action-card {
+  .admin-action-card,
+  .stonks-card {
     padding: 0;
     border-radius: 8px;
     border: 1px solid var(--admin-border);
@@ -1345,6 +1447,10 @@ body.admin-modal-open .admin-main {
   .admin-action-card {
     padding: 12px;
     margin-bottom: 24px;
+  }
+
+  .stonks-card {
+    padding: 20px 16px;
   }
 
   .pickup-day-header {
@@ -1486,6 +1592,19 @@ body.admin-modal-open .admin-main {
   .admin-edit-order-actions .admin-button {
     width: 100%;
     min-width: 0;
+  }
+
+  .admin-edit-order-table .admin-table-row {
+    grid-template-columns: minmax(0, 1fr) 90px 90px;
+    min-width: 0;
+  }
+
+  .admin-edit-order-unit {
+    display: none;
+  }
+
+  .admin-edit-order-qty {
+    width: 100%;
   }
 }
 

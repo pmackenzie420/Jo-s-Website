@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import useMediaQuery from '../hooks/useMediaQuery';
 import '../styles/pages/Admin.css';
 import AdminToast from './admin/AdminToast';
@@ -93,6 +93,7 @@ export default function Admin() {
   } = useAdminController();
 
   const isMobile = useMediaQuery('(max-width: 767px)');
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -163,6 +164,18 @@ export default function Admin() {
                 FR
               </button>
             </div>
+            <button
+              className="admin-menu-toggle"
+              type="button"
+              aria-label="Toggle navigation menu"
+              aria-expanded={isMenuOpen}
+              aria-controls="admin-mobile-menu"
+              onClick={() => setIsMenuOpen((open) => !open)}
+            >
+              <span className="admin-menu-bar" />
+              <span className="admin-menu-bar" />
+              <span className="admin-menu-bar" />
+            </button>
           </div>
           <nav className="admin-tabs" aria-label="Admin sections">
             {getTabConfig(adminLanguage).map((tab) => (
@@ -177,6 +190,24 @@ export default function Admin() {
               </button>
             ))}
           </nav>
+          <div
+            id="admin-mobile-menu"
+            className={`admin-mobile-menu${isMenuOpen ? ' open' : ''}`}
+          >
+            <nav className="admin-mobile-menu-nav">
+              {getTabConfig(adminLanguage).map((tab) => (
+                <button
+                  key={tab.key}
+                  className={`admin-mobile-nav-button${activeTab === tab.key ? ' active' : ''}`}
+                  onClick={() => { setIsMenuOpen(false); handleTabChange(tab.key); }}
+                  type="button"
+                  aria-current={activeTab === tab.key ? 'page' : undefined}
+                >
+                  {tab.label}
+                </button>
+              ))}
+            </nav>
+          </div>
         </header>
 
         <main

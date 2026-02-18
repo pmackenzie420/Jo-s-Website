@@ -410,7 +410,7 @@ export default function useAdminController() {
     [dataLoading, groupedPickups, showToast, adminLanguage]
   );
 
-  const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
+const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     setDirtyStockKeys((prev) => {
       const next = new Set(prev);
       next.add(pickupKey);
