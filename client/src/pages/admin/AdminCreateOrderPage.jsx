@@ -261,6 +261,20 @@ export default function AdminCreateOrderPage({
     adminLanguage
   ]);
 
+  const hasStartedOrder = useMemo(() => (
+    Boolean(customer.name.trim())
+    || Boolean(customer.phone.trim())
+    || Boolean(customer.email.trim())
+    || Boolean(customer.address.trim())
+    || orderItems.length > 0
+  ), [
+    customer.name,
+    customer.phone,
+    customer.email,
+    customer.address,
+    orderItems.length
+  ]);
+
   const paidCents = calculatedPaidCents;
   const dueCents = calculatedDueCents;
 
@@ -549,7 +563,7 @@ export default function AdminCreateOrderPage({
                 </div>
               </div>
 
-              {(formError || validationErrors.length > 0) && (
+              {(formError || (hasStartedOrder && validationErrors.length > 0)) && (
                 <div className="date-change-warning" style={{ marginTop: 14 }}>
                   {formError || validationErrors[0]}
                 </div>
