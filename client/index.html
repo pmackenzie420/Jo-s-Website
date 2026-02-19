@@ -12,6 +12,26 @@
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
+    <script>
+      (function () {
+        window.__jowebsiteHandleEntryLoadError = function (event) {
+          var src = String((event && event.target && event.target.src) || '');
+          var key = 'jowebsite:entry-reload-attempted:' + (src || 'unknown');
+          try {
+            if (!window.sessionStorage.getItem(key)) {
+              window.sessionStorage.setItem(key, '1');
+              window.location.reload();
+            }
+          } catch (_err) {
+            // Ignore storage errors in restrictive browser contexts.
+          }
+        };
+      })();
+    </script>
+    <script
+      type="module"
+      src="/src/main.jsx"
+      onerror="window.__jowebsiteHandleEntryLoadError && window.__jowebsiteHandleEntryLoadError(event)"
+    ></script>
   </body>
 </html>
