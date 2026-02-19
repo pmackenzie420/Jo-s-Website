@@ -5,14 +5,17 @@
       "schedule": "0 0 * * *"
     }
   ],
-  "rewrites": [
+  "routes": [
     {
-      "source": "/api/(.*)",
-      "destination": "https://jo-s-website-production.up.railway.app/api/$1"
+      "src": "/api/(.*)",
+      "dest": "https://jo-s-website-production.up.railway.app/api/$1"
     },
     {
-      "source": "/(.*)",
-      "destination": "/index.html"
+      "handle": "filesystem"
+    },
+    {
+      "src": "/((?!.*\\.).*)",
+      "dest": "/index.html"
     }
   ]
 }

@@ -12,7 +12,8 @@ initSentry()
 
 if (import.meta.env.PROD) {
   // Auto-recover from chunk/preload failures right after a deploy.
-  window.addEventListener('vite:preloadError', () => {
+  window.addEventListener('vite:preloadError', (event) => {
+    event?.preventDefault?.();
     const key = 'jowebsite:preload-reload-attempted';
     try {
       if (!window.sessionStorage.getItem(key)) {
@@ -20,6 +21,18 @@ if (import.meta.env.PROD) {
         window.location.reload();
       }
     } catch { /* storage blocked (e.g. Facebook in-app browser) */ }
+  });
+
+  window.addEventListener('error', (event) => {
+    const message = String(event?.error?.message || event?.message || '');
+    if (!message.includes('Unable to preload CSS for /assets/')) return;
+    const key = 'jowebsite:preload-reload-attempted';
+    try {
+      if (!window.sessionStorage.getItem(key)) {
+        window.sessionStorage.setItem(key, '1');
+        window.location.reload();
+      }
+    } catch { /* storage blocked */ }
   });
 
   inject()
