@@ -21,6 +21,7 @@ import {
   updateOrdersStatus,
   createAdminOrder,
   updateAdminOrder,
+  deleteAdminOrder,
   finalizeAdminOrder
 } from './admin-api';
 import {
@@ -799,6 +800,40 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     setEditingOrder(order);
   }, []);
 
+  const handleDeleteOrder = useCallback(
+    async (order) => {
+      const orderId = String(order?.id || '').trim();
+      const orderStatus = String(order?.status || '').trim().toLowerCase();
+      if (!orderId || !['pending', 'paid'].includes(orderStatus)) {
+        return;
+      }
+
+      const confirmed = window.confirm(t('confirm.deleteOrder', adminLanguage));
+      if (!confirmed) return;
+
+      try {
+        await deleteAdminOrder(orderId);
+        showToast({
+          type: 'success',
+          text: tf('toast.orderDeleted', adminLanguage, { id: orderId })
+        });
+        setSelectedPickup(null);
+        await Promise.all([refreshMeta(), refreshOrders({ quiet: true })]);
+      } catch (error) {
+        const status = error?.response?.status;
+        const data = error?.response?.data;
+        const message = (() => {
+          if (status === 401) return t('toast.unauthorized', adminLanguage);
+          if (status === 404) return t('toast.orderNotFound', adminLanguage);
+          if (data && typeof data === 'object' && typeof data.error === 'string') return data.error;
+          return t('toast.deleteFailed', adminLanguage);
+        })();
+        showToast({ type: 'error', text: message });
+      }
+    },
+    [adminLanguage, showToast, refreshMeta, refreshOrders]
+  );
+
   const handleUpdateAdminOrder = useCallback(
     async (orderId, payload) => {
       try {
@@ -915,6 +950,7 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     handleCreateAdminOrder,
     handleArchiveOrder,
     handleEditOrder,
+    handleDeleteOrder,
     handleUpdateAdminOrder
   };
 }

@@ -13,6 +13,7 @@ export default function AdminPickupModal({
   onClose,
   onMarkPickedUp,
   onEditOrder,
+  onDeleteOrder,
   onArchiveOrder
 }) {
   if (!pickup) return null;
@@ -125,17 +126,30 @@ export default function AdminPickupModal({
                     </div>
                     <div className="history-row-actions">
                       <div className="history-total">{formatCurrency(order.totalAmount)}</div>
-                      <button
-                        type="button"
-                        className="admin-button ghost small"
-                        onClick={() => onEditOrder?.(order)}
-                        disabled={
-                          typeof onEditOrder !== 'function'
-                          || !['pending', 'paid'].includes(String(order.status || '').toLowerCase())
-                        }
-                      >
-                        {t('btn.edit', adminLanguage)}
-                      </button>
+                      <div className="history-row-buttons">
+                        <button
+                          type="button"
+                          className="admin-button ghost small"
+                          onClick={() => onEditOrder?.(order)}
+                          disabled={
+                            typeof onEditOrder !== 'function'
+                            || !['pending', 'paid'].includes(String(order.status || '').toLowerCase())
+                          }
+                        >
+                          {t('btn.edit', adminLanguage)}
+                        </button>
+                        <button
+                          type="button"
+                          className="admin-button ghost small danger"
+                          onClick={() => onDeleteOrder?.(order)}
+                          disabled={
+                            typeof onDeleteOrder !== 'function'
+                            || !['pending', 'paid'].includes(String(order.status || '').toLowerCase())
+                          }
+                        >
+                          {t('btn.delete', adminLanguage)}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}

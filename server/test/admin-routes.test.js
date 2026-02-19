@@ -867,6 +867,105 @@ test('admin order update returns stock conflict details when target pickup lacks
     );
 });
 
+test('admin order delete releases stock and removes pending order', async () => {
+    let deleteParams = null;
+    const releasedStockParams = [];
+
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('FROM orders') && normalizedSql.includes('FOR UPDATE')) {
+                assert.deepEqual(params, ['order-delete-1']);
+                return {
+                    rows: [{
+                        id: 'order-delete-1',
+                        status: 'pending',
+                        pickup_date: '2026-06-01',
+                        pickup_location: 'hemmingford',
+                        items: JSON.stringify([
+                            { id: 1, quantity: 2, name: 'Ready-to-Lay Hens / Poules Prêtes à Pondre' }
+                        ])
+                    }]
+                };
+            }
+            if (
+                normalizedSql.includes('FROM pickup_dates')
+                && normalizedSql.includes('WHERE is_active = true')
+                && normalizedSql.includes('date_value = $1')
+            ) {
+                assert.deepEqual(params, ['2026-06-01', 'hemmingford']);
+                return { rows: [{ id: 'pickup-date-1' }] };
+            }
+            if (
+                normalizedSql.includes('INSERT INTO pickup_stock (pickup_date_id, hen_id, stock)')
+                && normalizedSql.includes('ON CONFLICT (pickup_date_id, hen_id)')
+            ) {
+                releasedStockParams.push(params);
+                return { rowCount: 1, rows: [] };
+            }
+            if (normalizedSql.includes('DELETE FROM orders WHERE id = $1')) {
+                deleteParams = params;
+                return { rowCount: 1, rows: [] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const handlers = registerRoutesForTest(pool);
+    const handler = handlers['DELETE /api/admin/orders/:id'];
+    assert.ok(handler);
+
+    const req = { params: { id: 'order-delete-1' } };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.success, true);
+    assert.equal(res.body?.orderId, 'order-delete-1');
+    assert.deepEqual(releasedStockParams, [['pickup-date-1', 1, 2]]);
+    assert.deepEqual(deleteParams, ['order-delete-1']);
+});
+
+test('admin order delete blocks picked-up orders', async () => {
+    let deleteCalled = false;
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('FROM orders') && normalizedSql.includes('FOR UPDATE')) {
+                assert.deepEqual(params, ['order-picked-up']);
+                return {
+                    rows: [{
+                        id: 'order-picked-up',
+                        status: 'picked_up',
+                        pickup_date: '2026-06-01',
+                        pickup_location: 'hemmingford',
+                        items: JSON.stringify([{ id: 1, quantity: 1 }])
+                    }]
+                };
+            }
+            if (normalizedSql.includes('DELETE FROM orders WHERE id = $1')) {
+                deleteCalled = true;
+                return { rowCount: 1, rows: [] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const handlers = registerRoutesForTest(pool);
+    const handler = handlers['DELETE /api/admin/orders/:id'];
+    assert.ok(handler);
+
+    const req = { params: { id: 'order-picked-up' } };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 400);
+    assert.equal(res.body?.error, 'Picked-up orders cannot be deleted.');
+    assert.equal(deleteCalled, false);
+});
+
 test('admin delete pickup date blocks when active orders exist', async () => {
     let deleteCalled = false;
     const pool = {

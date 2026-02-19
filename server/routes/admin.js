@@ -17,7 +17,7 @@ const {
     parseOrderItems
 } = require('../utils/helpers');
 const { normalizePhoneForStorage } = require('../logic/checkout-validation');
-const { reserveStockForItems } = require('../logic/order-stock');
+const { reserveStockForItems, releaseStockForItems } = require('../logic/order-stock');
 const {
     calculateItemPrice,
     isLohmannHenName,
@@ -44,6 +44,7 @@ const ADMIN_ALLOWED_ORDER_STATUSES = new Set([
     'archived'
 ]);
 const ADMIN_EDITABLE_ORDER_STATUSES = new Set(['pending', 'paid']);
+const ADMIN_DELETABLE_ORDER_STATUSES = new Set(['pending', 'paid']);
 const VALID_ADMIN_PAYMENT_METHODS = new Set(['etransfer', 'cash', 'cheque', 'credit_card']);
 
 const parsePositiveInt = (value, fallback) => {
@@ -145,6 +146,23 @@ const buildStatusEditBlockedMessage = (status) => {
         return 'Cancelled orders cannot be edited.';
     }
     return `Orders with status "${normalized || 'unknown'}" cannot be edited.`;
+};
+
+const buildStatusDeleteBlockedMessage = (status) => {
+    const normalized = String(status || '').trim().toLowerCase();
+    if (normalized === 'reserved') {
+        return 'This order is awaiting Stripe payment and cannot be deleted.';
+    }
+    if (normalized === 'picked_up' || normalized === 'fulfilled') {
+        return 'Picked-up orders cannot be deleted.';
+    }
+    if (normalized === 'cancelled') {
+        return 'Cancelled orders cannot be deleted.';
+    }
+    if (normalized === 'archived') {
+        return 'Archived orders cannot be deleted.';
+    }
+    return `Orders with status "${normalized || 'unknown'}" cannot be deleted.`;
 };
 
 const createInsufficientStockError = ({
@@ -1386,6 +1404,76 @@ const registerAdminRoutes = (app, deps) => {
                 });
             }
             return sendServerError(res, err, 'Failed to update admin order');
+        }
+    });
+
+    app.delete('/api/admin/orders/:id', checkAuth, async (req, res) => {
+        const orderId = sanitizeText(req.params?.id, 120);
+        if (!orderId) {
+            return res.status(400).json({ error: 'Order id is required.' });
+        }
+
+        try {
+            const deleteResult = await runInTransaction(async (client) => {
+                const existingOrderResult = await client.query(
+                    `
+                    SELECT
+                        id,
+                        status,
+                        pickup_date,
+                        pickup_location,
+                        items
+                    FROM orders
+                    WHERE id = $1
+                    FOR UPDATE
+                    `,
+                    [orderId]
+                );
+                if (existingOrderResult.rows.length === 0) {
+                    return { status: 'missing_order' };
+                }
+
+                const existingOrder = existingOrderResult.rows[0];
+                const existingStatus = String(existingOrder.status || 'pending').trim().toLowerCase();
+                if (!ADMIN_DELETABLE_ORDER_STATUSES.has(existingStatus)) {
+                    return {
+                        status: 'blocked_status',
+                        existingStatus
+                    };
+                }
+
+                const pickupDate = formatPickupDate(existingOrder.pickup_date);
+                const pickupLocation = sanitizeText(existingOrder.pickup_location, 40);
+                const storedItems = normalizeStoredOrderItems(existingOrder.items);
+                if (pickupDate && pickupLocation && storedItems.length > 0) {
+                    const pickupDateId = await findPickupDateId(client, pickupDate, pickupLocation);
+                    if (pickupDateId) {
+                        await releaseStockForItems(client, {
+                            pickupDateId,
+                            items: storedItems
+                        });
+                    }
+                }
+
+                await client.query('DELETE FROM orders WHERE id = $1', [orderId]);
+                return { status: 'deleted', orderId };
+            });
+
+            if (deleteResult.status === 'missing_order') {
+                return res.status(404).json({ error: 'Order not found.' });
+            }
+            if (deleteResult.status === 'blocked_status') {
+                return res.status(400).json({
+                    error: buildStatusDeleteBlockedMessage(deleteResult.existingStatus)
+                });
+            }
+
+            return res.json({
+                success: true,
+                orderId: deleteResult.orderId
+            });
+        } catch (err) {
+            return sendServerError(res, err, 'Failed to delete admin order');
         }
     });
 

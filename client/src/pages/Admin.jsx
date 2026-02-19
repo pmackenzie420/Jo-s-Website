@@ -89,6 +89,7 @@ export default function Admin() {
     handleCreateAdminOrder,
     handleArchiveOrder,
     handleEditOrder,
+    handleDeleteOrder,
     handleUpdateAdminOrder
   } = useAdminController();
 
@@ -345,6 +346,7 @@ export default function Admin() {
         onClose={() => setSelectedPickup(null)}
         onMarkPickedUp={handleMarkPickedUp}
         onEditOrder={handleEditOrder}
+        onDeleteOrder={handleDeleteOrder}
         onArchiveOrder={handleArchiveOrder}
       />
       <AdminEditOrderModal

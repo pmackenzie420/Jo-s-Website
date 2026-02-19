@@ -42,6 +42,9 @@ const createAdminOrder = (payload) =>
 const updateAdminOrder = ({ orderId, payload }) =>
   axios.put(`${API_URL}/admin/orders/${orderId}`, payload, withAuth);
 
+const deleteAdminOrder = (orderId) =>
+  axios.delete(`${API_URL}/admin/orders/${orderId}`, withAuth);
+
 const finalizeAdminOrder = (orderId) =>
   axios.post(`${API_URL}/admin/orders/${orderId}/finalize-payment`, {}, withAuth);
 
@@ -62,6 +65,7 @@ export {
   updateOrdersStatus,
   createAdminOrder,
   updateAdminOrder,
+  deleteAdminOrder,
   fetchAdminStats,
   finalizeAdminOrder,
   sendGroupEmail

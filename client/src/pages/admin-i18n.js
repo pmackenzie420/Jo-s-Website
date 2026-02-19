@@ -16,6 +16,7 @@ const ADMIN_STRINGS = {
   'btn.close':              { en: 'Close',           fr: 'Fermer' },
   'btn.cancel':             { en: 'Cancel',          fr: 'Annuler' },
   'btn.edit':               { en: 'Edit',            fr: 'Modifier' },
+  'btn.delete':             { en: 'Delete',          fr: 'Supprimer' },
 
   // Language toggle
   'toggle.ariaLabel':       { en: 'Admin language',  fr: 'Langue admin' },
@@ -221,6 +222,7 @@ const ADMIN_STRINGS = {
   'toast.orderCreated':         { en: 'Order created.',      fr: 'Commande créée.' },
   'toast.orderCreatedId':       { en: 'Order created: {id}', fr: 'Commande créée\u00a0: {id}' },
   'toast.orderUpdated':         { en: 'Order {id} updated.', fr: 'Commande {id} mise à jour.' },
+  'toast.orderDeleted':         { en: 'Order {id} deleted.', fr: 'Commande {id} supprimée.' },
   'toast.stripeConfirmed':      { en: 'Order {id} payment confirmed.', fr: 'Paiement de la commande {id} confirmé.' },
   'toast.stripeConfirmFailed':  { en: 'Could not confirm Stripe payment. The order may still be processing.', fr: 'Impossible de confirmer le paiement Stripe. La commande est peut-être encore en cours.' },
   'toast.wrongPassword':        { en: 'Wrong password. Try again.', fr: 'Mot de passe incorrect. Réessayez.' },
@@ -233,12 +235,14 @@ const ADMIN_STRINGS = {
   'toast.endpointNotFound':     { en: "Create Order endpoint wasn't found.", fr: 'Point d\'accès introuvable.' },
   'toast.createFailed':         { en: 'Failed to create order.', fr: 'Échec de la création de la commande.' },
   'toast.updateFailed':         { en: 'Failed to update order.', fr: 'Échec de la mise à jour de la commande.' },
+  'toast.deleteFailed':         { en: 'Failed to delete order.', fr: 'Échec de la suppression de la commande.' },
   'toast.orderNotFound':        { en: 'Order not found. Refresh and try again.', fr: 'Commande introuvable. Rafraîchissez et réessayez.' },
 'toast.noEmails':             { en: 'No email addresses for this group.', fr: 'Aucune adresse courriel pour ce groupe.' },
   'toast.emailSendFailed':      { en: 'Failed to send group email.', fr: 'Échec de l\'envoi du courriel de groupe.' },
 
   // Confirm dialogs
   'confirm.archiveDraft':       { en: 'Archive this order draft?', fr: 'Archiver ce brouillon de commande\u00a0?' },
+  'confirm.deleteOrder':        { en: 'Delete this order? This cannot be undone.', fr: 'Supprimer cette commande\u00a0? Cette action est irréversible.' },
   'confirm.deleteDate':         { en: 'This date has existing orders. Remove it anyway?', fr: 'Cette date a des commandes existantes. La supprimer quand même\u00a0?' },
   'confirm.bulkPickup':         { en: 'Mark all {count} pickups as picked up{label}?', fr: 'Marquer les {count} ramassages comme ramassés{label}\u00a0?' },
   'confirm.addDate':            { en: 'Add pickup date: {date} ({location})?', fr: 'Ajouter la date de ramassage\u00a0: {date} ({location})\u00a0?' },
