@@ -14,17 +14,28 @@
     <div id="root"></div>
     <script>
       (function () {
-        window.__jowebsiteHandleEntryLoadError = function (event) {
-          var src = String((event && event.target && event.target.src) || '');
-          var key = 'jowebsite:entry-reload-attempted:' + (src || 'unknown');
+        var RELOAD_QUERY_PARAM = 'joreload';
+        window.__jowebsiteReloadOnce = function (storageKey) {
           try {
-            if (!window.sessionStorage.getItem(key)) {
-              window.sessionStorage.setItem(key, '1');
+            if (!window.sessionStorage.getItem(storageKey)) {
+              window.sessionStorage.setItem(storageKey, '1');
               window.location.reload();
             }
+            return;
           } catch (_err) {
-            // Ignore storage errors in restrictive browser contexts.
+            try {
+              var url = new URL(window.location.href);
+              if (url.searchParams.get(RELOAD_QUERY_PARAM) !== '1') {
+                url.searchParams.set(RELOAD_QUERY_PARAM, '1');
+                window.location.replace(url.toString());
+              }
+            } catch (_err2) {
+              window.location.reload();
+            }
           }
+        };
+        window.__jowebsiteHandleEntryLoadError = function (event) {
+          window.__jowebsiteReloadOnce('jowebsite:entry-reload-attempted');
         };
       })();
     </script>

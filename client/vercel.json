@@ -15,6 +15,13 @@
     },
     {
       "src": "/((?!.*\\.).*)",
+      "headers": {
+        "cache-control": "no-store, no-cache, must-revalidate"
+      },
+      "continue": true
+    },
+    {
+      "src": "/((?!.*\\.).*)",
       "dest": "/index.html"
     }
   ]
