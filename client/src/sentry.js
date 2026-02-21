@@ -68,7 +68,11 @@ const isLikelyStaleBundleError = (event, hint) => {
   const hasKnownMessage = STALE_BUNDLE_MESSAGE_PATTERNS.some((pattern) =>
     text.includes(pattern)
   )
-  const hasReactLazyResultMismatch = text.includes('__result.default')
+  const hasReactLazyResultMismatch = (
+    /_+result\.default/.test(text)
+    || text.includes("undefined is not an object (evaluating 'b._result.default')")
+    || text.includes("undefined is not an object (evaluating 'b.__result.default')")
+  )
     && (hasHashedAssetFile || stackFiles.some((file) => file.includes('/assets/index-')))
 
   return (hasKnownMessage && hasAssetPath) || hasReactLazyResultMismatch
