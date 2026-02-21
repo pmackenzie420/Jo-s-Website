@@ -22,8 +22,7 @@ const STALE_BUNDLE_MESSAGE_PATTERNS = [
   'importing a module script failed',
   'unable to preload css for /assets/',
   'loading chunk',
-  'chunkloaderror',
-  'load failed'
+  'chunkloaderror'
 ]
 
 const getStackFilenames = (event) => {
@@ -60,14 +59,23 @@ const isLikelyStaleBundleError = (event, hint) => {
   const text = getErrorText(event, hint)
   const stackFiles = getStackFilenames(event)
 
-  const hasAssetPath = text.includes('/assets/')
-    || stackFiles.some((file) => /\/assets\/.+\.(js|css)\b/i.test(file))
+  const hasAssetPathInStack = stackFiles.some((file) => /\/assets\/.+\.(js|css)\b/i.test(file))
+  const hasAssetPathInMessage = /\/assets\/.+\.(js|css)\b/i.test(text)
+    || text.includes('for /assets/')
   const hasHashedAssetFile = stackFiles.some((file) =>
     /\/assets\/[a-z0-9._-]+-[a-z0-9_-]{6,}\.(js|css)\b/i.test(file)
   )
   const hasKnownMessage = STALE_BUNDLE_MESSAGE_PATTERNS.some((pattern) =>
     text.includes(pattern)
   )
+  const hasLikelyStaleLoadFailed = text.includes('load failed')
+    && hasAssetPathInMessage
+    && (
+      text.includes('module')
+      || text.includes('chunk')
+      || text.includes('import')
+      || text.includes('preload')
+    )
   const hasReactLazyResultMismatch = (
     /_+result\.default/.test(text)
     || text.includes("undefined is not an object (evaluating 'b._result.default')")
@@ -75,7 +83,11 @@ const isLikelyStaleBundleError = (event, hint) => {
   )
     && (hasHashedAssetFile || stackFiles.some((file) => file.includes('/assets/index-')))
 
-  return (hasKnownMessage && hasAssetPath) || hasReactLazyResultMismatch
+  return (
+    (hasKnownMessage && (hasAssetPathInMessage || hasHashedAssetFile))
+    || (hasLikelyStaleLoadFailed && (hasAssetPathInStack || hasHashedAssetFile))
+    || hasReactLazyResultMismatch
+  )
 }
 
 const initSentry = () => {
