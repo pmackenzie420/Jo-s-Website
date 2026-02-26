@@ -38,10 +38,37 @@ const getStackFilenames = (event) => {
   return names
 }
 
+const readStringProperty = (value, key) => {
+  try {
+    const candidate = value?.[key]
+    return typeof candidate === 'string' ? candidate : ''
+  } catch {
+    return ''
+  }
+}
+
+const toSafeText = (value) => {
+  try {
+    if (typeof value === 'string') return value.trim()
+    if (typeof value === 'number' || typeof value === 'boolean' || typeof value === 'bigint') {
+      return String(value).trim()
+    }
+  } catch {
+    return ''
+  }
+
+  if (!value || typeof value !== 'object') return ''
+
+  const name = readStringProperty(value, 'name').trim()
+  const message = readStringProperty(value, 'message').trim()
+  if (name && message) return `${name}: ${message}`
+  return name || message
+}
+
 const getErrorText = (event, hint) => {
   const parts = []
   const push = (value) => {
-    const text = String(value || '').trim()
+    const text = toSafeText(value)
     if (text) parts.push(text)
   }
   push(event?.message)
@@ -108,8 +135,11 @@ const initSentry = () => {
     ),
     integrations: [Sentry.browserTracingIntegration()],
     beforeSend(event, hint) {
-      if (isLikelyStaleBundleError(event, hint)) {
-        return null
+      // Fail open: never let filter logic crash error reporting.
+      try {
+        if (isLikelyStaleBundleError(event, hint)) return null
+      } catch {
+        return event
       }
       return event
     }
