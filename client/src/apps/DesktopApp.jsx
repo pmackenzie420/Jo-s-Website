@@ -3,15 +3,25 @@ import { Routes, Route } from 'react-router-dom';
 import Layout from '../layouts/BoxedLayout';
 import MainGate from '../components/MainGate';
 
+const MISSING_DEFAULT_CHUNK_CODE = 'JO_LAZY_MODULE_DEFAULT_MISSING';
+
 const isChunkLoadError = (err) => {
-  const message = err?.message || '';
+  if (err?.code === MISSING_DEFAULT_CHUNK_CODE) return true;
+  const message = String(err?.message || '').toLowerCase();
   return (
-    message.includes('Failed to fetch dynamically imported module') ||
-    message.includes('Importing a module script failed') ||
-    message.includes('Loading chunk') ||
-    message.includes('ChunkLoadError') ||
-    message.includes('Load failed')
+    message.includes('failed to fetch dynamically imported module') ||
+    message.includes('importing a module script failed') ||
+    message.includes('loading chunk') ||
+    message.includes('chunkloaderror') ||
+    message.includes('load failed')
   );
+};
+
+const createMissingDefaultChunkError = () => {
+  const error = new Error('Lazy-loaded module is missing a default export.');
+  error.name = 'ChunkLoadError';
+  error.code = MISSING_DEFAULT_CHUNK_CODE;
+  return error;
 };
 
 // If a deploy happens while a user has the SPA open, old chunk URLs can 404.
@@ -19,7 +29,11 @@ const isChunkLoadError = (err) => {
 const lazyWithRetry = (importer) =>
   lazy(async () => {
     try {
-      return await importer();
+      const loadedModule = await importer();
+      if (!loadedModule || typeof loadedModule.default === 'undefined') {
+        throw createMissingDefaultChunkError();
+      }
+      return loadedModule;
     } catch (err) {
       if (typeof window !== 'undefined' && isChunkLoadError(err)) {
         const key = 'jowebsite:chunk-reload-attempted';

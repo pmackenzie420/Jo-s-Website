@@ -103,6 +103,15 @@ const isLikelyStaleBundleError = (event, hint) => {
       || text.includes('import')
       || text.includes('preload')
     )
+  const hasCannotReadDefaultMismatch = (
+    text.includes("cannot read properties of undefined (reading 'default')")
+    || text.includes('cannot read properties of undefined (reading "default")')
+  ) && (
+    hasAssetPathInMessage
+    || hasAssetPathInStack
+    || hasHashedAssetFile
+    || stackFiles.some((file) => file.includes('/assets/index-'))
+  )
   const hasReactLazyResultMismatch = (
     /_+result\.default/.test(text)
     || text.includes("undefined is not an object (evaluating 'b._result.default')")
@@ -113,6 +122,7 @@ const isLikelyStaleBundleError = (event, hint) => {
   return (
     (hasKnownMessage && (hasAssetPathInMessage || hasHashedAssetFile))
     || (hasLikelyStaleLoadFailed && (hasAssetPathInStack || hasHashedAssetFile))
+    || hasCannotReadDefaultMismatch
     || hasReactLazyResultMismatch
   )
 }
