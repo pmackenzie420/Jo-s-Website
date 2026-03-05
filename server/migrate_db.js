@@ -137,6 +137,22 @@ async function migrate() {
             END $$;
         `);
 
+        // Ensure customer_email remains optional for admin-created orders.
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF EXISTS (
+                    SELECT 1
+                    FROM information_schema.columns
+                    WHERE table_name='orders'
+                      AND column_name='customer_email'
+                      AND is_nullable='NO'
+                ) THEN
+                    ALTER TABLE orders ALTER COLUMN customer_email DROP NOT NULL;
+                END IF;
+            END $$;
+        `);
+
         await pool.query(`
             UPDATE orders
             SET
