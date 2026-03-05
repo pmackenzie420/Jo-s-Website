@@ -1,11 +1,13 @@
 import { useState } from 'react';
 
 export const normalizePhone = (phone) => {
-  const digits = phone.replace(/\D/g, '');
-  if (digits.length === 11 && digits.startsWith('1')) {
+  const raw = String(phone ?? '');
+  const digits = raw.replace(/\D/g, '');
+  const hasExplicitCountryCodePrefix = /^\s*\+1/.test(raw) || /^\s*1[\s().-]/.test(raw);
+  if (digits.length === 11 && digits.startsWith('1') && hasExplicitCountryCodePrefix) {
     return digits.slice(1);
   }
-  return digits;
+  return digits.slice(0, 10);
 };
 
 export const formatPhone = (phone) => {

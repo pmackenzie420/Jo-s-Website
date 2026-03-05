@@ -9,6 +9,7 @@
         { "minQty": 6, "unitCents": 1775 },
         { "minQty": 1, "unitCents": 1825 }
       ],
+      "depositRate": 0.25,
       "depositEligibleMinQty": 13,
       "depositRequiredAboveQty": 50
     },

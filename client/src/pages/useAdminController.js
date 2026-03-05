@@ -31,7 +31,7 @@ import {
   filterCustomers,
   buildOrderCountByPickupKey
 } from './admin-data';
-import { exportOrdersPdf } from './admin-export';
+import { exportOrdersPdf, exportInvoicesPdf } from './admin-export';
 import useAdminNotice from './admin-hooks/useAdminNotice';
 import useAdminEmailComposer from './admin-hooks/useAdminEmailComposer';
 
@@ -409,6 +409,29 @@ export default function useAdminController() {
       }
     },
     [dataLoading, groupedPickups, showToast, adminLanguage]
+  );
+
+  const handleInvoiceExportDownload = useCallback(
+    async (groupDate, locationGroup) => {
+      if (dataLoading) {
+        showToast({ type: 'error', text: t('toast.ordersStillLoading', adminLanguage) });
+        return;
+      }
+      if (!pickupOrdersWithDetails.length) {
+        showToast({ type: 'error', text: t('toast.noInvoiceOrders', adminLanguage) });
+        return;
+      }
+      try {
+        await exportInvoicesPdf({
+          orders: pickupOrdersWithDetails,
+          groupDate,
+          locationGroup
+        });
+      } catch {
+        showToast({ type: 'error', text: t('toast.invoiceExportFailed', adminLanguage) });
+      }
+    },
+    [dataLoading, pickupOrdersWithDetails, showToast, adminLanguage]
   );
 
 const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
@@ -933,6 +956,7 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     handleLogin,
     handleLoadMoreOrders,
     handleExportDownload,
+    handleInvoiceExportDownload,
     handlePickupStockChange,
     handlePickupStockSave,
     deleteDate,

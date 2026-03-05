@@ -13,17 +13,26 @@ import { formatPhone, normalizePhone } from '../../hooks/useForm';
 import {
   getTierPrice,
   getMinOrderQuantity,
-  isPickupRestricted,
-  isLambName,
-  isLohmannHenName,
-  getDepositEligibleMinQty,
-  getDepositRequiredAboveQty
+  isPickupRestricted
 } from '../../utils/catalog';
 
 const pad2 = (value) => String(value).padStart(2, '0');
 const toIsoLocalDate = (date) => {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+};
+
+const parseAmountToCents = (value, { allowZero = false } = {}) => {
+  const text = String(value ?? '').trim();
+  if (!text) {
+    return allowZero ? { valid: true, cents: 0 } : { valid: false, cents: 0 };
+  }
+  const parsed = Number(text);
+  if (!Number.isFinite(parsed)) return { valid: false, cents: 0 };
+  const cents = Math.round(parsed * 100);
+  if (cents < 0) return { valid: false, cents: 0 };
+  if (!allowZero && cents <= 0) return { valid: false, cents: 0 };
+  return { valid: true, cents };
 };
 
 export default function AdminCreateOrderPage({
@@ -44,7 +53,8 @@ export default function AdminCreateOrderPage({
   });
   const [language, setLanguage] = useState('en');
   const [paymentMethod, setPaymentMethod] = useState('etransfer');
-  const [paymentType, setPaymentType] = useState('full');
+  const [paidAmount, setPaidAmount] = useState('');
+  const [paidAmountTouched, setPaidAmountTouched] = useState(false);
   const [qtyByHenId, setQtyByHenId] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -147,81 +157,21 @@ export default function AdminCreateOrderPage({
     [orderItems]
   );
 
-  // Deposit eligibility — same logic as regular checkout
-  const depositInfo = useMemo(() => {
-    let lohmannQty = 0;
-    let lohmannSubtotalCents = 0;
-    let nonLohmannSubtotalCents = 0;
-    let lambQty = 0;
-    let lambSubtotalCents = 0;
-
-    orderItems.forEach((row) => {
-      if (isLohmannHenName(row.name)) {
-        lohmannQty += row.qty;
-        lohmannSubtotalCents += row.lineCents;
-      } else {
-        nonLohmannSubtotalCents += row.lineCents;
-        if (isLambName(row.name)) {
-          lambQty += row.qty;
-          lambSubtotalCents += row.lineCents;
-        }
-      }
-    });
-
-    const depositEligibleMinQty = Math.max(getDepositEligibleMinQty() || 13, 1);
-    const depositRequiredAboveQty = Math.max(getDepositRequiredAboveQty() || 0, 0);
-    const lohmannDepositEligible = lohmannQty >= depositEligibleMinQty;
-    const depositRequired = depositRequiredAboveQty > 0 && lohmannQty > depositRequiredAboveQty;
-    const hasLambs = lambQty > 0;
-
-    // Deposit eligible if hens qualify OR has lambs (lambs are always deposit)
-    const depositEligible = lohmannDepositEligible || hasLambs;
-
-    // Lohmann deposit = 25% of lohmann subtotal
-    const lohmannDepositCents = lohmannDepositEligible
-      ? Math.floor(lohmannSubtotalCents / 4)
-      : 0;
-
-    // Deposit now = non-lohmann items + lohmann deposit (lambs are always full price as deposit)
-    const depositNowCents = nonLohmannSubtotalCents + lohmannDepositCents;
-    // Due at pickup = lohmann balance
-    const depositDueCents = lohmannDepositEligible
-      ? lohmannSubtotalCents - lohmannDepositCents
-      : 0;
-
-    return {
-      lohmannQty,
-      lohmannSubtotalCents,
-      lohmannDepositCents,
-      nonLohmannSubtotalCents,
-      lambSubtotalCents,
-      hasLambs,
-      depositEligible,
-      depositRequired,
-      depositRequiredAboveQty,
-      depositNowCents,
-      depositDueCents
-    };
-  }, [orderItems]);
-
-  // Auto-force deposit when required
   useEffect(() => {
-    if (depositInfo.depositRequired && paymentType !== 'deposit') {
-      setPaymentType('deposit');
+    if (totalCents <= 0) {
+      setPaidAmount('');
+      setPaidAmountTouched(false);
       return;
     }
-    if (!depositInfo.depositEligible && paymentType === 'deposit') {
-      setPaymentType('full');
+    if (!paidAmountTouched) {
+      setPaidAmount((totalCents / 100).toFixed(2));
     }
-  }, [depositInfo.depositEligible, depositInfo.depositRequired, paymentType]);
+  }, [totalCents, paidAmountTouched]);
 
-  // Calculated amounts based on payment type
-  const calculatedPaidCents = paymentType === 'deposit'
-    ? depositInfo.depositNowCents
-    : totalCents;
-  const calculatedDueCents = paymentType === 'deposit'
-    ? depositInfo.depositDueCents
-    : 0;
+  const paidParse = useMemo(
+    () => parseAmountToCents(paidAmount, { allowZero: true }),
+    [paidAmount]
+  );
 
   const validationErrors = useMemo(() => {
     const errors = [];
@@ -249,6 +199,15 @@ export default function AdminCreateOrderPage({
         errors.push(tf('val.insufficientStock', adminLanguage, { item: row.displayName }));
       }
     });
+    if (orderItems.length > 0 && !paidParse.valid) {
+      errors.push(t('val.paidInvalid', adminLanguage));
+    }
+    if (isCreditCard && paidParse.valid && paidParse.cents <= 0) {
+      errors.push(t('val.paidInvalid', adminLanguage));
+    }
+    if (paidParse.valid && paidParse.cents > totalCents) {
+      errors.push(t('val.amountExceedsTotal', adminLanguage));
+    }
 
     return errors;
   }, [
@@ -258,6 +217,10 @@ export default function AdminCreateOrderPage({
     pickupDate,
     pickupLocation,
     orderItems,
+    paidParse.valid,
+    paidParse.cents,
+    totalCents,
+    isCreditCard,
     adminLanguage
   ]);
 
@@ -275,8 +238,17 @@ export default function AdminCreateOrderPage({
     orderItems.length
   ]);
 
-  const paidCents = calculatedPaidCents;
-  const dueCents = calculatedDueCents;
+  const paidCents = paidParse.valid ? paidParse.cents : 0;
+  const dueCents = Math.max(totalCents - paidCents, 0);
+  const autoPaymentType = (dueCents > 0)
+    ? 'deposit'
+    : 'full';
+  
+  const handleSetPaidToTotal = () => {
+    if (totalCents <= 0) return;
+    setPaidAmountTouched(true);
+    setPaidAmount((totalCents / 100).toFixed(2));
+  };
 
   const handleQtyChange = (henId, value) => {
     const parsed = Number(value);
@@ -311,7 +283,7 @@ export default function AdminCreateOrderPage({
         })),
         payment: {
           method: paymentMethod,
-          payment_type: paymentType,
+          payment_type: autoPaymentType,
           amount_paid_cents: paidCents
         },
         language
@@ -328,7 +300,8 @@ export default function AdminCreateOrderPage({
         );
         setCustomer((prev) => ({ ...prev, phone: '', name: '', email: '', address: '' }));
         setPaymentMethod('etransfer');
-        setPaymentType('full');
+        setPaidAmount('');
+        setPaidAmountTouched(false);
       }
     } catch {
       // Error toast handled by controller
@@ -514,35 +487,36 @@ export default function AdminCreateOrderPage({
                 </div>
               </div>
 
-              {depositInfo.depositEligible && orderItems.length > 0 && (
-                <div style={{ marginTop: 14, maxWidth: 390 }}>
-                  <label className="admin-label" htmlFor="create-order-payment-type">
-                    {t('create.paymentType', adminLanguage)}
+              {orderItems.length > 0 && (
+                <div style={{ marginTop: 12 }}>
+                  <label className="admin-label" htmlFor="create-order-paid">
+                    {t('create.amountReceived', adminLanguage)}
                   </label>
-                  <select
-                    id="create-order-payment-type"
-                    className="admin-input"
-                    value={paymentType}
-                    onChange={(event) => setPaymentType(event.target.value)}
-                    disabled={depositInfo.depositRequired}
-                  >
-                    {!depositInfo.depositRequired && (
-                      <option value="full">
-                        {tf('create.payFull', adminLanguage, { amount: formatCurrency(totalCents / 100) })}
-                      </option>
-                    )}
-                    <option value="deposit">
-                      {tf('create.payDeposit', adminLanguage, { amount: formatCurrency(depositInfo.depositNowCents / 100) })}
-                      {depositInfo.depositDueCents > 0
-                        ? ` · ${tf('create.dueAtPickup', adminLanguage, { amount: formatCurrency(depositInfo.depositDueCents / 100) })}`
-                        : ''}
-                    </option>
-                  </select>
-                  {depositInfo.depositRequired && (
-                    <div className="date-meta" style={{ marginTop: 4 }}>
-                      {tf('create.depositRequired', adminLanguage, { qty: depositInfo.depositRequiredAboveQty })}
-                    </div>
-                  )}
+                  <div className="admin-create-order-paid-row">
+                    <input
+                      id="create-order-paid"
+                      className="admin-input"
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      style={{ width: 180 }}
+                      value={paidAmount}
+                      onFocus={(event) => event.target.select()}
+                      onChange={(event) => {
+                        setPaidAmountTouched(true);
+                        setPaidAmount(event.target.value);
+                      }}
+                    />
+                    <button
+                      type="button"
+                      className="admin-button ghost small"
+                      onClick={handleSetPaidToTotal}
+                      disabled={totalCents <= 0}
+                    >
+                      {t('create.setToTotal', adminLanguage)}
+                    </button>
+                  </div>
                 </div>
               )}
 

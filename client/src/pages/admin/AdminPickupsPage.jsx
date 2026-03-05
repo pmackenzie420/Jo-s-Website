@@ -14,6 +14,7 @@ export default function AdminPickupsPage({
   onRowClick,
   onLoadMoreOrders,
   onExportAll,
+  onExportInvoices,
   onExportGroup,
   onBulkPickup
 }) {
@@ -125,6 +126,14 @@ export default function AdminPickupsPage({
             <button
               className="admin-button ghost"
               type="button"
+              onClick={onExportInvoices}
+              disabled={dataLoading}
+            >
+              {t('pickups.exportInvoices', adminLanguage)}
+            </button>
+            <button
+              className="admin-button ghost"
+              type="button"
               onClick={onLoadMoreOrders}
               disabled={!ordersHasMore || ordersLoadingMore}
             >
@@ -195,6 +204,14 @@ export default function AdminPickupsPage({
             disabled={dataLoading}
           >
             {t('pickups.exportAll', adminLanguage)}
+          </button>
+          <button
+            className="admin-button ghost"
+            type="button"
+            onClick={onExportInvoices}
+            disabled={dataLoading}
+          >
+            {t('pickups.exportInvoices', adminLanguage)}
           </button>
           <button
             className="admin-button ghost"

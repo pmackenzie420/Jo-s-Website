@@ -24,6 +24,7 @@ const {
     getMinimumOrderQuantity,
     getDepositEligibleMinQty,
     getDepositRequiredAboveQty,
+    getDepositRate,
     isPickupLocationRestricted,
     isLambName
 } = require('../logic/pricing');
@@ -528,6 +529,11 @@ const registerAdminRoutes = (app, deps) => {
             const isCreditCard = paymentMethod === 'credit_card';
 
             const requestedPaymentType = sanitizeText(req.body?.payment?.payment_type, 20).toLowerCase() || 'full';
+            const hasAmountPaidField = Boolean(
+                req.body?.payment
+                && Object.prototype.hasOwnProperty.call(req.body.payment, 'amount_paid_cents')
+            );
+            const amountPaidCentsRaw = Number(req.body?.payment?.amount_paid_cents);
 
             const items = normalizeOrderItems(req.body?.items);
 
@@ -548,6 +554,9 @@ const registerAdminRoutes = (app, deps) => {
             }
             if (items.length === 0) {
                 return res.status(400).json({ error: 'At least one order item is required.' });
+            }
+            if (hasAmountPaidField && (!Number.isFinite(amountPaidCentsRaw) || amountPaidCentsRaw < 0)) {
+                return res.status(400).json({ error: 'Amount paid must be a valid non-negative amount.' });
             }
 
             const pickupDateId = await findPickupDateId(pool, pickupDate, pickupLocation);
@@ -634,46 +643,49 @@ const registerAdminRoutes = (app, deps) => {
 
             // Deposit eligibility — same logic as regular checkout
             const depositEligibleMinQty = Math.max(Number(getDepositEligibleMinQty() || 13), 1);
+            const depositRate = Math.min(Math.max(Number(getDepositRate() || 0.25), 0), 1);
             const lohmannDepositEligible = lohmannQty >= depositEligibleMinQty;
             const depositEligible = lohmannDepositEligible || hasLambItems;
-            const isDeposit = requestedPaymentType === 'deposit' && depositEligible;
+            const isDepositRequested = requestedPaymentType === 'deposit';
+            const isDeposit = isDepositRequested;
 
             const lohmannDepositCents = lohmannDepositEligible
-                ? Math.floor(lohmannSubtotalCents / 4)
+                ? Math.floor(lohmannSubtotalCents * depositRate)
                 : 0;
             const depositNowCents = nonLohmannSubtotalCents + lohmannDepositCents;
-            const depositDueCents = lohmannDepositEligible
-                ? lohmannSubtotalCents - lohmannDepositCents
-                : 0;
+            const defaultDepositCents = depositEligible
+                ? depositNowCents
+                : (isCreditCard ? totalCents : depositNowCents);
 
             let amountPaidCents;
             let amountDueCents;
             let paymentType;
             let status;
 
-            if (isCreditCard) {
-                if (isDeposit) {
-                    amountPaidCents = depositNowCents;
-                    amountDueCents = depositDueCents;
-                    paymentType = 'deposit';
+            if (isDeposit) {
+                if (hasAmountPaidField) {
+                    amountPaidCents = Math.floor(amountPaidCentsRaw);
+                    if (amountPaidCents > totalCents) {
+                        return res.status(400).json({ error: 'Amount paid cannot exceed the order total.' });
+                    }
                 } else {
-                    amountPaidCents = totalCents;
-                    amountDueCents = 0;
-                    paymentType = 'full';
+                    amountPaidCents = defaultDepositCents;
                 }
-                status = 'reserved';
+                amountDueCents = Math.max(totalCents - amountPaidCents, 0);
+                paymentType = amountDueCents > 0 ? 'deposit' : 'full';
             } else {
-                if (isDeposit) {
-                    amountPaidCents = depositNowCents;
-                    amountDueCents = depositDueCents;
-                    paymentType = 'deposit';
-                } else {
-                    amountPaidCents = totalCents;
-                    amountDueCents = 0;
-                    paymentType = 'full';
-                }
-                status = 'paid';
+                amountPaidCents = totalCents;
+                amountDueCents = 0;
+                paymentType = 'full';
             }
+
+            if (isCreditCard && amountPaidCents <= 0) {
+                return res.status(400).json({ error: 'Amount charged must be greater than zero for credit card orders.' });
+            }
+
+            status = isCreditCard
+                ? 'reserved'
+                : (amountPaidCents > 0 ? 'paid' : 'pending');
 
             const orderId = await runInTransaction(async (client) => {
                 let customerId;
@@ -740,30 +752,17 @@ const registerAdminRoutes = (app, deps) => {
             if (isCreditCard && stripe) {
                 let stripeLineItems;
                 if (paymentType === 'deposit') {
-                    // Non-Lohmann items at full price, Lohmann deposit as single line
-                    stripeLineItems = orderItemsForStorage
-                        .filter((item) => !isLohmannHenName(item.name))
-                        .map((item) => ({
-                            price_data: {
-                                currency: 'cad',
-                                product_data: { name: item.name },
-                                unit_amount: item.unit_cents
+                    stripeLineItems = [{
+                        price_data: {
+                            currency: 'cad',
+                            product_data: {
+                                name: 'Order deposit',
+                                description: `Total ${formatCents(totalCents)} - Remaining ${formatCents(amountDueCents)}`
                             },
-                            quantity: item.quantity
-                        }));
-                    if (lohmannDepositCents > 0) {
-                        stripeLineItems.push({
-                            price_data: {
-                                currency: 'cad',
-                                product_data: {
-                                    name: 'Lohmann hen deposit (25%)',
-                                    description: `${lohmannQty} hens`
-                                },
-                                unit_amount: lohmannDepositCents
-                            },
-                            quantity: 1
-                        });
-                    }
+                            unit_amount: amountPaidCents
+                        },
+                        quantity: 1
+                    }];
                 } else {
                     stripeLineItems = orderItemsForStorage.map((item) => ({
                         price_data: {

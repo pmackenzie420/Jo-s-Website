@@ -64,6 +64,12 @@ const getDepositEligibleMinQty = () =>
 const getDepositRequiredAboveQty = () =>
   Number(findCategoryByKey('layer')?.depositRequiredAboveQty || 0);
 
+const getDepositRate = () => {
+  const rate = Number(findCategoryByKey('layer')?.depositRate);
+  if (!Number.isFinite(rate)) return 0.25;
+  return Math.min(Math.max(rate, 0), 1);
+};
+
 export {
   getTierPrice,
   isLohmannHenName,
@@ -73,4 +79,5 @@ export {
   isPickupRestricted,
   getDepositEligibleMinQty,
   getDepositRequiredAboveQty,
+  getDepositRate,
 };

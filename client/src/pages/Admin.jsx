@@ -72,6 +72,7 @@ export default function Admin() {
     handleLogin,
     handleLoadMoreOrders,
     handleExportDownload,
+    handleInvoiceExportDownload,
     handlePickupStockChange,
     handlePickupStockSave,
     deleteDate,
@@ -230,6 +231,7 @@ export default function Admin() {
               onRowClick={handleRowClick}
               onLoadMoreOrders={handleLoadMoreOrders}
               onExportAll={() => handleExportDownload()}
+              onExportInvoices={() => handleInvoiceExportDownload()}
               onExportGroup={(groupDate, locationGroup) =>
                 handleExportDownload(groupDate, locationGroup)
               }

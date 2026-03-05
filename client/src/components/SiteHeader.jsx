@@ -181,7 +181,7 @@ export default function SiteHeader({ lang, setLang }) {
                 <div className="white-header-content">
                     {/* Logo Left */}
                     <Link to="/" className="logo-link">
-                        <img src="/logo.png" alt="Les Fermes Soulard S.E.N.C." className="header-logo" />
+                        <img src="/LOGO.png" alt="Les Fermes Soulard S.E.N.C." className="header-logo" />
                     </Link>
 
                     <button

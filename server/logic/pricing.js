@@ -50,6 +50,11 @@ const getDepositEligibleMinQty = () =>
     Number(findCategoryByKey('layer')?.depositEligibleMinQty || 0);
 const getDepositRequiredAboveQty = () =>
     Number(findCategoryByKey('layer')?.depositRequiredAboveQty || 0);
+const getDepositRate = () => {
+    const rate = Number(findCategoryByKey('layer')?.depositRate);
+    if (!Number.isFinite(rate)) return 0.25;
+    return Math.min(Math.max(rate, 0), 1);
+};
 
 const isPickupLocationRestricted = (name, pickupLocation) => {
     const normalizedLocation = normalizeName(pickupLocation);
@@ -136,6 +141,7 @@ module.exports = {
     getMinimumOrderQuantity,
     getDepositEligibleMinQty,
     getDepositRequiredAboveQty,
+    getDepositRate,
     isPickupLocationRestricted,
     getPaymentDetails,
     getOrderSummary
