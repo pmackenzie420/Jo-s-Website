@@ -21,6 +21,9 @@ const INVOICE_FONT_SIZES = {
 const INVOICE_LAYOUT = {
   clientX: 190,
   clientYRows: [708, 778, 848],
+  clientNameMaxWidth: 690,
+  clientContactMaxWidth: 690,
+  clientAddressMaxWidth: 690,
   dateX: 1025,
   dateY: 707,
   sellerX: 1025,
@@ -268,13 +271,16 @@ const buildInvoiceClientLines = (order, context, maxWidth) => {
   const pickupDate = normalizeDate(order?.pickupDate || order?.pickup_date || order?.created_at);
   const pickupLocation = String(order?.pickupLocationLabel || order?.pickupLocation || order?.pickup_location || '')
     .trim();
+  const nameMaxWidth = Math.min(maxWidth, Number(INVOICE_LAYOUT.clientNameMaxWidth) || maxWidth);
+  const contactMaxWidth = Math.min(maxWidth, Number(INVOICE_LAYOUT.clientContactMaxWidth) || maxWidth);
+  const addressMaxWidth = Math.min(maxWidth, Number(INVOICE_LAYOUT.clientAddressMaxWidth) || maxWidth);
 
   const contactLine = phone;
   const fallbackLine = [pickupDate, pickupLocation].filter(Boolean).join(' | ');
   return [
-    fitCanvasTextToWidth(context, name, maxWidth),
-    fitCanvasTextToWidth(context, contactLine || fallbackLine, maxWidth),
-    fitCanvasTextToWidth(context, address || fallbackLine, maxWidth)
+    fitCanvasTextToWidth(context, name, nameMaxWidth),
+    fitCanvasTextToWidth(context, contactLine || fallbackLine, contactMaxWidth),
+    fitCanvasTextToWidth(context, address || fallbackLine, addressMaxWidth)
   ];
 };
 
