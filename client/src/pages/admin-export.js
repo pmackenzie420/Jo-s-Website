@@ -7,7 +7,26 @@ import {
   normalizeDate
 } from './admin-utils';
 
-const INVOICE_TEMPLATE_SRC = '/Facture - Les Fermes Soulard - Edited2.jpg';
+const INVOICE_TEMPLATE_SOURCE_FIXED = '/invoicefixedspelling.jpg';
+const INVOICE_TEMPLATE_SOURCE_FIXED_NO_DEPOSIT = '/invoicefixedspellingnodeposit.jpg';
+const INVOICE_TEMPLATE_SOURCE_ORIGINAL = '/invoicewboxandnobold.jpg';
+const INVOICE_TEMPLATE_SOURCE_EDITED2 = '/Facture - Les Fermes Soulard - Edited2.jpg';
+const INVOICE_TEMPLATE_SOURCES_WITH_DEPOSIT = [
+  INVOICE_TEMPLATE_SOURCE_FIXED,
+  '/[Image #1].jpg',
+  '/Image #1.jpg',
+  INVOICE_TEMPLATE_SOURCE_ORIGINAL,
+  INVOICE_TEMPLATE_SOURCE_EDITED2
+];
+const INVOICE_TEMPLATE_SOURCES_FULL_PAYMENT = [
+  INVOICE_TEMPLATE_SOURCE_FIXED_NO_DEPOSIT,
+  INVOICE_TEMPLATE_SOURCE_EDITED2,
+  INVOICE_TEMPLATE_SOURCE_ORIGINAL,
+  INVOICE_TEMPLATE_SOURCE_FIXED,
+  '/[Image #1].jpg',
+  '/Image #1.jpg'
+];
+const FULLY_PAID_DUE_EPSILON = 0.0001;
 const INVOICE_BASE_WIDTH = 1650;
 const INVOICE_BASE_HEIGHT = 2550;
 const INVOICE_FONT_FAMILY = 'Arial, "DejaVu Sans", "DejaVuSans", "Liberation Sans", sans-serif';
@@ -16,9 +35,48 @@ const INVOICE_FONT_SIZES = {
   description: 30,
   number: 30,
   grandTotal: 40,
+  paymentSummary: 40,
   factureNumber: 76
 };
-const INVOICE_LAYOUT = {
+const INVOICE_LAYOUT_FIXED = {
+  clientX: 190,
+  clientYRows: [708, 778, 848],
+  clientNameMaxWidth: 639,
+  clientContactMaxWidth: 639,
+  clientAddressMaxWidth: 639,
+  dateX: 1045,
+  dateY: 707,
+  sellerX: 1105,
+  sellerY: 777,
+  headerNoRightX: 1538,
+  headerNoY: 284,
+  qtyCenterBox: [72, 327],
+  descX: 340,
+  descMaxWidth: 660,
+  priceCenterBox: [1013, 1299],
+  amountCenterBox: [1299, 1490],
+  amountDividerX: 1538,
+  amountCentsXOffset: 10,
+  priceNudgeX: 0,
+  amountNudgeX: -66,
+  totalNudgeX: -65,
+  rowY: [1040, 1098, 1157, 1216, 1275],
+  totalY: 2088,
+  paymentSummaryTotalY: 2218,
+  paymentSummaryPaidY: 2272,
+  paymentSummaryBalanceY: 2331,
+  renderPaymentSummary: true
+};
+
+const INVOICE_LAYOUT_FIXED_NO_DEPOSIT = {
+  ...INVOICE_LAYOUT_FIXED,
+  paymentSummaryTotalY: null,
+  paymentSummaryPaidY: null,
+  paymentSummaryBalanceY: null,
+  renderPaymentSummary: false
+};
+
+const INVOICE_LAYOUT_EDITED2 = {
   clientX: 190,
   clientYRows: [708, 778, 848],
   clientNameMaxWidth: 690,
@@ -42,8 +100,19 @@ const INVOICE_LAYOUT = {
   totalNudgeX: -65,
   rowY: [1040, 1098, 1157, 1216, 1275],
   totalY: 2270,
-  paymentSummaryY: 2340
+  paymentSummaryTotalY: null,
+  paymentSummaryPaidY: null,
+  paymentSummaryBalanceY: null,
+  renderPaymentSummary: false
 };
+
+const getInvoiceLayoutForTemplate = (templateSource) => (
+  String(templateSource || '').includes(INVOICE_TEMPLATE_SOURCE_EDITED2)
+    ? INVOICE_LAYOUT_EDITED2
+    : String(templateSource || '').includes(INVOICE_TEMPLATE_SOURCE_FIXED_NO_DEPOSIT)
+      ? INVOICE_LAYOUT_FIXED_NO_DEPOSIT
+      : INVOICE_LAYOUT_FIXED
+);
 
 const getExportTitle = (groupDate, locationLabel) => {
   if (groupDate && locationLabel) {
@@ -104,6 +173,16 @@ const parseAmountFromCents = (value) => {
   const cents = Number(value);
   if (!Number.isFinite(cents)) return 0;
   return cents / 100;
+};
+
+const parseAmountOrNull = (value) => {
+  const amount = Number(value);
+  return Number.isFinite(amount) ? amount : null;
+};
+
+const parseAmountFromCentsOrNull = (value) => {
+  const cents = Number(value);
+  return Number.isFinite(cents) ? cents / 100 : null;
 };
 
 const parseLineAmount = (item, quantity, unitAmount) => {
@@ -191,22 +270,34 @@ const loadImageElement = (src) => (
     image.decoding = 'async';
     image.onload = () => resolve(image);
     image.onerror = () => reject(new Error(`Failed to load image: ${src}`));
-    image.src = src;
+    const encodedSrc = src
+      .split('/')
+      .map((part, index) => (index === 0 ? part : encodeURIComponent(part)))
+      .join('/');
+    image.src = encodedSrc;
   })
 );
 
-const loadInvoiceTemplate = async () => {
-  const sourceImage = await loadImageElement(encodeURI(INVOICE_TEMPLATE_SRC));
-  const imageWidth = sourceImage.naturalWidth || sourceImage.width || INVOICE_BASE_WIDTH;
-  const imageHeight = sourceImage.naturalHeight || sourceImage.height || INVOICE_BASE_HEIGHT;
-  const pageWidth = Math.max(Math.round(imageWidth), 1);
-  const pageHeight = Math.max(Math.round(imageHeight), 1);
-
-  return {
-    pageWidth,
-    pageHeight,
-    sourceImage
-  };
+const loadInvoiceTemplate = async (sources = INVOICE_TEMPLATE_SOURCES_WITH_DEPOSIT) => {
+  let lastError = null;
+  for (const source of sources) {
+    try {
+      const sourceImage = await loadImageElement(source);
+      const imageWidth = sourceImage.naturalWidth || sourceImage.width || INVOICE_BASE_WIDTH;
+      const imageHeight = sourceImage.naturalHeight || sourceImage.height || INVOICE_BASE_HEIGHT;
+      const pageWidth = Math.max(Math.round(imageWidth), 1);
+      const pageHeight = Math.max(Math.round(imageHeight), 1);
+      return {
+        pageWidth,
+        pageHeight,
+        sourceImage,
+        source
+      };
+    } catch (error) {
+      lastError = error;
+    }
+  }
+  throw lastError || new Error('Failed to load any invoice template image.');
 };
 
 const setCanvasFont = (context, size, options = {}) => {
@@ -253,27 +344,27 @@ const splitCurrencyParts = (amount) => {
   };
 };
 
-const drawAmountWithDivider = (context, amount, y, options = {}) => {
+const drawAmountWithDivider = (context, layout, amount, y, options = {}) => {
   const parts = splitCurrencyParts(amount);
   const xOffset = Number(options?.xOffset || 0);
-  const dividerX = INVOICE_LAYOUT.amountDividerX + xOffset;
+  const dividerX = layout.amountDividerX + xOffset;
   const dollarsRightX = dividerX - 8;
-  const centsX = dividerX + INVOICE_LAYOUT.amountCentsXOffset;
+  const centsX = dividerX + layout.amountCentsXOffset;
 
   drawCanvasRight(context, parts.dollars, dollarsRightX, y, 220);
   context.fillText(`${parts.cents} $`, centsX, y);
 };
 
-const buildInvoiceClientLines = (order, context, maxWidth) => {
+const buildInvoiceClientLines = (order, context, maxWidth, layout) => {
   const name = String(order?.customerName || order?.customer_name || 'Guest').trim();
   const phone = formatPhoneDisplay(String(order?.customerPhone || order?.customer_phone || '').trim());
   const address = String(order?.customerAddress || order?.customer_address || '').trim();
   const pickupDate = normalizeDate(order?.pickupDate || order?.pickup_date || order?.created_at);
   const pickupLocation = String(order?.pickupLocationLabel || order?.pickupLocation || order?.pickup_location || '')
     .trim();
-  const nameMaxWidth = Math.min(maxWidth, Number(INVOICE_LAYOUT.clientNameMaxWidth) || maxWidth);
-  const contactMaxWidth = Math.min(maxWidth, Number(INVOICE_LAYOUT.clientContactMaxWidth) || maxWidth);
-  const addressMaxWidth = Math.min(maxWidth, Number(INVOICE_LAYOUT.clientAddressMaxWidth) || maxWidth);
+  const nameMaxWidth = Math.min(maxWidth, Number(layout.clientNameMaxWidth) || maxWidth);
+  const contactMaxWidth = Math.min(maxWidth, Number(layout.clientContactMaxWidth) || maxWidth);
+  const addressMaxWidth = Math.min(maxWidth, Number(layout.clientAddressMaxWidth) || maxWidth);
 
   const contactLine = phone;
   const fallbackLine = [pickupDate, pickupLocation].filter(Boolean).join(' | ');
@@ -311,8 +402,8 @@ const normalizeInvoiceItems = (orderItems = []) => {
   return Array.from(grouped.values()).sort((a, b) => a.description.localeCompare(b.description));
 };
 
-const clampItemsToTemplateRows = (items) => {
-  const maxRows = INVOICE_LAYOUT.rowY.length;
+const clampItemsToTemplateRows = (items, layout) => {
+  const maxRows = layout.rowY.length;
   if (items.length <= maxRows) return items;
   const keep = maxRows - 1;
   const visible = items.slice(0, keep);
@@ -328,12 +419,51 @@ const clampItemsToTemplateRows = (items) => {
   return visible;
 };
 
+const resolveInvoicePaymentAmounts = (order, totalAmount) => {
+  const paidDirect = parseAmountOrNull(order?.amountPaid);
+  const paidFromCents = parseAmountFromCentsOrNull(order?.amount_paid_cents);
+  const dueDirect = parseAmountOrNull(order?.amountDue);
+  const dueFromCents = parseAmountFromCentsOrNull(order?.amount_due_cents);
+
+  let paidAmount = paidDirect ?? paidFromCents;
+  let dueAmount = dueDirect ?? dueFromCents;
+
+  if (paidAmount === null && dueAmount !== null) {
+    paidAmount = Math.max(totalAmount - dueAmount, 0);
+  }
+  if (dueAmount === null && paidAmount !== null) {
+    dueAmount = Math.max(totalAmount - paidAmount, 0);
+  }
+  if (paidAmount === null) {
+    paidAmount = totalAmount;
+  }
+  if (dueAmount === null) {
+    dueAmount = Math.max(totalAmount - paidAmount, 0);
+  }
+
+  return {
+    paidAmount: Math.max(paidAmount, 0),
+    dueAmount: Math.max(dueAmount, 0)
+  };
+};
+
+const resolveInvoiceTotalAmount = (order) => (
+  parseAmount(order?.totalAmount) || parseAmountFromCents(order?.total_cents)
+);
+
+const shouldUseFullPaymentTemplate = (order) => {
+  const totalAmount = resolveInvoiceTotalAmount(order);
+  const { dueAmount } = resolveInvoicePaymentAmounts(order, totalAmount);
+  return dueAmount <= FULLY_PAID_DUE_EPSILON;
+};
+
 const renderInvoicePage = ({
   doc,
   order,
   template,
   invoiceNumber
 }) => {
+  const layout = getInvoiceLayoutForTemplate(template?.source);
   const canvas = document.createElement('canvas');
   canvas.width = template.pageWidth;
   canvas.height = template.pageHeight;
@@ -356,32 +486,32 @@ const renderInvoicePage = ({
   context.lineWidth = 2;
   const numberText = fitCanvasTextToWidth(context, invoiceNumber, 260);
   const numberWidth = context.measureText(numberText).width;
-  const numberX = INVOICE_LAYOUT.headerNoRightX - numberWidth;
-  context.strokeText(numberText, numberX, INVOICE_LAYOUT.headerNoY);
-  context.fillText(numberText, numberX, INVOICE_LAYOUT.headerNoY);
+  const numberX = layout.headerNoRightX - numberWidth;
+  context.strokeText(numberText, numberX, layout.headerNoY);
+  context.fillText(numberText, numberX, layout.headerNoY);
 
   setCanvasFont(context, INVOICE_FONT_SIZES.clientMeta);
   context.fillStyle = darkColor;
-  const clientLines = buildInvoiceClientLines(order, context, 780);
+  const clientLines = buildInvoiceClientLines(order, context, 780, layout);
   clientLines.forEach((line, index) => {
-    if (index < INVOICE_LAYOUT.clientYRows.length) {
-      context.fillText(line, INVOICE_LAYOUT.clientX, INVOICE_LAYOUT.clientYRows[index]);
+    if (index < layout.clientYRows.length) {
+      context.fillText(line, layout.clientX, layout.clientYRows[index]);
     }
   });
   context.fillText(
     fitCanvasTextToWidth(context, dateText, 420),
-    INVOICE_LAYOUT.dateX,
-    INVOICE_LAYOUT.dateY
+    layout.dateX,
+    layout.dateY
   );
-  context.fillText('Les Fermes Soulard S.E.N.C', INVOICE_LAYOUT.sellerX, INVOICE_LAYOUT.sellerY);
+  context.fillText('Les Fermes Soulard', layout.sellerX, layout.sellerY);
 
   const normalizedItems = normalizeInvoiceItems(order?.orderItems || order?.items || []);
-  const items = clampItemsToTemplateRows(normalizedItems);
+  const items = clampItemsToTemplateRows(normalizedItems, layout);
 
   setCanvasFont(context, INVOICE_FONT_SIZES.number);
   context.fillStyle = darkColor;
   items.forEach((item, index) => {
-    const rowY = INVOICE_LAYOUT.rowY[index];
+    const rowY = layout.rowY[index];
     if (!Number.isFinite(rowY)) return;
     const qtyText = String(Math.max(item.quantity, 0));
     const unitText = `${parseAmount(item.unitAmount).toFixed(2)} $`;
@@ -389,16 +519,16 @@ const renderInvoicePage = ({
     drawCanvasCenteredInBox(
       context,
       qtyText,
-      INVOICE_LAYOUT.qtyCenterBox[0],
-      INVOICE_LAYOUT.qtyCenterBox[1],
+      layout.qtyCenterBox[0],
+      layout.qtyCenterBox[1],
       rowY,
       120
     );
 
     setCanvasFont(context, INVOICE_FONT_SIZES.description);
     context.fillText(
-      fitCanvasTextToWidth(context, item.description, INVOICE_LAYOUT.descMaxWidth),
-      INVOICE_LAYOUT.descX,
+      fitCanvasTextToWidth(context, item.description, layout.descMaxWidth),
+      layout.descX,
       rowY
     );
     setCanvasFont(context, INVOICE_FONT_SIZES.number);
@@ -406,21 +536,34 @@ const renderInvoicePage = ({
     drawCanvasCenteredInBox(
       context,
       unitText,
-      INVOICE_LAYOUT.priceCenterBox[0] + INVOICE_LAYOUT.priceNudgeX,
-      INVOICE_LAYOUT.priceCenterBox[1] + INVOICE_LAYOUT.priceNudgeX,
+      layout.priceCenterBox[0] + layout.priceNudgeX,
+      layout.priceCenterBox[1] + layout.priceNudgeX,
       rowY,
       250
     );
-    drawAmountWithDivider(context, parseAmount(item.lineAmount), rowY, {
-      xOffset: INVOICE_LAYOUT.amountNudgeX
+    drawAmountWithDivider(context, layout, parseAmount(item.lineAmount), rowY, {
+      xOffset: layout.amountNudgeX
     });
   });
 
-  const totalAmount = parseAmount(order?.totalAmount) || parseAmountFromCents(order?.total_cents);
+  const totalAmount = resolveInvoiceTotalAmount(order);
+  const { paidAmount, dueAmount } = resolveInvoicePaymentAmounts(order, totalAmount);
   setCanvasFont(context, INVOICE_FONT_SIZES.grandTotal);
-  drawAmountWithDivider(context, totalAmount, INVOICE_LAYOUT.totalY, {
-    xOffset: INVOICE_LAYOUT.totalNudgeX
+  drawAmountWithDivider(context, layout, totalAmount, layout.totalY, {
+    xOffset: layout.totalNudgeX
   });
+  if (layout.renderPaymentSummary) {
+    setCanvasFont(context, INVOICE_FONT_SIZES.paymentSummary);
+    drawAmountWithDivider(context, layout, totalAmount, layout.paymentSummaryTotalY, {
+      xOffset: layout.totalNudgeX
+    });
+    drawAmountWithDivider(context, layout, paidAmount, layout.paymentSummaryPaidY, {
+      xOffset: layout.totalNudgeX
+    });
+    drawAmountWithDivider(context, layout, dueAmount, layout.paymentSummaryBalanceY, {
+      xOffset: layout.totalNudgeX
+    });
+  }
 
   doc.addImage(canvas, 'JPEG', 0, 0, template.pageWidth, template.pageHeight, undefined, 'FAST');
 };
@@ -522,6 +665,39 @@ const exportOrdersPdf = async ({ groupedPickups, groupDate, locationGroup }) => 
   savePdfDocument(doc, filename);
 };
 
+const sanitizeFilenamePart = (value, fallback = 'unknown') => {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return fallback;
+  const ascii = raw
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '');
+  const slug = ascii
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .replace(/-+/g, '-');
+  return slug || fallback;
+};
+
+const buildInvoicesFilename = ({ invoiceOrders, groupDate, locationGroup }) => {
+  const dateSuffix = groupDate || normalizeDate(new Date());
+  const locationRaw = locationGroup?.location
+    || invoiceOrders?.[0]?.pickupLocation
+    || invoiceOrders?.[0]?.pickup_location
+    || 'all';
+  const locationSuffix = sanitizeFilenamePart(locationRaw, 'all');
+
+  if ((invoiceOrders?.length || 0) === 1) {
+    const singleOrder = invoiceOrders[0];
+    const customerName = sanitizeFilenamePart(
+      singleOrder?.customerName || singleOrder?.customer_name,
+      'customer'
+    );
+    return `invoice-${dateSuffix}-${locationSuffix}-${customerName}.pdf`;
+  }
+
+  return `invoices-${dateSuffix}-${locationSuffix}.pdf`;
+};
+
 const exportInvoicesPdf = async ({ orders, groupDate, locationGroup }) => {
   const invoiceOrders = buildInvoiceOrdersForExport({
     orders,
@@ -532,21 +708,26 @@ const exportInvoicesPdf = async ({ orders, groupDate, locationGroup }) => {
     throw new Error('No orders available for invoice export.');
   }
 
-  const [{ jsPDF }, template] = await Promise.all([
+  const [{ jsPDF }, depositTemplate, fullPaymentTemplate] = await Promise.all([
     import('jspdf'),
-    loadInvoiceTemplate()
+    loadInvoiceTemplate(INVOICE_TEMPLATE_SOURCES_WITH_DEPOSIT),
+    loadInvoiceTemplate(INVOICE_TEMPLATE_SOURCES_FULL_PAYMENT)
   ]);
 
-  const dateSuffix = groupDate || normalizeDate(new Date());
-  const locationSuffix = locationGroup?.location || 'all';
-  const filename = `invoices-${dateSuffix}-${locationSuffix}.pdf`;
+  const filename = buildInvoicesFilename({ invoiceOrders, groupDate, locationGroup });
+  const invoicePages = invoiceOrders.map((order) => ({
+    order,
+    template: shouldUseFullPaymentTemplate(order) ? fullPaymentTemplate : depositTemplate
+  }));
+
+  const firstTemplate = invoicePages[0]?.template || depositTemplate;
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'px',
-    format: [template.pageWidth, template.pageHeight]
+    format: [firstTemplate.pageWidth, firstTemplate.pageHeight]
   });
 
-  invoiceOrders.forEach((order, index) => {
+  invoicePages.forEach(({ order, template }, index) => {
     if (index > 0) {
       doc.addPage([template.pageWidth, template.pageHeight], 'portrait');
     }

@@ -12,6 +12,7 @@ export default function AdminPickupModal({
   optimisticStatuses,
   onClose,
   onMarkPickedUp,
+  onExportOrderInvoice,
   onEditOrder,
   onDeleteOrder,
   onArchiveOrder
@@ -113,46 +114,58 @@ export default function AdminPickupModal({
             <div className="detail-history">
               {[...pickup.orders]
                 .sort((a, b) => b.orderDate.localeCompare(a.orderDate))
-                .map((order) => (
-                  <div key={order.id} className="history-row">
-                    <div>
-                      <div className="history-meta">
-                        {t('pickup.placed', adminLanguage)} {formatDateLong(order.orderDate, adminLanguage)}
-                        {pickup.orders.length > 1 && (
-                          <> · {order.itemSummary || `${order.itemCount} items`}</>
-                        )}
-                        {' '}· {order.paymentSummary}
+                .map((order) => {
+                  const orderStatus = normalizeStatus(order?.status);
+                  const canExportInvoice = orderStatus !== 'cancelled' && orderStatus !== 'archived' && orderStatus !== 'reserved';
+                  return (
+                    <div key={order.id} className="history-row">
+                      <div>
+                        <div className="history-meta">
+                          {t('pickup.placed', adminLanguage)} {formatDateLong(order.orderDate, adminLanguage)}
+                          {pickup.orders.length > 1 && (
+                            <> · {order.itemSummary || `${order.itemCount} items`}</>
+                          )}
+                          {' '}· {order.paymentSummary}
+                        </div>
+                      </div>
+                      <div className="history-row-actions">
+                        <div className="history-total">{formatCurrency(order.totalAmount)}</div>
+                        <div className="history-row-buttons">
+                          <button
+                            type="button"
+                            className="admin-button ghost small"
+                            onClick={() => onExportOrderInvoice?.(order)}
+                            disabled={typeof onExportOrderInvoice !== 'function' || !canExportInvoice}
+                          >
+                            {t('pickup.exportInvoice', adminLanguage)}
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-button ghost small"
+                            onClick={() => onEditOrder?.(order)}
+                            disabled={
+                              typeof onEditOrder !== 'function'
+                              || !['pending', 'paid'].includes(String(order.status || '').toLowerCase())
+                            }
+                          >
+                            {t('btn.edit', adminLanguage)}
+                          </button>
+                          <button
+                            type="button"
+                            className="admin-button ghost small danger"
+                            onClick={() => onDeleteOrder?.(order)}
+                            disabled={
+                              typeof onDeleteOrder !== 'function'
+                              || !['pending', 'paid'].includes(String(order.status || '').toLowerCase())
+                            }
+                          >
+                            {t('btn.delete', adminLanguage)}
+                          </button>
+                        </div>
                       </div>
                     </div>
-                    <div className="history-row-actions">
-                      <div className="history-total">{formatCurrency(order.totalAmount)}</div>
-                      <div className="history-row-buttons">
-                        <button
-                          type="button"
-                          className="admin-button ghost small"
-                          onClick={() => onEditOrder?.(order)}
-                          disabled={
-                            typeof onEditOrder !== 'function'
-                            || !['pending', 'paid'].includes(String(order.status || '').toLowerCase())
-                          }
-                        >
-                          {t('btn.edit', adminLanguage)}
-                        </button>
-                        <button
-                          type="button"
-                          className="admin-button ghost small danger"
-                          onClick={() => onDeleteOrder?.(order)}
-                          disabled={
-                            typeof onDeleteOrder !== 'function'
-                            || !['pending', 'paid'].includes(String(order.status || '').toLowerCase())
-                          }
-                        >
-                          {t('btn.delete', adminLanguage)}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
             </div>
           </div>
         )}

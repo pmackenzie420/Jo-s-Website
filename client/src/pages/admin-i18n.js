@@ -26,6 +26,8 @@ const ADMIN_STRINGS = {
   'pickups.empty':          { en: 'No pickups scheduled yet.', fr: 'Aucun ramassage prévu.' },
   'pickups.exportAll':      { en: 'Export All',      fr: 'Tout exporter' },
   'pickups.exportInvoices': { en: 'Export Invoices', fr: 'Exporter les factures' },
+  'pickups.exportInvoicesTitle': { en: 'Export Batch Invoices', fr: 'Exporter les factures du lot' },
+  'pickups.exportInvoicesShort': { en: 'Inv', fr: 'Fact.' },
   'pickups.loadMore':       { en: 'Load More Orders', fr: 'Charger plus' },
   'pickups.allLoaded':      { en: 'All Orders Loaded', fr: 'Toutes les commandes chargées' },
   'pickups.loading_short':  { en: 'Loading...',      fr: 'Chargement...' },
@@ -43,6 +45,7 @@ const ADMIN_STRINGS = {
   'pickup.itemsTitle':      { en: 'Items',            fr: 'Articles' },
   'pickup.orderBreakdown':  { en: 'Order Breakdown',  fr: 'Détails des commandes' },
   'pickup.orderDetails':    { en: 'Order Details',    fr: 'Détails de la commande' },
+  'pickup.exportInvoice':   { en: 'Invoice',          fr: 'Facture' },
   'pickup.placed':          { en: 'Placed',           fr: 'Passée le' },
   'pickup.archive':         { en: 'Archive',          fr: 'Archiver' },
 
@@ -85,6 +88,8 @@ const ADMIN_STRINGS = {
   'customer.orders':        { en: '{count} orders - {total} total', fr: '{count} commandes - {total} au total' },
   'customer.call':          { en: 'Call',              fr: 'Appeler' },
   'customer.email':         { en: 'Email',             fr: 'Courriel' },
+  'customer.exportInvoice': { en: 'Invoice',           fr: 'Facture' },
+  'customer.exportAllInvoices': { en: 'Export All Invoices', fr: 'Exporter toutes les factures' },
 
   // Email page
   'email.loading':          { en: 'Loading email groups...', fr: 'Chargement des groupes...' },

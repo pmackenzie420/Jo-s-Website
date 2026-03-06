@@ -15,6 +15,7 @@ export default function AdminPickupsPage({
   onLoadMoreOrders,
   onExportAll,
   onExportInvoices,
+  onExportInvoicesGroup,
   onExportGroup,
   onBulkPickup
 }) {
@@ -173,6 +174,14 @@ export default function AdminPickupsPage({
                     <button
                       type="button"
                       className="admin-button ghost small"
+                      title={t('pickups.exportInvoicesTitle', adminLanguage)}
+                      onClick={() => onExportInvoicesGroup(group.date, locationGroup)}
+                    >
+                      {t('pickups.exportInvoicesShort', adminLanguage)}
+                    </button>
+                    <button
+                      type="button"
+                      className="admin-button ghost small"
                       title={t('pickups.exportTitle', adminLanguage)}
                       onClick={() => onExportGroup(group.date, locationGroup)}
                     >
@@ -244,6 +253,20 @@ export default function AdminPickupsPage({
                   disabled={!card.activeOrderIds?.length}
                 >
                   ✓
+                </button>
+                <button
+                  type="button"
+                  className="admin-button ghost small"
+                  title={t('pickups.exportInvoicesTitle', adminLanguage)}
+                  onClick={() =>
+                    onExportInvoicesGroup(card.date, {
+                      location: card.location,
+                      locationLabel: card.locationLabel,
+                      orders: card.orders
+                    })
+                  }
+                >
+                  {t('pickups.exportInvoicesShort', adminLanguage)}
                 </button>
                 <button
                   type="button"

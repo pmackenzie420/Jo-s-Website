@@ -411,27 +411,74 @@ export default function useAdminController() {
     [dataLoading, groupedPickups, showToast, adminLanguage]
   );
 
-  const handleInvoiceExportDownload = useCallback(
-    async (groupDate, locationGroup) => {
+  const exportInvoicesForOrders = useCallback(
+    async ({ orders, groupDate, locationGroup } = {}) => {
       if (dataLoading) {
         showToast({ type: 'error', text: t('toast.ordersStillLoading', adminLanguage) });
-        return;
+        return false;
       }
-      if (!pickupOrdersWithDetails.length) {
+      const invoiceOrders = (Array.isArray(orders) ? orders : []).filter((order) => {
+        const status = normalizeStatus(order?.status);
+        return status !== 'cancelled' && status !== 'archived' && status !== 'reserved';
+      });
+      if (!invoiceOrders.length) {
         showToast({ type: 'error', text: t('toast.noInvoiceOrders', adminLanguage) });
-        return;
+        return false;
       }
       try {
         await exportInvoicesPdf({
-          orders: pickupOrdersWithDetails,
+          orders: invoiceOrders,
           groupDate,
           locationGroup
         });
+        return true;
       } catch {
         showToast({ type: 'error', text: t('toast.invoiceExportFailed', adminLanguage) });
+        return false;
       }
     },
-    [dataLoading, pickupOrdersWithDetails, showToast, adminLanguage]
+    [dataLoading, showToast, adminLanguage]
+  );
+
+  const handleInvoiceExportDownload = useCallback(
+    async (groupDate, locationGroup) => (
+      exportInvoicesForOrders({
+        orders: pickupOrdersWithDetails,
+        groupDate,
+        locationGroup
+      })
+    ),
+    [exportInvoicesForOrders, pickupOrdersWithDetails]
+  );
+
+  const handleInvoiceExportForCustomer = useCallback(
+    async (customer) => (
+      exportInvoicesForOrders({
+        orders: customer?.orders || []
+      })
+    ),
+    [exportInvoicesForOrders]
+  );
+
+  const handleInvoiceExportForOrder = useCallback(
+    async (order) => {
+      if (!order) return false;
+      const groupDate = normalizeDate(order?.pickupDate || order?.pickup_date || order?.created_at || new Date());
+      const location = String(order?.pickupLocation || order?.pickup_location || '');
+      const locationGroup = location
+        ? {
+            location,
+            locationLabel: String(order?.pickupLocationLabel || location),
+            orders: [order]
+          }
+        : null;
+      return exportInvoicesForOrders({
+        orders: [order],
+        groupDate,
+        locationGroup
+      });
+    },
+    [exportInvoicesForOrders]
   );
 
 const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
@@ -957,6 +1004,8 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     handleLoadMoreOrders,
     handleExportDownload,
     handleInvoiceExportDownload,
+    handleInvoiceExportForCustomer,
+    handleInvoiceExportForOrder,
     handlePickupStockChange,
     handlePickupStockSave,
     deleteDate,

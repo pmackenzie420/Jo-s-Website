@@ -1342,6 +1342,14 @@ body.admin-modal-open .admin-main {
   align-items: flex-start;
 }
 
+.customer-modal-header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
 .modal-close {
   width: auto;
   padding: 0 14px;

@@ -73,6 +73,8 @@ export default function Admin() {
     handleLoadMoreOrders,
     handleExportDownload,
     handleInvoiceExportDownload,
+    handleInvoiceExportForCustomer,
+    handleInvoiceExportForOrder,
     handlePickupStockChange,
     handlePickupStockSave,
     deleteDate,
@@ -232,6 +234,9 @@ export default function Admin() {
               onLoadMoreOrders={handleLoadMoreOrders}
               onExportAll={() => handleExportDownload()}
               onExportInvoices={() => handleInvoiceExportDownload()}
+              onExportInvoicesGroup={(groupDate, locationGroup) =>
+                handleInvoiceExportDownload(groupDate, locationGroup)
+              }
               onExportGroup={(groupDate, locationGroup) =>
                 handleExportDownload(groupDate, locationGroup)
               }
@@ -339,6 +344,8 @@ export default function Admin() {
       <AdminCustomerModal
         customer={selectedCustomer}
         adminLanguage={adminLanguage}
+        onExportCustomerInvoices={handleInvoiceExportForCustomer}
+        onExportOrderInvoice={handleInvoiceExportForOrder}
         onClose={() => setSelectedCustomer(null)}
       />
       <AdminPickupModal
@@ -347,6 +354,7 @@ export default function Admin() {
         optimisticStatuses={optimisticStatuses}
         onClose={() => setSelectedPickup(null)}
         onMarkPickedUp={handleMarkPickedUp}
+        onExportOrderInvoice={handleInvoiceExportForOrder}
         onEditOrder={handleEditOrder}
         onDeleteOrder={handleDeleteOrder}
         onArchiveOrder={handleArchiveOrder}
