@@ -286,6 +286,13 @@ const filterCustomers = (customers, searchQuery) => {
   if (!searchQuery.trim()) return customers;
   const query = searchQuery.trim().toLowerCase();
   const queryDigits = query.replace(/\D/g, '');
+  const isPrefixedOrderNumberQuery = /^#\d+$/.test(query);
+  const isPureDigitsQuery = /^\d+$/.test(query);
+  const orderNumberQuery = isPrefixedOrderNumberQuery
+    ? query.slice(1)
+    : (isPureDigitsQuery && query.length < 7 ? query : '');
+  const isOrderNumberQuery = /^\d+$/.test(orderNumberQuery);
+
   return customers.filter((customer) => {
     const values = [customer.name, customer.phone, customer.email]
       .filter(Boolean)
@@ -293,13 +300,21 @@ const filterCustomers = (customers, searchQuery) => {
       .toLowerCase();
     const phoneDigits = (customer.phone || '').replace(/\D/g, '');
     const matchesText = values.includes(query);
-    const matchesPhoneDigits = queryDigits.length > 0 && phoneDigits.includes(queryDigits);
     const orderNumbers = (Array.isArray(customer.orders) ? customer.orders : [])
       .map((order) => normalizeOrderNumber(order?.order_number ?? order?.orderNumber))
       .filter(Boolean)
       .map(String);
-    const matchesOrderNumber = queryDigits.length > 0
-      && orderNumbers.some((orderNumber) => orderNumber.includes(queryDigits));
+
+    const matchesOrderNumber = isOrderNumberQuery
+      && orderNumbers.some((orderNumber) => (
+        orderNumber === orderNumberQuery
+        || (orderNumberQuery.length >= 2 && orderNumber.startsWith(orderNumberQuery))
+      ));
+
+    const matchesPhoneDigits = !isOrderNumberQuery
+      && queryDigits.length > 0
+      && phoneDigits.includes(queryDigits);
+
     return matchesText || matchesPhoneDigits || matchesOrderNumber;
   });
 };
