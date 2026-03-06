@@ -119,6 +119,10 @@ const buildOrderConfirmResponse = ({
     const paymentDetails = getPaymentDetails(order);
     const normalizedStatus = String(orderStatus || order.status || 'pending').toLowerCase();
     const isPaid = session?.payment_status === 'paid' || PAID_STATUSES.has(normalizedStatus);
+    const orderNumberRaw = Number(order?.order_number);
+    const orderNumber = Number.isFinite(orderNumberRaw) && orderNumberRaw > 0
+        ? Math.floor(orderNumberRaw)
+        : null;
     const requestedSessionId = session?.id || sessionId;
     const allowSensitive =
         Boolean(isPaid)
@@ -130,6 +134,7 @@ const buildOrderConfirmResponse = ({
         pickup_date: order.pickup_date,
         pickup_location: order.pickup_location,
         total_cents: order.total_cents,
+        order_number: orderNumber,
         items,
         language: normalizeLanguage(order.language),
         payment_type: paymentDetails.paymentType,
@@ -147,6 +152,7 @@ const buildOrderConfirmResponse = ({
     return {
         success: true,
         status: normalizedStatus,
+        orderNumber,
         order: orderPayload
     };
 };

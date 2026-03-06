@@ -152,8 +152,13 @@ const ensureSchema = async (client) => {
     `);
 
     await client.query(`
+        CREATE SEQUENCE IF NOT EXISTS orders_order_number_seq
+    `);
+
+    await client.query(`
         CREATE TABLE IF NOT EXISTS orders (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+            order_number BIGINT NOT NULL DEFAULT nextval('orders_order_number_seq'),
             customer_id UUID REFERENCES customers(id),
             customer_email TEXT,
             total_cents INTEGER NOT NULL DEFAULT 0,
@@ -169,6 +174,10 @@ const ensureSchema = async (client) => {
             confirmation_email_sent_at TIMESTAMP WITH TIME ZONE,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         )
+    `);
+    await client.query(`
+        CREATE UNIQUE INDEX IF NOT EXISTS orders_order_number_unique_idx
+        ON orders (order_number)
     `);
     await client.query(`
         CREATE INDEX IF NOT EXISTS orders_pickup_status_idx

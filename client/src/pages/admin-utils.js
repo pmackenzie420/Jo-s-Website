@@ -121,6 +121,17 @@ const normalizePhoneKey = (phone) => {
   return phone.replace(/\D/g, '');
 };
 
+const normalizeOrderNumber = (value) => {
+  const number = Number(value);
+  if (!Number.isFinite(number) || number <= 0) return null;
+  return Math.floor(number);
+};
+
+const getOrderNumberText = (order) => {
+  const orderNumber = normalizeOrderNumber(order?.order_number ?? order?.orderNumber);
+  return orderNumber ? String(orderNumber) : '';
+};
+
 const getLocalizedProductName = (name, language = 'en') => {
   if (!name) return 'Item';
   const parts = String(name)
@@ -277,6 +288,8 @@ export {
   formatPhoneLink,
   formatPhoneDisplay,
   normalizePhoneKey,
+  normalizeOrderNumber,
+  getOrderNumberText,
   getLocalizedProductName,
   getDisplayName,
   formatLocationShort,

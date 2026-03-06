@@ -687,7 +687,7 @@ const registerAdminRoutes = (app, deps) => {
                 ? 'reserved'
                 : (amountPaidCents > 0 ? 'paid' : 'pending');
 
-            const orderId = await runInTransaction(async (client) => {
+            const createdOrder = await runInTransaction(async (client) => {
                 let customerId;
                 const existingCust = await client.query(
                     'SELECT id FROM customers WHERE phone = $1 FOR UPDATE',
@@ -730,7 +730,7 @@ const registerAdminRoutes = (app, deps) => {
                         payment_method
                     )
                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                    RETURNING id`,
+                    RETURNING id, order_number`,
                     [
                         customerId,
                         customerEmail || null,
@@ -746,8 +746,13 @@ const registerAdminRoutes = (app, deps) => {
                         paymentMethod
                     ]
                 );
-                return newOrder.rows[0].id;
+                return {
+                    id: newOrder.rows[0].id,
+                    orderNumber: Number(newOrder.rows[0].order_number) || null
+                };
             });
+            const orderId = createdOrder.id;
+            const orderNumber = Number(createdOrder.orderNumber) || null;
 
             if (isCreditCard && stripe) {
                 let stripeLineItems;
@@ -782,7 +787,7 @@ const registerAdminRoutes = (app, deps) => {
                     lineItems: stripeLineItems,
                     baseUrl,
                     CHECKOUT_RESERVATION_TTL_MINUTES,
-                    successUrl: `${baseUrl}/admin?stripe_order=${orderId}`,
+                    successUrl: `${baseUrl}/admin?stripe_order=${orderId}&stripe_order_number=${orderNumber || ''}`,
                     cancelUrl: `${baseUrl}/admin?stripe_cancelled=true`
                 });
 
@@ -791,10 +796,10 @@ const registerAdminRoutes = (app, deps) => {
                     [session.id, orderId]
                 );
 
-                return res.json({ success: true, orderId, stripeUrl: session.url });
+                return res.json({ success: true, orderId, orderNumber, stripeUrl: session.url });
             }
 
-            return res.json({ success: true, orderId });
+            return res.json({ success: true, orderId, orderNumber });
         } catch (err) {
             if (String(err?.message || '').includes('Insufficient pickup stock')) {
                 return res.status(409).json({ error: 'Insufficient stock for one or more items.' });
@@ -1001,6 +1006,7 @@ const registerAdminRoutes = (app, deps) => {
                     `
                     SELECT
                         id,
+                        order_number,
                         customer_id,
                         customer_email,
                         status,
@@ -1331,6 +1337,7 @@ const registerAdminRoutes = (app, deps) => {
                 return {
                     status: 'updated',
                     orderId,
+                    orderNumber: Number(existingOrder.order_number) || null,
                     pickupDate,
                     pickupLocation,
                     totalCents: nextTotalCents,
@@ -1386,6 +1393,7 @@ const registerAdminRoutes = (app, deps) => {
             return res.json({
                 success: true,
                 orderId: updateResult.orderId,
+                orderNumber: Number(updateResult.orderNumber) || null,
                 pickup_date: updateResult.pickupDate,
                 pickup_location: updateResult.pickupLocation,
                 total_cents: updateResult.totalCents,
@@ -1418,6 +1426,7 @@ const registerAdminRoutes = (app, deps) => {
                     `
                     SELECT
                         id,
+                        order_number,
                         status,
                         pickup_date,
                         pickup_location,
@@ -1455,7 +1464,11 @@ const registerAdminRoutes = (app, deps) => {
                 }
 
                 await client.query('DELETE FROM orders WHERE id = $1', [orderId]);
-                return { status: 'deleted', orderId };
+                return {
+                    status: 'deleted',
+                    orderId,
+                    orderNumber: Number(existingOrder.order_number) || null
+                };
             });
 
             if (deleteResult.status === 'missing_order') {
@@ -1469,7 +1482,8 @@ const registerAdminRoutes = (app, deps) => {
 
             return res.json({
                 success: true,
-                orderId: deleteResult.orderId
+                orderId: deleteResult.orderId,
+                orderNumber: Number(deleteResult.orderNumber) || null
             });
         } catch (err) {
             return sendServerError(res, err, 'Failed to delete admin order');

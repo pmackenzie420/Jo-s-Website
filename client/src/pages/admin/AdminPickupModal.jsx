@@ -2,7 +2,8 @@ import {
   formatDateLong,
   formatCurrency,
   formatPhoneLink,
-  normalizeStatus
+  normalizeStatus,
+  getOrderNumberText
 } from '../admin-utils';
 import { t, tf } from '../admin-i18n';
 
@@ -117,10 +118,12 @@ export default function AdminPickupModal({
                 .map((order) => {
                   const orderStatus = normalizeStatus(order?.status);
                   const canExportInvoice = orderStatus !== 'cancelled' && orderStatus !== 'archived' && orderStatus !== 'reserved';
+                  const orderNumberText = getOrderNumberText(order);
                   return (
                     <div key={order.id} className="history-row">
                       <div>
                         <div className="history-meta">
+                          {orderNumberText ? `#${orderNumberText} · ` : ''}
                           {t('pickup.placed', adminLanguage)} {formatDateLong(order.orderDate, adminLanguage)}
                           {pickup.orders.length > 1 && (
                             <> · {order.itemSummary || `${order.itemCount} items`}</>

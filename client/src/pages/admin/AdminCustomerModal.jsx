@@ -1,4 +1,10 @@
-import { formatDateLong, formatCurrency, formatPhoneLink, normalizeStatus } from '../admin-utils';
+import {
+  formatDateLong,
+  formatCurrency,
+  formatPhoneLink,
+  normalizeStatus,
+  getOrderNumberText
+} from '../admin-utils';
 import { t, tf } from '../admin-i18n';
 
 export default function AdminCustomerModal({
@@ -73,10 +79,12 @@ export default function AdminCustomerModal({
             .map((order) => {
               const status = normalizeStatus(order?.status);
               const canExportInvoice = status !== 'cancelled' && status !== 'archived' && status !== 'reserved';
+              const orderNumberText = getOrderNumberText(order);
               return (
                 <div key={order.id} className="history-row">
                   <div>
                     <div className="history-title">
+                      {orderNumberText ? `#${orderNumberText} · ` : ''}
                       {formatDateLong(order.pickupDate || order.orderDate, adminLanguage)}
                     </div>
                     <div className="history-meta">

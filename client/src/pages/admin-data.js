@@ -10,7 +10,8 @@ import {
   parseItems,
   normalizeStatus,
   mergeStatuses,
-  buildShortSummary
+  buildShortSummary,
+  normalizeOrderNumber
 } from './admin-utils';
 
 const parseCalendarDateKey = (value) => {
@@ -293,7 +294,13 @@ const filterCustomers = (customers, searchQuery) => {
     const phoneDigits = (customer.phone || '').replace(/\D/g, '');
     const matchesText = values.includes(query);
     const matchesPhoneDigits = queryDigits.length > 0 && phoneDigits.includes(queryDigits);
-    return matchesText || matchesPhoneDigits;
+    const orderNumbers = (Array.isArray(customer.orders) ? customer.orders : [])
+      .map((order) => normalizeOrderNumber(order?.order_number ?? order?.orderNumber))
+      .filter(Boolean)
+      .map(String);
+    const matchesOrderNumber = queryDigits.length > 0
+      && orderNumbers.some((orderNumber) => orderNumber.includes(queryDigits));
+    return matchesText || matchesPhoneDigits || matchesOrderNumber;
   });
 };
 

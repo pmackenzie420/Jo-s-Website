@@ -271,6 +271,10 @@ const registerCheckoutRoutes = (app, deps) => {
             const normalizedStatus = String(orderStatus || summary.order?.status || 'pending')
                 .trim()
                 .toLowerCase();
+            const orderNumberRaw = Number(summary.order?.order_number);
+            const orderNumber = Number.isFinite(orderNumberRaw) && orderNumberRaw > 0
+                ? Math.floor(orderNumberRaw)
+                : null;
             const stripePaid = session?.payment_status === 'paid';
             const isPaid =
                 normalizedStatus !== 'cancelled'
@@ -281,7 +285,8 @@ const registerCheckoutRoutes = (app, deps) => {
                     success: false,
                     status: normalizedStatus,
                     order: null,
-                    orderId
+                    orderId,
+                    orderNumber
                 });
             }
 

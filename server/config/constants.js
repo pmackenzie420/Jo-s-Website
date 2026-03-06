@@ -26,7 +26,7 @@ const ORDER_CONFIRMATION_COPY = {
         statusLabel: 'Status',
         paidTodayLabel: 'Paid today',
         dueLabel: 'Amount due at pickup',
-        orderIdLabel: 'Order ID',
+        orderIdLabel: 'Order #',
         itemsUnavailable: 'Item details unavailable',
         reminderTitle: 'Attention!',
         reminderLineOne:
@@ -53,7 +53,7 @@ const ORDER_CONFIRMATION_COPY = {
         statusLabel: 'Statut',
         paidTodayLabel: "Payé aujourd'hui",
         dueLabel: 'Montant dû au ramassage',
-        orderIdLabel: 'ID de commande',
+        orderIdLabel: 'No de commande',
         itemsUnavailable: "Détails d'article indisponibles",
         reminderTitle: 'Attention!',
         reminderLineOne:

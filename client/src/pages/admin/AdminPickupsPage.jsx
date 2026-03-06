@@ -1,4 +1,9 @@
-import { formatDateHeader, normalizeStatus, formatCurrency } from '../admin-utils';
+import {
+  formatDateHeader,
+  normalizeStatus,
+  formatCurrency,
+  getOrderNumberText
+} from '../admin-utils';
 import { t } from '../admin-i18n';
 
 export default function AdminPickupsPage({
@@ -47,6 +52,7 @@ export default function AdminPickupsPage({
     const optimisticStatus = optimisticStatuses[order.key];
     const status = optimisticStatus || normalizeStatus(order.status);
     const pickupSummary = order.itemSummaryShort || order.itemSummary || `${order.itemCount} items`;
+    const orderNumberText = getOrderNumberText(order);
     return (
       <div key={order.key} className={`pickup-row-shell ${status}`}>
         <div
@@ -62,7 +68,10 @@ export default function AdminPickupsPage({
         >
           <div className="pickup-info">
             <div className="pickup-row-line">
-              <div className="pickup-name">{order.customerName}</div>
+              <div className="pickup-name">
+                {order.customerName}
+                {orderNumberText ? ` #${orderNumberText}` : ''}
+              </div>
               <div className="pickup-payment">{order.paymentSummary}</div>
             </div>
             <div className="pickup-summary">{pickupSummary}</div>

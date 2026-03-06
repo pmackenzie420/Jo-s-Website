@@ -18,7 +18,7 @@ const COPY = {
         thanks: 'Thank you for your order.',
         emailSent: (email) => `We've sent a confirmation email to ${email}.`,
         emailSentFallback: 'We have sent a confirmation email with your details.',
-        orderIdLabel: 'Order ID',
+        orderIdLabel: 'Order #',
         pickupDetails: 'Pickup Details',
         customerInfo: 'Customer Info',
         orderTitle: 'Your Order',
@@ -56,7 +56,7 @@ const COPY = {
         thanks: 'Merci pour votre commande.',
         emailSent: (email) => `Un courriel de confirmation a été envoyé à ${email}.`,
         emailSentFallback: 'Un courriel de confirmation avec vos détails a été envoyé.',
-        orderIdLabel: 'ID de commande',
+        orderIdLabel: 'No de commande',
         pickupDetails: 'Détails du ramassage',
         customerInfo: 'Infos client',
         orderTitle: 'Votre commande',
@@ -93,6 +93,12 @@ const normalizeLanguage = (value) => {
         return 'en';
     }
     return null;
+};
+
+const normalizeOrderNumber = (value) => {
+    const parsed = Number(value);
+    if (!Number.isFinite(parsed) || parsed <= 0) return '';
+    return String(Math.floor(parsed));
 };
 
 const isLambItemName = (value) => {
@@ -199,9 +205,13 @@ function Success({ lang }) {
                 setConfirmStatus(nextStatus);
                 setConfirmed(Boolean(data?.success) && Boolean(data?.order));
                 setOrder(data?.order || null);
-                const ref = typeof data?.orderId === 'string'
-                    ? data.orderId
-                    : (typeof data?.order?.id === 'string' ? data.order.id : null);
+                const orderNumberRef =
+                    normalizeOrderNumber(data?.orderNumber)
+                    || normalizeOrderNumber(data?.order?.order_number);
+                const ref = orderNumberRef
+                    || (typeof data?.orderId === 'string'
+                        ? data.orderId
+                        : (typeof data?.order?.id === 'string' ? data.order.id : null));
                 setOrderRef(ref);
             })
             .catch((err) => {

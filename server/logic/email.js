@@ -44,6 +44,14 @@ const CONFIRMATION_NO_REPLY_HEADERS = {
     Precedence: 'bulk'
 };
 
+const getPublicOrderReference = (order) => {
+    const orderNumberRaw = Number(order?.order_number);
+    if (Number.isFinite(orderNumberRaw) && orderNumberRaw > 0) {
+        return String(Math.floor(orderNumberRaw));
+    }
+    return String(order?.id || '').trim();
+};
+
 const buildOrderConfirmationEmailText = ({ order, items }) => {
     const language = normalizeLanguage(order.language);
     const copy = ORDER_CONFIRMATION_COPY[language];
@@ -114,8 +122,9 @@ const buildOrderConfirmationEmailText = ({ order, items }) => {
     }
     lines.push('');
 
+    const orderRef = getPublicOrderReference(order);
     lines.push(
-        `${copy.orderIdLabel}: ${order.id}`,
+        `${copy.orderIdLabel}: ${orderRef}`,
         '',
         copy.questions(COMPANY_CONTACT.phone),
         '',
@@ -152,7 +161,7 @@ const buildOrderConfirmationEmailHtml = ({ order, items }) => {
         dueAmount = language === 'fr' ? 'À déterminer (selon le poids)' : 'To be determined (based on weight)';
     }
 
-    const orderId = escapeHtml(order.id);
+    const orderId = escapeHtml(getPublicOrderReference(order));
 
     const itemRows = items.length > 0
         ? items.map((item) => {

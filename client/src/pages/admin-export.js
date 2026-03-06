@@ -4,14 +4,18 @@ import {
   formatLocationShort,
   formatCurrency,
   formatPhoneDisplay,
-  normalizeDate
+  normalizeDate,
+  normalizeOrderNumber
 } from './admin-utils';
 
 const INVOICE_TEMPLATE_SOURCE_FIXED = '/invoicefixedspelling.jpg';
+const INVOICE_TEMPLATE_SOURCE_FIXED_LONG = '/invoicefixedspellingandlongclient.jpg';
 const INVOICE_TEMPLATE_SOURCE_FIXED_NO_DEPOSIT = '/invoicefixedspellingnodeposit.jpg';
+const INVOICE_TEMPLATE_SOURCE_FIXED_NO_DEPOSIT_LONG = '/invoicefixedspellingandlongclientnodeposit.jpg';
 const INVOICE_TEMPLATE_SOURCE_ORIGINAL = '/invoicewboxandnobold.jpg';
 const INVOICE_TEMPLATE_SOURCE_EDITED2 = '/Facture - Les Fermes Soulard - Edited2.jpg';
 const INVOICE_TEMPLATE_SOURCES_WITH_DEPOSIT = [
+  INVOICE_TEMPLATE_SOURCE_FIXED_LONG,
   INVOICE_TEMPLATE_SOURCE_FIXED,
   '/[Image #1].jpg',
   '/Image #1.jpg',
@@ -19,6 +23,7 @@ const INVOICE_TEMPLATE_SOURCES_WITH_DEPOSIT = [
   INVOICE_TEMPLATE_SOURCE_EDITED2
 ];
 const INVOICE_TEMPLATE_SOURCES_FULL_PAYMENT = [
+  INVOICE_TEMPLATE_SOURCE_FIXED_NO_DEPOSIT_LONG,
   INVOICE_TEMPLATE_SOURCE_FIXED_NO_DEPOSIT,
   INVOICE_TEMPLATE_SOURCE_EDITED2,
   INVOICE_TEMPLATE_SOURCE_ORIGINAL,
@@ -76,6 +81,20 @@ const INVOICE_LAYOUT_FIXED_NO_DEPOSIT = {
   renderPaymentSummary: false
 };
 
+const INVOICE_LAYOUT_FIXED_LONG = {
+  ...INVOICE_LAYOUT_FIXED,
+  clientNameMaxWidth: 660,
+  clientContactMaxWidth: 930,
+  clientAddressMaxWidth: 1280
+};
+
+const INVOICE_LAYOUT_FIXED_LONG_NO_DEPOSIT = {
+  ...INVOICE_LAYOUT_FIXED_NO_DEPOSIT,
+  clientNameMaxWidth: 660,
+  clientContactMaxWidth: 930,
+  clientAddressMaxWidth: 1280
+};
+
 const INVOICE_LAYOUT_EDITED2 = {
   clientX: 190,
   clientYRows: [708, 778, 848],
@@ -107,7 +126,11 @@ const INVOICE_LAYOUT_EDITED2 = {
 };
 
 const getInvoiceLayoutForTemplate = (templateSource) => (
-  String(templateSource || '').includes(INVOICE_TEMPLATE_SOURCE_EDITED2)
+  String(templateSource || '').includes(INVOICE_TEMPLATE_SOURCE_FIXED_NO_DEPOSIT_LONG)
+    ? INVOICE_LAYOUT_FIXED_LONG_NO_DEPOSIT
+    : String(templateSource || '').includes(INVOICE_TEMPLATE_SOURCE_FIXED_LONG)
+      ? INVOICE_LAYOUT_FIXED_LONG
+      : String(templateSource || '').includes(INVOICE_TEMPLATE_SOURCE_EDITED2)
     ? INVOICE_LAYOUT_EDITED2
     : String(templateSource || '').includes(INVOICE_TEMPLATE_SOURCE_FIXED_NO_DEPOSIT)
       ? INVOICE_LAYOUT_FIXED_NO_DEPOSIT
@@ -218,7 +241,21 @@ const byInvoiceOrder = (first, second) => {
   const customerB = String(second?.customerName || second?.customer_name || '');
   if (customerA !== customerB) return customerA.localeCompare(customerB);
 
+  const orderNumberA = normalizeOrderNumber(first?.order_number ?? first?.orderNumber);
+  const orderNumberB = normalizeOrderNumber(second?.order_number ?? second?.orderNumber);
+  if (orderNumberA !== null && orderNumberB !== null && orderNumberA !== orderNumberB) {
+    return orderNumberA - orderNumberB;
+  }
+  if (orderNumberA !== null && orderNumberB === null) return -1;
+  if (orderNumberA === null && orderNumberB !== null) return 1;
+
   return String(first?.id || '').localeCompare(String(second?.id || ''), undefined, { numeric: true });
+};
+
+const resolveInvoiceNumber = (order, fallbackNumber) => {
+  const orderNumber = normalizeOrderNumber(order?.order_number ?? order?.orderNumber);
+  if (orderNumber !== null) return String(orderNumber);
+  return String(fallbackNumber);
 };
 
 const collectLocationOrderIds = (locationGroup) => {
@@ -492,7 +529,13 @@ const renderInvoicePage = ({
 
   setCanvasFont(context, INVOICE_FONT_SIZES.clientMeta);
   context.fillStyle = darkColor;
-  const clientLines = buildInvoiceClientLines(order, context, 780, layout);
+  const clientTextMaxWidth = Math.max(
+    Number(layout.clientNameMaxWidth) || 0,
+    Number(layout.clientContactMaxWidth) || 0,
+    Number(layout.clientAddressMaxWidth) || 0,
+    780
+  );
+  const clientLines = buildInvoiceClientLines(order, context, clientTextMaxWidth, layout);
   clientLines.forEach((line, index) => {
     if (index < layout.clientYRows.length) {
       context.fillText(line, layout.clientX, layout.clientYRows[index]);
@@ -735,7 +778,7 @@ const exportInvoicesPdf = async ({ orders, groupDate, locationGroup }) => {
       doc,
       order,
       template,
-      invoiceNumber: String(index + 1)
+      invoiceNumber: resolveInvoiceNumber(order, index + 1)
     });
   });
 

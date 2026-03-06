@@ -77,7 +77,7 @@ const ADMIN_STRINGS = {
 
   // Search page
   'search.loading':         { en: 'Loading customers...', fr: 'Chargement des clients...' },
-  'search.placeholder':     { en: 'Search by name, phone, email', fr: 'Rechercher par nom, tél., courriel' },
+  'search.placeholder':     { en: 'Search by name, phone, email, order #', fr: 'Rechercher par nom, tél., courriel, no commande' },
   'search.title':           { en: 'Customers',         fr: 'Clients' },
   'search.empty':           { en: 'No customers match that search.', fr: 'Aucun client ne correspond.' },
   'search.orders':          { en: '{count} orders - last {date}', fr: '{count} commandes - dernière {date}' },

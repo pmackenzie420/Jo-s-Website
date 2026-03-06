@@ -137,6 +137,80 @@ async function migrate() {
             END $$;
         `);
 
+        // Ensure public-facing sequential order numbers exist.
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (
+                    SELECT 1
+                    FROM pg_class
+                    WHERE relkind = 'S'
+                      AND relname = 'orders_order_number_seq'
+                ) THEN
+                    CREATE SEQUENCE orders_order_number_seq;
+                END IF;
+            END $$;
+        `);
+
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='order_number') THEN
+                    ALTER TABLE orders ADD COLUMN order_number BIGINT;
+                END IF;
+            END $$;
+        `);
+
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='order_number') THEN
+                    ALTER TABLE orders
+                    ALTER COLUMN order_number SET DEFAULT nextval('orders_order_number_seq');
+                END IF;
+            END $$;
+        `);
+
+        await pool.query(`
+            WITH missing AS (
+                SELECT
+                    id,
+                    ROW_NUMBER() OVER (ORDER BY created_at ASC, id ASC) AS rn
+                FROM orders
+                WHERE order_number IS NULL
+            ),
+            current_max AS (
+                SELECT COALESCE(MAX(order_number), 0) AS base
+                FROM orders
+            )
+            UPDATE orders
+            SET order_number = current_max.base + missing.rn
+            FROM missing, current_max
+            WHERE orders.id = missing.id;
+        `);
+
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='order_number') THEN
+                    ALTER TABLE orders ALTER COLUMN order_number SET NOT NULL;
+                END IF;
+            END $$;
+        `);
+
+        await pool.query(`
+            CREATE UNIQUE INDEX IF NOT EXISTS orders_order_number_unique_idx
+            ON orders (order_number);
+        `);
+
+        await pool.query(`
+            SELECT setval(
+                'orders_order_number_seq',
+                GREATEST(COALESCE((SELECT MAX(order_number) FROM orders), 0), 1),
+                EXISTS (SELECT 1 FROM orders)
+            );
+        `);
+
         // Ensure customer_email remains optional for admin-created orders.
         await pool.query(`
             DO $$

@@ -5,7 +5,8 @@ import {
   parsePickupKey,
   normalizeDate,
   formatDateLong,
-  normalizeStatus
+  normalizeStatus,
+  getOrderNumberText
 } from './admin-utils';
 import { t, tf } from './admin-i18n';
 import {
@@ -217,12 +218,14 @@ export default function useAdminController() {
 
         const params = new URLSearchParams(window.location.search);
         const stripeOrderId = params.get('stripe_order');
+        const stripeOrderNumber = params.get('stripe_order_number');
         if (stripeOrderId) {
           window.history.replaceState({}, '', window.location.pathname);
           try {
             await finalizeAdminOrder(stripeOrderId);
             await refreshOrders({ quiet: true });
-            showToast({ type: 'success', text: tf('toast.stripeConfirmed', adminLanguage, { id: stripeOrderId }) });
+            const stripeRef = String(stripeOrderNumber || stripeOrderId).trim();
+            showToast({ type: 'success', text: tf('toast.stripeConfirmed', adminLanguage, { id: stripeRef }) });
           } catch {
             showToast({ type: 'error', text: t('toast.stripeConfirmFailed', adminLanguage) });
           }
@@ -826,12 +829,15 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
           return data;
         }
         const orderId = data.orderId;
+        const orderRef = String(data.orderNumber || orderId || '').trim();
         showToast({
           type: 'success',
-          text: orderId ? tf('toast.orderCreatedId', adminLanguage, { id: orderId }) : t('toast.orderCreated', adminLanguage)
+          text: orderRef ? tf('toast.orderCreatedId', adminLanguage, { id: orderRef }) : t('toast.orderCreated', adminLanguage)
         });
         await Promise.all([refreshMeta(), refreshOrders({ quiet: true })]);
-        return data.success ? data : { success: true, orderId };
+        return data.success
+          ? data
+          : { success: true, orderId, orderNumber: data.orderNumber || null };
       } catch (error) {
         const status = error?.response?.status;
         const errData = error?.response?.data;
@@ -883,9 +889,10 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
 
       try {
         await deleteAdminOrder(orderId);
+        const orderRef = getOrderNumberText(order) || orderId;
         showToast({
           type: 'success',
-          text: tf('toast.orderDeleted', adminLanguage, { id: orderId })
+          text: tf('toast.orderDeleted', adminLanguage, { id: orderRef })
         });
         setSelectedPickup(null);
         await Promise.all([refreshMeta(), refreshOrders({ quiet: true })]);
@@ -908,14 +915,17 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     async (orderId, payload) => {
       try {
         const response = await updateAdminOrder({ orderId, payload });
+        const data = response.data || {};
+        const fallbackOrder = ordersWithDetails.find((order) => String(order.id) === String(orderId));
+        const orderRef = String(data.orderNumber || getOrderNumberText(fallbackOrder) || orderId).trim();
         showToast({
           type: 'success',
-          text: tf('toast.orderUpdated', adminLanguage, { id: orderId })
+          text: tf('toast.orderUpdated', adminLanguage, { id: orderRef })
         });
         setEditingOrder(null);
         setSelectedPickup(null);
         await Promise.all([refreshMeta(), refreshOrders({ quiet: true })]);
-        return response.data || {};
+        return data;
       } catch (error) {
         const status = error?.response?.status;
         const data = error?.response?.data;
@@ -929,7 +939,7 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
         throw error;
       }
     },
-    [adminLanguage, showToast, refreshMeta, refreshOrders]
+    [adminLanguage, showToast, refreshMeta, refreshOrders, ordersWithDetails]
   );
 
   const handleTabChange = useCallback((key) => {
