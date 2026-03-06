@@ -23,6 +23,15 @@ export default function AdminPickupModal({
   const effectiveStatus = normalizeStatus(
     optimisticStatuses[pickup.key] || pickup.status
   );
+  const orderNumbers = Array.from(
+    new Set(
+      (Array.isArray(pickup.orders) ? pickup.orders : [])
+        .map((order) => getOrderNumberText(order))
+        .filter(Boolean)
+    )
+  );
+  const orderNumbersDisplay = orderNumbers.map((orderNumber) => `#${orderNumber}`).join(', ');
+  const orderNumbersLabel = adminLanguage === 'fr' ? 'No commande' : 'Order';
 
   return (
     <div className="customer-modal-backdrop" role="dialog" aria-modal="true">
@@ -30,6 +39,9 @@ export default function AdminPickupModal({
         <div className="customer-modal-header">
           <div>
             <div className="detail-name">{pickup.customerName}</div>
+            {orderNumbersDisplay && (
+              <div className="detail-meta">{orderNumbersLabel} {orderNumbersDisplay}</div>
+            )}
             <div className="detail-meta">
               {t('pickup.pickupLabel', adminLanguage)} {formatDateLong(pickup.pickupDate, adminLanguage)} ·{' '}
               {pickup.pickupLocationLabel || pickup.pickupLocation}
