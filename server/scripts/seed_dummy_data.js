@@ -183,13 +183,16 @@ const ensureSchema = async (client) => {
         CREATE OR REPLACE FUNCTION assign_order_number_for_active_order()
         RETURNS TRIGGER AS $$
         BEGIN
-            IF LOWER(COALESCE(NEW.status, 'pending')) IN ('cancelled', 'reserved', 'archived') THEN
-                NEW.order_number := NULL;
-                RETURN NEW;
+            IF TG_OP = 'UPDATE'
+               AND OLD.order_number IS NOT NULL
+               AND NEW.order_number IS DISTINCT FROM OLD.order_number THEN
+                RAISE EXCEPTION 'order_number is immutable once assigned';
             END IF;
 
             IF NEW.order_number IS NULL THEN
-                NEW.order_number := nextval('orders_order_number_seq');
+                IF LOWER(COALESCE(NEW.status, 'pending')) NOT IN ('cancelled', 'reserved', 'archived') THEN
+                    NEW.order_number := nextval('orders_order_number_seq');
+                END IF;
             END IF;
 
             RETURN NEW;
