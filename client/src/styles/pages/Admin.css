@@ -478,11 +478,42 @@ body.admin-modal-open .admin-main {
   background: var(--admin-surface);
 }
 
+.pickup-section-toggle {
+  width: 100%;
+  border: none;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  font-family: inherit;
+}
+
 .pickup-location-title {
   font-size: 28px;
   font-weight: 700;
   color: var(--admin-ink);
   margin-bottom: 0;
+}
+
+.pickup-section-count {
+  margin-left: auto;
+  font-size: 13px;
+  color: var(--admin-muted);
+  font-weight: 600;
+}
+
+.pickup-section-chevron {
+  font-size: 14px;
+  color: var(--admin-muted);
+  transition: transform 0.2s ease;
+}
+
+.pickup-section-chevron.open {
+  transform: rotate(180deg);
 }
 
 .pickup-location-meta {

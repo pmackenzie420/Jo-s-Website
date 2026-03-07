@@ -15,7 +15,6 @@ export default function AdminPickupModal({
   onMarkPickedUp,
   onExportOrderInvoice,
   onEditOrder,
-  onDeleteOrder,
   onArchiveOrder
 }) {
   if (!pickup) return null;
@@ -92,13 +91,15 @@ export default function AdminPickupModal({
             ? t('pickup.pickedUp', adminLanguage)
             : t('pickup.markPickedUp', adminLanguage)}
         </button>
-        {effectiveStatus === 'cancelled' && onArchiveOrder && (
+        {['cancelled', 'archived'].includes(effectiveStatus) && onArchiveOrder && (
           <button
             type="button"
             className="admin-button ghost"
             onClick={() => onArchiveOrder(pickup)}
           >
-            {t('pickup.archive', adminLanguage)}
+            {effectiveStatus === 'archived'
+              ? t('pickup.unarchive', adminLanguage)
+              : t('pickup.archive', adminLanguage)}
           </button>
         )}
         {pickup.mergedItems?.length > 0 && (
@@ -131,6 +132,10 @@ export default function AdminPickupModal({
                   const orderStatus = normalizeStatus(order?.status);
                   const canExportInvoice = orderStatus !== 'cancelled' && orderStatus !== 'archived' && orderStatus !== 'reserved';
                   const orderNumberText = getOrderNumberText(order);
+                  const canToggleArchive = ['pending', 'paid', 'cancelled', 'archived'].includes(orderStatus);
+                  const archiveLabel = orderStatus === 'archived'
+                    ? t('pickup.unarchive', adminLanguage)
+                    : t('pickup.archive', adminLanguage);
                   return (
                     <div key={order.id} className="history-row">
                       <div>
@@ -168,13 +173,13 @@ export default function AdminPickupModal({
                           <button
                             type="button"
                             className="admin-button ghost small danger"
-                            onClick={() => onDeleteOrder?.(order)}
+                            onClick={() => onArchiveOrder?.(order)}
                             disabled={
-                              typeof onDeleteOrder !== 'function'
-                              || !['pending', 'paid'].includes(String(order.status || '').toLowerCase())
+                              typeof onArchiveOrder !== 'function'
+                              || !canToggleArchive
                             }
                           >
-                            {t('btn.delete', adminLanguage)}
+                            {archiveLabel}
                           </button>
                         </div>
                       </div>

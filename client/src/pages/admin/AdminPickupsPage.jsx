@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import {
   formatDateHeader,
   normalizeStatus,
@@ -10,6 +11,7 @@ export default function AdminPickupsPage({
   dataLoading,
   groupedPickups,
   failedPickups,
+  archivedPickups,
   isMobile,
   optimisticStatuses,
   ordersHasMore,
@@ -24,10 +26,17 @@ export default function AdminPickupsPage({
   onExportGroup,
   onBulkPickup
 }) {
+  const [showDraftOrders, setShowDraftOrders] = useState(true);
+  const [showArchivedOrders, setShowArchivedOrders] = useState(true);
+
   if (dataLoading) {
     return <div className="admin-panel">{t('pickups.loading', adminLanguage)}</div>;
   }
-  if (groupedPickups.length === 0 && (!failedPickups || failedPickups.length === 0)) {
+  if (
+    groupedPickups.length === 0
+    && (!failedPickups || failedPickups.length === 0)
+    && (!archivedPickups || archivedPickups.length === 0)
+  ) {
     return <div className="admin-panel">{t('pickups.empty', adminLanguage)}</div>;
   }
 
@@ -104,21 +113,51 @@ export default function AdminPickupsPage({
     );
   };
 
-  const renderFailedOrdersSection = () => {
-    if (!Array.isArray(failedPickups) || failedPickups.length === 0) return null;
+  const renderStatusSection = ({
+    title,
+    orders,
+    expanded,
+    onToggle
+  }) => {
+    if (!Array.isArray(orders) || orders.length === 0) return null;
     return (
       <section className="pickup-day stagger-item">
         <div className="pickup-location">
           <div className="pickup-location-header">
-            <div className="pickup-location-title">{t('pickups.failedOrders', adminLanguage)}</div>
+            <button
+              type="button"
+              className="pickup-section-toggle"
+              onClick={onToggle}
+              aria-expanded={expanded}
+            >
+              <span className="pickup-location-title">{title}</span>
+              <span className="pickup-section-count">{orders.length}</span>
+              <span className={`pickup-section-chevron ${expanded ? 'open' : ''}`} aria-hidden="true">▾</span>
+            </button>
           </div>
-          <div className="pickup-list">
-            {failedPickups.map((order) => renderPickupRow(order))}
-          </div>
+          {expanded && (
+            <div className="pickup-list">
+              {orders.map((order) => renderPickupRow(order))}
+            </div>
+          )}
         </div>
       </section>
     );
   };
+
+  const renderFailedOrdersSection = () => renderStatusSection({
+    title: t('pickups.failedOrders', adminLanguage),
+    orders: failedPickups,
+    expanded: showDraftOrders,
+    onToggle: () => setShowDraftOrders((prev) => !prev)
+  });
+
+  const renderArchivedOrdersSection = () => renderStatusSection({
+    title: t('pickups.archivedOrders', adminLanguage),
+    orders: archivedPickups,
+    expanded: showArchivedOrders,
+    onToggle: () => setShowArchivedOrders((prev) => !prev)
+  });
 
   if (isMobile) {
     return (
@@ -206,6 +245,7 @@ export default function AdminPickupsPage({
           ))
         )}
         {renderFailedOrdersSection()}
+        {renderArchivedOrdersSection()}
         {renderStonksCard()}
       </div>
     );
@@ -300,6 +340,7 @@ export default function AdminPickupsPage({
         ))}
       </div>
       {renderFailedOrdersSection()}
+      {renderArchivedOrdersSection()}
       {renderStonksCard()}
     </div>
   );

@@ -45,7 +45,7 @@ const ADMIN_ALLOWED_ORDER_STATUSES = new Set([
     'archived'
 ]);
 const ADMIN_EDITABLE_ORDER_STATUSES = new Set(['pending', 'paid']);
-const ADMIN_DELETABLE_ORDER_STATUSES = new Set(['pending', 'paid']);
+const ADMIN_ARCHIVABLE_ORDER_STATUSES = new Set(['pending', 'paid', 'cancelled']);
 const VALID_ADMIN_PAYMENT_METHODS = new Set(['etransfer', 'cash', 'cheque', 'credit_card']);
 
 const parsePositiveInt = (value, fallback) => {
@@ -152,18 +152,15 @@ const buildStatusEditBlockedMessage = (status) => {
 const buildStatusDeleteBlockedMessage = (status) => {
     const normalized = String(status || '').trim().toLowerCase();
     if (normalized === 'reserved') {
-        return 'This order is awaiting Stripe payment and cannot be deleted.';
+        return 'This order is awaiting Stripe payment and cannot be archived.';
     }
     if (normalized === 'picked_up' || normalized === 'fulfilled') {
-        return 'Picked-up orders cannot be deleted.';
-    }
-    if (normalized === 'cancelled') {
-        return 'Cancelled orders cannot be deleted.';
+        return 'Picked-up orders cannot be archived.';
     }
     if (normalized === 'archived') {
-        return 'Archived orders cannot be deleted.';
+        return 'Order is already archived.';
     }
-    return `Orders with status "${normalized || 'unknown'}" cannot be deleted.`;
+    return `Orders with status "${normalized || 'unknown'}" cannot be archived.`;
 };
 
 const createInsufficientStockError = ({
@@ -1443,7 +1440,7 @@ const registerAdminRoutes = (app, deps) => {
 
                 const existingOrder = existingOrderResult.rows[0];
                 const existingStatus = String(existingOrder.status || 'pending').trim().toLowerCase();
-                if (!ADMIN_DELETABLE_ORDER_STATUSES.has(existingStatus)) {
+                if (!ADMIN_ARCHIVABLE_ORDER_STATUSES.has(existingStatus)) {
                     return {
                         status: 'blocked_status',
                         existingStatus
@@ -1453,7 +1450,8 @@ const registerAdminRoutes = (app, deps) => {
                 const pickupDate = formatPickupDate(existingOrder.pickup_date);
                 const pickupLocation = sanitizeText(existingOrder.pickup_location, 40);
                 const storedItems = normalizeStoredOrderItems(existingOrder.items);
-                if (pickupDate && pickupLocation && storedItems.length > 0) {
+                const shouldReleaseStock = existingStatus === 'pending' || existingStatus === 'paid';
+                if (shouldReleaseStock && pickupDate && pickupLocation && storedItems.length > 0) {
                     const pickupDateId = await findPickupDateId(client, pickupDate, pickupLocation);
                     if (pickupDateId) {
                         await releaseStockForItems(client, {
@@ -1463,9 +1461,12 @@ const registerAdminRoutes = (app, deps) => {
                     }
                 }
 
-                await client.query('DELETE FROM orders WHERE id = $1', [orderId]);
+                await client.query(
+                    'UPDATE orders SET status = $1 WHERE id = $2',
+                    ['archived', orderId]
+                );
                 return {
-                    status: 'deleted',
+                    status: 'archived',
                     orderId,
                     orderNumber: Number(existingOrder.order_number) || null
                 };
@@ -1483,10 +1484,11 @@ const registerAdminRoutes = (app, deps) => {
             return res.json({
                 success: true,
                 orderId: deleteResult.orderId,
-                orderNumber: Number(deleteResult.orderNumber) || null
+                orderNumber: Number(deleteResult.orderNumber) || null,
+                status: 'archived'
             });
         } catch (err) {
-            return sendServerError(res, err, 'Failed to delete admin order');
+            return sendServerError(res, err, 'Failed to archive admin order');
         }
     });
 

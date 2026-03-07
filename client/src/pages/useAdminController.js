@@ -22,7 +22,6 @@ import {
   updateOrdersStatus,
   createAdminOrder,
   updateAdminOrder,
-  deleteAdminOrder,
   finalizeAdminOrder
 } from './admin-api';
 import {
@@ -251,8 +250,13 @@ export default function useAdminController() {
     [orders, hens, adminLanguage]
   );
 
-  const failedOrdersWithDetails = useMemo(
+  const cancelledOrdersWithDetails = useMemo(
     () => ordersWithDetails.filter((order) => normalizeStatus(order.status) === 'cancelled'),
+    [ordersWithDetails]
+  );
+
+  const archivedOrdersWithDetails = useMemo(
+    () => ordersWithDetails.filter((order) => normalizeStatus(order.status) === 'archived'),
     [ordersWithDetails]
   );
 
@@ -300,9 +304,10 @@ export default function useAdminController() {
     [nonFailedOrdersWithDetails]
   );
 
-  const failedPickups = useMemo(
-    () => failedOrdersWithDetails.map((order) => ({
-      key: `failed-${order.id}`,
+  const buildStatusPickupRows = useCallback(
+    (ordersList, statusValue, defaultPaymentSummary, keyPrefix) => (
+      ordersList.map((order) => ({
+      key: `${keyPrefix}-${order.id}`,
       customerName: order.customerName,
       customerPhone: order.customerPhone,
       customerEmail: order.customerEmail,
@@ -310,7 +315,7 @@ export default function useAdminController() {
       pickupDate: order.pickupDate,
       pickupLocation: order.pickupLocation,
       pickupLocationLabel: order.pickupLocationLabel,
-      status: 'cancelled',
+      status: statusValue,
       itemCount: order.itemCount,
       itemSummary: order.itemSummary,
       itemSummaryCompact: order.itemSummaryCompact,
@@ -318,18 +323,29 @@ export default function useAdminController() {
       totalAmount: order.totalAmount,
       amountPaid: order.amountPaid,
       amountDue: order.amountDue,
-      paymentSummary: order.paymentSummary || 'Cancelled',
+      paymentSummary: order.paymentSummary || defaultPaymentSummary,
       activeOrderIds: [],
       orderIds: [order.id],
       mergedItems: (order.orderItems || [])
         .map((item) => ({
           displayName: item.displayName,
           quantity: Number(item.quantity || 0)
-        }))
+      }))
         .filter((item) => item.quantity > 0),
       orders: [order]
-    })),
-    [failedOrdersWithDetails]
+      }))
+    ),
+    []
+  );
+
+  const failedPickups = useMemo(
+    () => buildStatusPickupRows(cancelledOrdersWithDetails, 'cancelled', 'Cancelled', 'failed'),
+    [cancelledOrdersWithDetails, buildStatusPickupRows]
+  );
+
+  const archivedPickups = useMemo(
+    () => buildStatusPickupRows(archivedOrdersWithDetails, 'archived', 'Archived', 'archived'),
+    [archivedOrdersWithDetails, buildStatusPickupRows]
   );
 
   useEffect(() => {
@@ -337,7 +353,7 @@ export default function useAdminController() {
     const groupedOrders = groupedPickups
       .flatMap((group) => group.locations || [])
       .flatMap((locationGroup) => locationGroup.orders || []);
-    const nextPickup = [...groupedOrders, ...failedPickups]
+    const nextPickup = [...groupedOrders, ...failedPickups, ...archivedPickups]
       .find((pickup) => pickup.key === selectedPickup.key);
     if (!nextPickup) {
       setSelectedPickup(null);
@@ -346,7 +362,7 @@ export default function useAdminController() {
     if (nextPickup !== selectedPickup) {
       setSelectedPickup(nextPickup);
     }
-  }, [groupedPickups, failedPickups, selectedPickup]);
+  }, [groupedPickups, failedPickups, archivedPickups, selectedPickup]);
 
   useEffect(() => {
     if (!selectedCustomer) return;
@@ -865,12 +881,28 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
 
   const handleArchiveOrder = useCallback(
     async (order) => {
-      if (!order?.orderIds?.length) return;
-      const confirmed = window.confirm(t('confirm.archiveDraft', adminLanguage));
+      const ids = Array.from(
+        new Set(
+          Array.isArray(order?.orderIds)
+            ? order.orderIds.map((id) => String(id || '').trim()).filter(Boolean)
+            : [String(order?.id || '').trim()].filter(Boolean)
+        )
+      );
+      if (!ids.length) return;
+
+      const rawStatus = String(order?.status || '').trim().toLowerCase();
+      const isUnarchive = rawStatus === 'archived';
+      const targetStatus = isUnarchive ? 'pending' : 'archived';
+      const confirmKey = isUnarchive ? 'confirm.unarchiveOrder' : 'confirm.archiveOrder';
+      const successKey = isUnarchive ? 'toast.orderUnarchived' : 'toast.orderArchived';
+      const errorKey = isUnarchive ? 'toast.unarchiveFailed' : 'toast.archiveFailed';
+
+      const confirmed = window.confirm(t(confirmKey, adminLanguage));
       if (!confirmed) return;
-      const success = await updateOrderStatus(order.orderIds, 'archived', order.key, {
-        successMessage: t('toast.orderArchived', adminLanguage),
-        errorMessage: t('toast.archiveFailed', adminLanguage)
+
+      const success = await updateOrderStatus(ids, targetStatus, order?.key || `archive-${ids.join('-')}`, {
+        successMessage: t(successKey, adminLanguage),
+        errorMessage: t(errorKey, adminLanguage)
       });
       if (success) {
         setSelectedPickup(null);
@@ -884,41 +916,6 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     setSelectedPickup(null);
     setEditingOrder(order);
   }, []);
-
-  const handleDeleteOrder = useCallback(
-    async (order) => {
-      const orderId = String(order?.id || '').trim();
-      const orderStatus = String(order?.status || '').trim().toLowerCase();
-      if (!orderId || !['pending', 'paid'].includes(orderStatus)) {
-        return;
-      }
-
-      const confirmed = window.confirm(t('confirm.deleteOrder', adminLanguage));
-      if (!confirmed) return;
-
-      try {
-        await deleteAdminOrder(orderId);
-        const orderRef = getOrderNumberText(order) || orderId;
-        showToast({
-          type: 'success',
-          text: tf('toast.orderDeleted', adminLanguage, { id: orderRef })
-        });
-        setSelectedPickup(null);
-        await Promise.all([refreshMeta(), refreshOrders({ quiet: true })]);
-      } catch (error) {
-        const status = error?.response?.status;
-        const data = error?.response?.data;
-        const message = (() => {
-          if (status === 401) return t('toast.unauthorized', adminLanguage);
-          if (status === 404) return t('toast.orderNotFound', adminLanguage);
-          if (data && typeof data === 'object' && typeof data.error === 'string') return data.error;
-          return t('toast.deleteFailed', adminLanguage);
-        })();
-        showToast({ type: 'error', text: message });
-      }
-    },
-    [adminLanguage, showToast, refreshMeta, refreshOrders]
-  );
 
   const handleUpdateAdminOrder = useCallback(
     async (orderId, payload) => {
@@ -1003,6 +1000,7 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     dateInputRef,
     groupedPickups,
     failedPickups,
+    archivedPickups,
     filteredCustomers,
     orderCountByPickupKey,
     addDateButtonLabel,
@@ -1042,7 +1040,6 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     handleCreateAdminOrder,
     handleArchiveOrder,
     handleEditOrder,
-    handleDeleteOrder,
     handleUpdateAdminOrder
   };
 }

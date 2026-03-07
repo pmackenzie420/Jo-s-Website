@@ -53,6 +53,7 @@ export default function Admin() {
     dateInputRef,
     groupedPickups,
     failedPickups,
+    archivedPickups,
     filteredCustomers,
     orderCountByPickupKey,
     addDateButtonLabel,
@@ -92,7 +93,6 @@ export default function Admin() {
     handleCreateAdminOrder,
     handleArchiveOrder,
     handleEditOrder,
-    handleDeleteOrder,
     handleUpdateAdminOrder
   } = useAdminController();
 
@@ -224,6 +224,7 @@ export default function Admin() {
               dataLoading={dataLoading}
               groupedPickups={groupedPickups}
               failedPickups={failedPickups}
+              archivedPickups={archivedPickups}
               isMobile={isMobile}
               optimisticStatuses={optimisticStatuses}
               ordersHasMore={ordersHasMore}
@@ -356,7 +357,6 @@ export default function Admin() {
         onMarkPickedUp={handleMarkPickedUp}
         onExportOrderInvoice={handleInvoiceExportForOrder}
         onEditOrder={handleEditOrder}
-        onDeleteOrder={handleDeleteOrder}
         onArchiveOrder={handleArchiveOrder}
       />
       <AdminEditOrderModal

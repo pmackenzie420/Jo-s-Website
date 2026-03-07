@@ -867,8 +867,8 @@ test('admin order update returns stock conflict details when target pickup lacks
     );
 });
 
-test('admin order delete releases stock and removes pending order', async () => {
-    let deleteParams = null;
+test('admin order delete endpoint archives pending order and releases stock', async () => {
+    let archiveParams = null;
     const releasedStockParams = [];
 
     const pool = {
@@ -903,8 +903,8 @@ test('admin order delete releases stock and removes pending order', async () => 
                 releasedStockParams.push(params);
                 return { rowCount: 1, rows: [] };
             }
-            if (normalizedSql.includes('DELETE FROM orders WHERE id = $1')) {
-                deleteParams = params;
+            if (normalizedSql.includes('UPDATE orders SET status = $1 WHERE id = $2')) {
+                archiveParams = params;
                 return { rowCount: 1, rows: [] };
             }
             throw new Error(`Unexpected SQL: ${normalizedSql}`);
@@ -923,8 +923,9 @@ test('admin order delete releases stock and removes pending order', async () => 
     assert.equal(res.statusCode, 200);
     assert.equal(res.body?.success, true);
     assert.equal(res.body?.orderId, 'order-delete-1');
+    assert.equal(res.body?.status, 'archived');
     assert.deepEqual(releasedStockParams, [['pickup-date-1', 1, 2]]);
-    assert.deepEqual(deleteParams, ['order-delete-1']);
+    assert.deepEqual(archiveParams, ['archived', 'order-delete-1']);
 });
 
 test('admin order delete blocks picked-up orders', async () => {
@@ -944,7 +945,7 @@ test('admin order delete blocks picked-up orders', async () => {
                     }]
                 };
             }
-            if (normalizedSql.includes('DELETE FROM orders WHERE id = $1')) {
+            if (normalizedSql.includes('UPDATE orders SET status = $1 WHERE id = $2')) {
                 deleteCalled = true;
                 return { rowCount: 1, rows: [] };
             }
@@ -962,7 +963,7 @@ test('admin order delete blocks picked-up orders', async () => {
     await handler(req, res);
 
     assert.equal(res.statusCode, 400);
-    assert.equal(res.body?.error, 'Picked-up orders cannot be deleted.');
+    assert.equal(res.body?.error, 'Picked-up orders cannot be archived.');
     assert.equal(deleteCalled, false);
 });
 
