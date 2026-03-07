@@ -222,10 +222,19 @@ export default function useAdminController() {
         if (stripeOrderId) {
           window.history.replaceState({}, '', window.location.pathname);
           try {
-            await finalizeAdminOrder(stripeOrderId);
+            const finalizeResponse = await finalizeAdminOrder(stripeOrderId);
             await refreshOrders({ quiet: true });
-            const stripeRef = String(stripeOrderNumber || stripeOrderId).trim();
-            showToast({ type: 'success', text: tf('toast.stripeConfirmed', adminLanguage, { id: stripeRef }) });
+            const apiOrderNumber = Number(finalizeResponse?.data?.orderNumber);
+            const normalizedApiOrderNumber = Number.isFinite(apiOrderNumber) && apiOrderNumber > 0
+              ? String(Math.floor(apiOrderNumber))
+              : '';
+            const stripeRef = String(stripeOrderNumber || normalizedApiOrderNumber).trim();
+            showToast({
+              type: 'success',
+              text: stripeRef
+                ? tf('toast.stripeConfirmed', adminLanguage, { id: stripeRef })
+                : t('toast.stripeConfirmedGeneric', adminLanguage)
+            });
           } catch {
             showToast({ type: 'error', text: t('toast.stripeConfirmFailed', adminLanguage) });
           }

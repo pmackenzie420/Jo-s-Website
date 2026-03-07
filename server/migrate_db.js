@@ -166,9 +166,25 @@ async function migrate() {
             BEGIN
                 IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='order_number') THEN
                     ALTER TABLE orders
-                    ALTER COLUMN order_number SET DEFAULT nextval('orders_order_number_seq');
+                    ALTER COLUMN order_number DROP NOT NULL;
                 END IF;
             END $$;
+        `);
+
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='order_number') THEN
+                    ALTER TABLE orders
+                    ALTER COLUMN order_number DROP DEFAULT;
+                END IF;
+            END $$;
+        `);
+
+        await pool.query(`
+            UPDATE orders
+            SET order_number = NULL
+            WHERE LOWER(COALESCE(status, 'pending')) IN ('cancelled', 'reserved', 'archived');
         `);
 
         await pool.query(`
@@ -178,6 +194,7 @@ async function migrate() {
                     ROW_NUMBER() OVER (ORDER BY created_at ASC, id ASC) AS rn
                 FROM orders
                 WHERE order_number IS NULL
+                  AND LOWER(COALESCE(status, 'pending')) NOT IN ('cancelled', 'reserved', 'archived')
             ),
             current_max AS (
                 SELECT COALESCE(MAX(order_number), 0) AS base
@@ -193,7 +210,7 @@ async function migrate() {
             DO $$
             BEGIN
                 IF EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='order_number') THEN
-                    ALTER TABLE orders ALTER COLUMN order_number SET NOT NULL;
+                    ALTER TABLE orders ALTER COLUMN order_number DROP NOT NULL;
                 END IF;
             END $$;
         `);
@@ -204,10 +221,40 @@ async function migrate() {
         `);
 
         await pool.query(`
+            CREATE OR REPLACE FUNCTION assign_order_number_for_active_order()
+            RETURNS TRIGGER AS $$
+            BEGIN
+                IF LOWER(COALESCE(NEW.status, 'pending')) IN ('cancelled', 'reserved', 'archived') THEN
+                    NEW.order_number := NULL;
+                    RETURN NEW;
+                END IF;
+
+                IF NEW.order_number IS NULL THEN
+                    NEW.order_number := nextval('orders_order_number_seq');
+                END IF;
+
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        `);
+
+        await pool.query(`
+            DROP TRIGGER IF EXISTS orders_assign_order_number_before_write ON orders;
+        `);
+
+        await pool.query(`
+            CREATE TRIGGER orders_assign_order_number_before_write
+            BEFORE INSERT OR UPDATE OF status, order_number
+            ON orders
+            FOR EACH ROW
+            EXECUTE FUNCTION assign_order_number_for_active_order();
+        `);
+
+        await pool.query(`
             SELECT setval(
                 'orders_order_number_seq',
                 GREATEST(COALESCE((SELECT MAX(order_number) FROM orders), 0), 1),
-                EXISTS (SELECT 1 FROM orders)
+                EXISTS (SELECT 1 FROM orders WHERE order_number IS NOT NULL)
             );
         `);
 

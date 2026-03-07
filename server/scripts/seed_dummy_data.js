@@ -158,7 +158,7 @@ const ensureSchema = async (client) => {
     await client.query(`
         CREATE TABLE IF NOT EXISTS orders (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-            order_number BIGINT NOT NULL DEFAULT nextval('orders_order_number_seq'),
+            order_number BIGINT,
             customer_id UUID REFERENCES customers(id),
             customer_email TEXT,
             total_cents INTEGER NOT NULL DEFAULT 0,
@@ -178,6 +178,33 @@ const ensureSchema = async (client) => {
     await client.query(`
         CREATE UNIQUE INDEX IF NOT EXISTS orders_order_number_unique_idx
         ON orders (order_number)
+    `);
+    await client.query(`
+        CREATE OR REPLACE FUNCTION assign_order_number_for_active_order()
+        RETURNS TRIGGER AS $$
+        BEGIN
+            IF LOWER(COALESCE(NEW.status, 'pending')) IN ('cancelled', 'reserved', 'archived') THEN
+                NEW.order_number := NULL;
+                RETURN NEW;
+            END IF;
+
+            IF NEW.order_number IS NULL THEN
+                NEW.order_number := nextval('orders_order_number_seq');
+            END IF;
+
+            RETURN NEW;
+        END;
+        $$ LANGUAGE plpgsql
+    `);
+    await client.query(`
+        DROP TRIGGER IF EXISTS orders_assign_order_number_before_write ON orders
+    `);
+    await client.query(`
+        CREATE TRIGGER orders_assign_order_number_before_write
+        BEFORE INSERT OR UPDATE OF status, order_number
+        ON orders
+        FOR EACH ROW
+        EXECUTE FUNCTION assign_order_number_for_active_order()
     `);
     await client.query(`
         CREATE INDEX IF NOT EXISTS orders_pickup_status_idx

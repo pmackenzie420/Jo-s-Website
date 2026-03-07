@@ -1494,7 +1494,7 @@ const registerAdminRoutes = (app, deps) => {
         try {
             const orderId = req.params.id;
             const orderResult = await pool.query(
-                'SELECT stripe_payment_id, status FROM orders WHERE id = $1',
+                'SELECT stripe_payment_id, status, order_number FROM orders WHERE id = $1',
                 [orderId]
             );
             if (orderResult.rows.length === 0) {
@@ -1508,9 +1508,23 @@ const registerAdminRoutes = (app, deps) => {
             const session = await stripe.checkout.sessions.retrieve(stripeSessionId);
             if (session.payment_status === 'paid') {
                 const result = await finalizeOrderFromSession(session);
-                return res.json({ success: true, status: result.status });
+                const refreshedOrder = await pool.query(
+                    'SELECT status, order_number FROM orders WHERE id = $1',
+                    [orderId]
+                );
+                const refreshedRow = refreshedOrder.rows[0] || {};
+                return res.json({
+                    success: true,
+                    status: refreshedRow.status || result.status,
+                    orderNumber: Number(refreshedRow.order_number) || null
+                });
             }
-            return res.json({ success: true, status: order.status, payment_status: session.payment_status });
+            return res.json({
+                success: true,
+                status: order.status,
+                payment_status: session.payment_status,
+                orderNumber: Number(order.order_number) || null
+            });
         } catch (err) {
             return sendServerError(res, err, 'Failed to finalize payment');
         }

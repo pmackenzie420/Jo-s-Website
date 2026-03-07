@@ -232,6 +232,7 @@ const ADMIN_STRINGS = {
   'toast.orderUpdated':         { en: 'Order {id} updated.', fr: 'Commande {id} mise à jour.' },
   'toast.orderDeleted':         { en: 'Order {id} deleted.', fr: 'Commande {id} supprimée.' },
   'toast.stripeConfirmed':      { en: 'Order {id} payment confirmed.', fr: 'Paiement de la commande {id} confirmé.' },
+  'toast.stripeConfirmedGeneric': { en: 'Stripe payment confirmed.', fr: 'Paiement Stripe confirmé.' },
   'toast.stripeConfirmFailed':  { en: 'Could not confirm Stripe payment. The order may still be processing.', fr: 'Impossible de confirmer le paiement Stripe. La commande est peut-être encore en cours.' },
   'toast.wrongPassword':        { en: 'Wrong password. Try again.', fr: 'Mot de passe incorrect. Réessayez.' },
   'toast.tooManyAttempts':      { en: 'Too many attempts. Try later.', fr: 'Trop de tentatives. Réessayez plus tard.' },
