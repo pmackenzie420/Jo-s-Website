@@ -359,6 +359,137 @@ test('admin cancelling orders releases reserved stock before direct status updat
     assert.deepEqual(updateCalls[0], ['cancelled', ['2']]);
 });
 
+test('admin restoring archived orders to pending re-reserves stock first', async () => {
+    const reserveCalls = [];
+    let statusUpdateCall = null;
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('SELECT id, status, pickup_date, pickup_location, items FROM orders WHERE id = $1 FOR UPDATE')) {
+                assert.deepEqual(params, ['arch-1']);
+                return {
+                    rows: [{
+                        id: 'arch-1',
+                        status: 'archived',
+                        pickup_date: '2026-06-15',
+                        pickup_location: 'bristol',
+                        items: JSON.stringify([
+                            { id: 1, quantity: 3, name: 'Ready-to-Lay Hens / Poules Prêtes à Pondre' }
+                        ])
+                    }]
+                };
+            }
+            if (
+                normalizedSql.includes('FROM pickup_dates')
+                && normalizedSql.includes('WHERE is_active = true')
+                && normalizedSql.includes('date_value = $1')
+            ) {
+                assert.deepEqual(params, ['2026-06-15', 'bristol']);
+                return { rows: [{ id: 'pickup-date-restore-1' }] };
+            }
+            if (
+                normalizedSql.includes('UPDATE pickup_stock')
+                && normalizedSql.includes('SET stock = stock - $1')
+                && normalizedSql.includes('RETURNING stock')
+            ) {
+                reserveCalls.push(params);
+                return { rowCount: 1, rows: [{ stock: 2 }] };
+            }
+            if (normalizedSql.includes('UPDATE orders SET status = $1 WHERE id = $2')) {
+                statusUpdateCall = params;
+                return { rowCount: 1, rows: [] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const handlers = registerRoutesForTest(pool);
+    const handler = handlers['PUT /api/admin/orders/status'];
+    assert.ok(handler);
+
+    const req = {
+        body: {
+            ids: ['arch-1'],
+            status: 'pending'
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.success, true);
+    assert.deepEqual(reserveCalls, [[3, 'pickup-date-restore-1', 1]]);
+    assert.deepEqual(statusUpdateCall, ['pending', 'arch-1']);
+});
+
+test('admin restoring archived orders fails when stock is insufficient', async () => {
+    let statusUpdateCalled = false;
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('SELECT id, status, pickup_date, pickup_location, items FROM orders WHERE id = $1 FOR UPDATE')) {
+                assert.deepEqual(params, ['arch-2']);
+                return {
+                    rows: [{
+                        id: 'arch-2',
+                        status: 'archived',
+                        pickup_date: '2026-06-15',
+                        pickup_location: 'bristol',
+                        items: JSON.stringify([
+                            { id: 1, quantity: 9, name: 'Ready-to-Lay Hens / Poules Prêtes à Pondre' }
+                        ])
+                    }]
+                };
+            }
+            if (
+                normalizedSql.includes('FROM pickup_dates')
+                && normalizedSql.includes('WHERE is_active = true')
+                && normalizedSql.includes('date_value = $1')
+            ) {
+                assert.deepEqual(params, ['2026-06-15', 'bristol']);
+                return { rows: [{ id: 'pickup-date-restore-2' }] };
+            }
+            if (
+                normalizedSql.includes('UPDATE pickup_stock')
+                && normalizedSql.includes('SET stock = stock - $1')
+                && normalizedSql.includes('RETURNING stock')
+            ) {
+                return { rowCount: 0, rows: [] };
+            }
+            if (
+                normalizedSql.includes('UPDATE orders SET status = $1 WHERE id = $2')
+                || normalizedSql.includes('UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])')
+            ) {
+                statusUpdateCalled = true;
+                return { rowCount: 1, rows: [] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const handlers = registerRoutesForTest(pool);
+    const handler = handlers['PUT /api/admin/orders/status'];
+    assert.ok(handler);
+
+    const req = {
+        body: {
+            ids: ['arch-2'],
+            status: 'pending'
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 409);
+    assert.equal(
+        res.body?.error,
+        'Cannot unarchive order due to insufficient stock for Ready-to-Lay Hens / Poules Prêtes à Pondre.'
+    );
+    assert.equal(statusUpdateCalled, false);
+});
+
 test('admin order update changes pickup date/amount and allows paid/email updates', async () => {
     let pickupDateLookupCount = 0;
     let ordersUpdatedParams = null;

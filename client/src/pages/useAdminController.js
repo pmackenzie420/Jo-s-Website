@@ -892,7 +892,15 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
 
       const rawStatus = String(order?.status || '').trim().toLowerCase();
       const isUnarchive = rawStatus === 'archived';
-      const targetStatus = isUnarchive ? 'pending' : 'archived';
+      const restoredStatus = (() => {
+        const amountDue = Number(order?.amountDue);
+        const amountPaid = Number(order?.amountPaid);
+        if (Number.isFinite(amountDue) && Number.isFinite(amountPaid) && amountDue <= 0 && amountPaid > 0) {
+          return 'paid';
+        }
+        return 'pending';
+      })();
+      const targetStatus = isUnarchive ? restoredStatus : 'archived';
       const confirmKey = isUnarchive ? 'confirm.unarchiveOrder' : 'confirm.archiveOrder';
       const successKey = isUnarchive ? 'toast.orderUnarchived' : 'toast.orderArchived';
       const errorKey = isUnarchive ? 'toast.unarchiveFailed' : 'toast.archiveFailed';

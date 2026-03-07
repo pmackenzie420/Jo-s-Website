@@ -46,6 +46,7 @@ const ADMIN_ALLOWED_ORDER_STATUSES = new Set([
 ]);
 const ADMIN_EDITABLE_ORDER_STATUSES = new Set(['pending', 'paid']);
 const ADMIN_ARCHIVABLE_ORDER_STATUSES = new Set(['pending', 'paid', 'cancelled']);
+const ADMIN_RESTORE_FROM_ARCHIVE_STATUSES = new Set(['pending', 'paid']);
 const VALID_ADMIN_PAYMENT_METHODS = new Set(['etransfer', 'cash', 'cheque', 'credit_card']);
 
 const parsePositiveInt = (value, fallback) => {
@@ -829,6 +830,90 @@ const registerAdminRoutes = (app, deps) => {
                 for (const orderId of uniqueIds) {
                     const releaseResult = await releaseReservedOrder(orderId, { expireStripeSession: true });
                     if (releaseResult?.status === 'not_reserved') {
+                        directUpdateIds.push(orderId);
+                    }
+                }
+                if (directUpdateIds.length > 0) {
+                    await pool.query(
+                        'UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])',
+                        [status, directUpdateIds]
+                    );
+                }
+            } else if (ADMIN_RESTORE_FROM_ARCHIVE_STATUSES.has(status)) {
+                const directUpdateIds = [];
+                for (const orderId of uniqueIds) {
+                    const restoreResult = await runInTransaction(async (client) => {
+                        const existingOrderResult = await client.query(
+                            `
+                            SELECT id, status, pickup_date, pickup_location, items
+                            FROM orders
+                            WHERE id = $1
+                            FOR UPDATE
+                            `,
+                            [orderId]
+                        );
+                        if (existingOrderResult.rows.length === 0) {
+                            return { status: 'missing_order' };
+                        }
+
+                        const existingOrder = existingOrderResult.rows[0];
+                        const existingStatus = String(existingOrder.status || 'pending').trim().toLowerCase();
+                        if (existingStatus !== 'archived') {
+                            return { status: 'not_archived' };
+                        }
+
+                        const pickupDate = formatPickupDate(existingOrder.pickup_date);
+                        const pickupLocation = sanitizeText(existingOrder.pickup_location, 40);
+                        const storedItems = normalizeStoredOrderItems(existingOrder.items);
+
+                        if (storedItems.length > 0) {
+                            const pickupDateId = await findPickupDateId(client, pickupDate, pickupLocation);
+                            if (!pickupDateId) {
+                                return { status: 'pickup_unavailable', orderId };
+                            }
+
+                            for (const item of storedItems) {
+                                const required = Number(item.quantity || 0);
+                                if (!Number.isInteger(required) || required <= 0) continue;
+
+                                const reserveResult = await client.query(
+                                    `
+                                    UPDATE pickup_stock
+                                    SET stock = stock - $1
+                                    WHERE pickup_date_id = $2
+                                      AND hen_id = $3
+                                      AND stock >= $1
+                                    RETURNING stock
+                                    `,
+                                    [required, pickupDateId, item.id]
+                                );
+                                if (reserveResult.rowCount > 0) continue;
+                                return {
+                                    status: 'insufficient_stock',
+                                    orderId,
+                                    itemName: item.name || `Item #${item.id}`
+                                };
+                            }
+                        }
+
+                        await client.query(
+                            'UPDATE orders SET status = $1 WHERE id = $2',
+                            [status, orderId]
+                        );
+                        return { status: 'restored' };
+                    });
+
+                    if (restoreResult?.status === 'pickup_unavailable') {
+                        return res.status(409).json({
+                            error: 'Cannot unarchive order because its pickup date is no longer available.'
+                        });
+                    }
+                    if (restoreResult?.status === 'insufficient_stock') {
+                        return res.status(409).json({
+                            error: `Cannot unarchive order due to insufficient stock for ${restoreResult.itemName || 'one or more items'}.`
+                        });
+                    }
+                    if (restoreResult?.status === 'not_archived') {
                         directUpdateIds.push(orderId);
                     }
                 }
