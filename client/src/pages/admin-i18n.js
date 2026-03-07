@@ -35,6 +35,8 @@ const ADMIN_STRINGS = {
   'pickups.exportTitle':    { en: 'Export List',     fr: 'Exporter la liste' },
   'pickups.failedOrders':   { en: 'Order Drafts',     fr: 'Brouillons de commandes' },
   'pickups.archivedOrders': { en: 'Archived Orders',   fr: 'Commandes archivées' },
+  'pickups.expand':         { en: 'Expand',            fr: 'Dérouler' },
+  'pickups.collapse':       { en: 'Collapse',          fr: 'Replier' },
   'pickups.items':          { en: '{count} items',    fr: '{count} articles' },
   // Pickup modal
   'pickup.pickupLabel':     { en: 'Pickup',          fr: 'Ramassage' },

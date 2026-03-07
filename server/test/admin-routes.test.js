@@ -879,6 +879,7 @@ test('admin order delete endpoint archives pending order and releases stock', as
                 return {
                     rows: [{
                         id: 'order-delete-1',
+                        order_number: 42,
                         status: 'pending',
                         pickup_date: '2026-06-01',
                         pickup_location: 'hemmingford',
@@ -924,6 +925,7 @@ test('admin order delete endpoint archives pending order and releases stock', as
     assert.equal(res.body?.success, true);
     assert.equal(res.body?.orderId, 'order-delete-1');
     assert.equal(res.body?.status, 'archived');
+    assert.equal(res.body?.orderNumber, 42);
     assert.deepEqual(releasedStockParams, [['pickup-date-1', 1, 2]]);
     assert.deepEqual(archiveParams, ['archived', 'order-delete-1']);
 });

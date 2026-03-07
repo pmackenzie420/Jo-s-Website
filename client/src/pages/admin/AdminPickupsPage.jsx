@@ -26,8 +26,8 @@ export default function AdminPickupsPage({
   onExportGroup,
   onBulkPickup
 }) {
-  const [showDraftOrders, setShowDraftOrders] = useState(true);
-  const [showArchivedOrders, setShowArchivedOrders] = useState(true);
+  const [showDraftOrders, setShowDraftOrders] = useState(false);
+  const [showArchivedOrders, setShowArchivedOrders] = useState(false);
 
   if (dataLoading) {
     return <div className="admin-panel">{t('pickups.loading', adminLanguage)}</div>;
@@ -131,8 +131,10 @@ export default function AdminPickupsPage({
               aria-expanded={expanded}
             >
               <span className="pickup-location-title">{title}</span>
-              <span className="pickup-section-count">{orders.length}</span>
-              <span className={`pickup-section-chevron ${expanded ? 'open' : ''}`} aria-hidden="true">▾</span>
+              <span className={`pickup-section-toggle-pill ${expanded ? 'open' : ''}`}>
+                {expanded ? t('pickups.collapse', adminLanguage) : t('pickups.expand', adminLanguage)}
+                <span className={`pickup-section-chevron ${expanded ? 'open' : ''}`} aria-hidden="true">▾</span>
+              </span>
             </button>
           </div>
           {expanded && (
