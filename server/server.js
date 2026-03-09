@@ -341,6 +341,7 @@ registerAdminRoutes(app, {
     sanitizeText,
     isValidEmail,
     sendEmailMessage,
+    sendOrderConfirmationEmail,
     formatPickupDate,
     handlePickupStockRequest,
     releaseReservedOrder,

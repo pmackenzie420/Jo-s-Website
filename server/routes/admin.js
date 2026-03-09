@@ -34,6 +34,7 @@ const {
     COMPANY_CONTACT
 } = require('../config/constants');
 const { buildBrandedEmailHtml } = require('../utils/email-template');
+const { logError } = require('../utils/logger');
 
 const ADMIN_ALLOWED_ORDER_STATUSES = new Set([
     'reserved',
@@ -339,6 +340,7 @@ const registerAdminRoutes = (app, deps) => {
         sanitizeText,
         isValidEmail,
         sendEmailMessage,
+        sendOrderConfirmationEmail,
         formatPickupDate,
         handlePickupStockRequest,
         releaseReservedOrder = async () => ({ status: 'not_reserved' }),
@@ -423,6 +425,19 @@ const registerAdminRoutes = (app, deps) => {
             throw err;
         } finally {
             client.release();
+        }
+    };
+
+    const attemptSendOrderConfirmationEmail = async (orderId, context) => {
+        if (!orderId || typeof sendOrderConfirmationEmail !== 'function') {
+            return { skipped: 'unavailable' };
+        }
+
+        try {
+            return await sendOrderConfirmationEmail(orderId);
+        } catch (err) {
+            logError(`Failed to send confirmation email after ${context} for order ${orderId}`, err);
+            return { skipped: 'send_failed' };
         }
     };
 
@@ -752,6 +767,10 @@ const registerAdminRoutes = (app, deps) => {
             const orderId = createdOrder.id;
             const orderNumber = Number(createdOrder.orderNumber) || null;
 
+            if (!isCreditCard && status === 'paid') {
+                await attemptSendOrderConfirmationEmail(orderId, 'admin order creation');
+            }
+
             if (isCreditCard && stripe) {
                 let stripeLineItems;
                 if (paymentType === 'deposit') {
@@ -928,6 +947,11 @@ const registerAdminRoutes = (app, deps) => {
                     'UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])',
                     [status, uniqueIds]
                 );
+            }
+            if (status === 'paid' && uniqueIds.length > 0) {
+                await sendWithConcurrency(uniqueIds, 10, async (orderId) => {
+                    await attemptSendOrderConfirmationEmail(orderId, 'admin status update');
+                });
             }
             return res.json({ success: true, message: 'Status updated' });
         } catch (err) {
@@ -1470,6 +1494,10 @@ const registerAdminRoutes = (app, deps) => {
                 return res.status(400).json({
                     error: `Amount paid cannot be reduced below the already recorded amount (${formatCents(updateResult.existingPaidCents)}). Reduction requested: ${formatCents(updateResult.reductionCents)}.`
                 });
+            }
+
+            if (updateResult.nextStatus === 'paid') {
+                await attemptSendOrderConfirmationEmail(updateResult.orderId, 'admin order update');
             }
 
             return res.json({

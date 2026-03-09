@@ -64,6 +64,7 @@ const registerRoutesForTest = (pool, overrides = {}) => {
         sanitizeText,
         isValidEmail,
         sendEmailMessage: async () => {},
+        sendOrderConfirmationEmail: async () => ({ sent: true }),
         formatPickupDate,
         handlePickupStockRequest: async (_req, res) => res.json({ ok: true }),
         ...overrides
@@ -359,6 +360,57 @@ test('admin cancelling orders releases reserved stock before direct status updat
     assert.deepEqual(updateCalls[0], ['cancelled', ['2']]);
 });
 
+test('admin status update to paid sends confirmation emails for updated orders', async () => {
+    const updateCalls = [];
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('SELECT id, status, pickup_date, pickup_location, items FROM orders WHERE id = $1 FOR UPDATE')) {
+                return {
+                    rows: [{
+                        id: String(params[0]),
+                        status: 'pending',
+                        pickup_date: '2026-06-01',
+                        pickup_location: 'hemmingford',
+                        items: JSON.stringify([{ id: 1, quantity: 1 }])
+                    }]
+                };
+            }
+            if (normalizedSql.includes('UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])')) {
+                updateCalls.push(params);
+                return { rowCount: 2, rows: [] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const confirmationCalls = [];
+    const handlers = registerRoutesForTest(pool, {
+        sendOrderConfirmationEmail: async (orderId) => {
+            confirmationCalls.push(String(orderId));
+            return { sent: true };
+        }
+    });
+
+    const handler = handlers['PUT /api/admin/orders/status'];
+    assert.ok(handler);
+
+    const req = {
+        body: {
+            ids: ['order-10', 'order-11'],
+            status: 'paid'
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.success, true);
+    assert.deepEqual(updateCalls, [['paid', ['order-10', 'order-11']]]);
+    assert.deepEqual(confirmationCalls, ['order-10', 'order-11']);
+});
+
 test('admin restoring archived orders to pending re-reserves stock first', async () => {
     const reserveCalls = [];
     let statusUpdateCall = null;
@@ -490,6 +542,219 @@ test('admin restoring archived orders fails when stock is insufficient', async (
     assert.equal(statusUpdateCalled, false);
 });
 
+test('admin create paid manual order sends confirmation email', async () => {
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+
+            if (
+                normalizedSql.includes('FROM pickup_dates')
+                && normalizedSql.includes('WHERE is_active = true')
+                && normalizedSql.includes('date_value = $1')
+            ) {
+                assert.deepEqual(params, ['2026-06-01', 'hemmingford']);
+                return { rows: [{ id: 'pickup-date-1' }] };
+            }
+            if (
+                normalizedSql.includes('SELECT id, name FROM hens')
+                && normalizedSql.includes('WHERE is_active = true AND id = ANY($1::int[])')
+            ) {
+                assert.deepEqual(params, [[1]]);
+                return {
+                    rows: [{ id: 1, name: 'Ready-to-Lay Hens / Poules Prêtes à Pondre' }]
+                };
+            }
+            if (normalizedSql.includes('SELECT hen_id, stock FROM pickup_stock')) {
+                assert.deepEqual(params, ['pickup-date-1', [1]]);
+                return {
+                    rows: [{ hen_id: 1, stock: 10 }]
+                };
+            }
+            if (normalizedSql.includes('SELECT id FROM customers WHERE phone = $1 FOR UPDATE')) {
+                assert.deepEqual(params, ['5145551234']);
+                return { rows: [] };
+            }
+            if (normalizedSql.includes('INSERT INTO customers (name, phone, email, address)')) {
+                assert.deepEqual(params, ['Alice', '5145551234', 'alice@example.com', '123 Farm Road']);
+                return { rows: [{ id: 'customer-1' }] };
+            }
+            if (
+                normalizedSql.includes('UPDATE pickup_stock')
+                && normalizedSql.includes('SET stock = stock - $1')
+                && normalizedSql.includes('RETURNING hen_id')
+            ) {
+                assert.deepEqual(params, [2, 'pickup-date-1', 1]);
+                return { rowCount: 1, rows: [{ hen_id: 1 }] };
+            }
+            if (
+                normalizedSql.includes('INSERT INTO orders')
+                && normalizedSql.includes('RETURNING id, order_number')
+            ) {
+                assert.equal(params[0], 'customer-1');
+                assert.equal(params[1], 'alice@example.com');
+                assert.equal(params[4], 'paid');
+                assert.equal(params[5], '2026-06-01');
+                assert.equal(params[6], 'hemmingford');
+                assert.equal(params[10], 'en');
+                assert.equal(params[11], 'etransfer');
+                return { rows: [{ id: 'order-paid-1', order_number: 1001 }] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const confirmationCalls = [];
+    const handlers = registerRoutesForTest(pool, {
+        sendOrderConfirmationEmail: async (orderId) => {
+            confirmationCalls.push(String(orderId));
+            return { sent: true };
+        }
+    });
+    const handler = handlers['POST /api/admin/orders'];
+    assert.ok(handler);
+
+    const req = {
+        get() {
+            return '';
+        },
+        body: {
+            language: 'en',
+            customer: {
+                name: 'Alice',
+                phone: '5145551234',
+                email: 'alice@example.com',
+                address: '123 Farm Road'
+            },
+            pickup: {
+                date: '2026-06-01',
+                location: 'hemmingford'
+            },
+            payment: {
+                method: 'etransfer',
+                payment_type: 'full'
+            },
+            items: [
+                { id: 1, quantity: 2 }
+            ]
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.success, true);
+    assert.equal(res.body?.orderId, 'order-paid-1');
+    assert.deepEqual(confirmationCalls, ['order-paid-1']);
+});
+
+test('admin create pending manual order does not send confirmation email', async () => {
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+
+            if (
+                normalizedSql.includes('FROM pickup_dates')
+                && normalizedSql.includes('WHERE is_active = true')
+                && normalizedSql.includes('date_value = $1')
+            ) {
+                assert.deepEqual(params, ['2026-06-01', 'hemmingford']);
+                return { rows: [{ id: 'pickup-date-1' }] };
+            }
+            if (
+                normalizedSql.includes('SELECT id, name FROM hens')
+                && normalizedSql.includes('WHERE is_active = true AND id = ANY($1::int[])')
+            ) {
+                assert.deepEqual(params, [[1]]);
+                return {
+                    rows: [{ id: 1, name: 'Ready-to-Lay Hens / Poules Prêtes à Pondre' }]
+                };
+            }
+            if (normalizedSql.includes('SELECT hen_id, stock FROM pickup_stock')) {
+                assert.deepEqual(params, ['pickup-date-1', [1]]);
+                return {
+                    rows: [{ hen_id: 1, stock: 10 }]
+                };
+            }
+            if (normalizedSql.includes('SELECT id FROM customers WHERE phone = $1 FOR UPDATE')) {
+                assert.deepEqual(params, ['5145551234']);
+                return { rows: [] };
+            }
+            if (normalizedSql.includes('INSERT INTO customers (name, phone, email, address)')) {
+                assert.deepEqual(params, ['Alice', '5145551234', 'alice@example.com', '123 Farm Road']);
+                return { rows: [{ id: 'customer-1' }] };
+            }
+            if (
+                normalizedSql.includes('UPDATE pickup_stock')
+                && normalizedSql.includes('SET stock = stock - $1')
+                && normalizedSql.includes('RETURNING hen_id')
+            ) {
+                assert.deepEqual(params, [1, 'pickup-date-1', 1]);
+                return { rowCount: 1, rows: [{ hen_id: 1 }] };
+            }
+            if (
+                normalizedSql.includes('INSERT INTO orders')
+                && normalizedSql.includes('RETURNING id, order_number')
+            ) {
+                assert.equal(params[0], 'customer-1');
+                assert.equal(params[1], 'alice@example.com');
+                assert.equal(params[4], 'pending');
+                assert.equal(params[7], 'deposit');
+                assert.equal(params[8], 0);
+                assert.equal(params[10], 'en');
+                assert.equal(params[11], 'etransfer');
+                return { rows: [{ id: 'order-pending-1', order_number: 1002 }] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const confirmationCalls = [];
+    const handlers = registerRoutesForTest(pool, {
+        sendOrderConfirmationEmail: async (orderId) => {
+            confirmationCalls.push(String(orderId));
+            return { sent: true };
+        }
+    });
+    const handler = handlers['POST /api/admin/orders'];
+    assert.ok(handler);
+
+    const req = {
+        get() {
+            return '';
+        },
+        body: {
+            language: 'en',
+            customer: {
+                name: 'Alice',
+                phone: '5145551234',
+                email: 'alice@example.com',
+                address: '123 Farm Road'
+            },
+            pickup: {
+                date: '2026-06-01',
+                location: 'hemmingford'
+            },
+            payment: {
+                method: 'etransfer',
+                payment_type: 'deposit',
+                amount_paid_cents: 0
+            },
+            items: [
+                { id: 1, quantity: 1 }
+            ]
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.success, true);
+    assert.equal(res.body?.orderId, 'order-pending-1');
+    assert.deepEqual(confirmationCalls, []);
+});
+
 test('admin order update changes pickup date/amount and allows paid/email updates', async () => {
     let pickupDateLookupCount = 0;
     let ordersUpdatedParams = null;
@@ -550,7 +815,13 @@ test('admin order update changes pickup date/amount and allows paid/email update
         }
     };
 
-    const handlers = registerRoutesForTest(pool);
+    const confirmationCalls = [];
+    const handlers = registerRoutesForTest(pool, {
+        sendOrderConfirmationEmail: async (orderId) => {
+            confirmationCalls.push(String(orderId));
+            return { sent: true };
+        }
+    });
     const handler = handlers['PUT /api/admin/orders/:id'];
     assert.ok(handler);
 
@@ -601,6 +872,7 @@ test('admin order update changes pickup date/amount and allows paid/email update
         'order-1'
     ]);
     assert.deepEqual(customerUpdatedParams, ['new@example.com', 'customer-1']);
+    assert.deepEqual(confirmationCalls, ['order-1']);
 });
 
 test('admin order update can change item type/qty and applies same-pickup stock deltas', async () => {
