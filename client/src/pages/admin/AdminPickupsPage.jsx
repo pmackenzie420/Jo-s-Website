@@ -223,7 +223,7 @@ export default function AdminPickupsPage({
                     </button>
                     <button
                       type="button"
-                      className="admin-button ghost small"
+                      className="admin-button ghost small pickup-invoice-button"
                       title={t('pickups.exportInvoicesTitle', adminLanguage)}
                       onClick={() => onExportInvoicesGroup(group.date, locationGroup)}
                     >
@@ -307,7 +307,7 @@ export default function AdminPickupsPage({
                 </button>
                 <button
                   type="button"
-                  className="admin-button ghost small"
+                  className="admin-button ghost small pickup-invoice-button"
                   title={t('pickups.exportInvoicesTitle', adminLanguage)}
                   onClick={() =>
                     onExportInvoicesGroup(card.date, {
