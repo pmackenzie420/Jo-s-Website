@@ -2,6 +2,13 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Layout from '../layouts/BoxedLayout';
 import MainGate from '../components/MainGate';
+import SeoManager from '../components/SeoManager';
+import Home from '../pages/Home';
+import Prices from '../pages/Prices';
+import Contact from '../pages/Contact';
+import Privacy from '../pages/Privacy';
+import Order from '../pages/Order';
+import NotFound from '../pages/NotFound';
 
 const MISSING_DEFAULT_CHUNK_CODE = 'JO_LAZY_MODULE_DEFAULT_MISSING';
 
@@ -48,12 +55,7 @@ const lazyWithRetry = (importer) =>
     }
   });
 
-const Home = lazyWithRetry(() => import('../pages/Home'));
-const Prices = lazyWithRetry(() => import('../pages/Prices'));
-const Contact = lazyWithRetry(() => import('../pages/Contact'));
-const Privacy = lazyWithRetry(() => import('../pages/Privacy'));
 const Checkout = lazyWithRetry(() => import('../pages/Checkout'));
-const Order = lazyWithRetry(() => import('../pages/Order'));
 const Admin = lazyWithRetry(() => import('../pages/Admin'));
 const Success = lazyWithRetry(() => import('../pages/Success'));
 
@@ -77,6 +79,7 @@ export default function DesktopApp() {
 
   return (
     <Suspense fallback={null}>
+      <SeoManager lang={lang} />
       <Routes>
         <Route element={(
           <MainGate lang={lang}>
@@ -90,6 +93,7 @@ export default function DesktopApp() {
           <Route path="/order" element={<Order lang={lang} />} />
           <Route path="/checkout" element={<Checkout lang={lang} />} />
           <Route path="/success" element={<Success lang={lang} />} />
+          <Route path="*" element={<NotFound lang={lang} />} />
         </Route>
 
         <Route path="/admin" element={<Admin />} />

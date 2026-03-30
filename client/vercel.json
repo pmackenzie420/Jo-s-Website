@@ -11,17 +11,27 @@
       "dest": "https://jo-s-website-production.up.railway.app/api/$1"
     },
     {
-      "handle": "filesystem"
+      "src": "^/index\\.html$",
+      "status": 308,
+      "dest": "/"
     },
     {
-      "src": "/((?!.*\\.).*)",
+      "src": "^/(prices|contact|privacy|order|checkout|success|admin)/+$",
+      "status": 308,
+      "dest": "/$1"
+    },
+    {
+      "src": "^/(admin|checkout|success)$",
       "headers": {
-        "cache-control": "no-store, no-cache, must-revalidate"
+        "x-robots-tag": "noindex, nofollow"
       },
       "continue": true
     },
     {
-      "src": "/((?!.*\\.).*)",
+      "handle": "filesystem"
+    },
+    {
+      "src": "^/(prices|contact|privacy|order|checkout|success|admin)$",
       "dest": "/index.html"
     }
   ]
