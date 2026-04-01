@@ -15,6 +15,38 @@ const parseBoolean = (value, fallback = false) => {
   return fallback
 }
 
+const isIosWebKit = () => {
+  if (typeof navigator === 'undefined') return false
+
+  const ua = navigator.userAgent || ''
+  const platform = navigator.platform || ''
+  const maxTouchPoints = Number(navigator.maxTouchPoints || 0)
+
+  const isIosDevice = /iPad|iPhone|iPod/.test(ua)
+    || (platform === 'MacIntel' && maxTouchPoints > 1)
+
+  if (!isIosDevice) return false
+
+  const isWebKit = /AppleWebKit/i.test(ua)
+  const isAlternativeBrowser = /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua)
+
+  return isWebKit && !isAlternativeBrowser
+}
+
+const shouldEnableBrowserTracing = () => {
+  const browserTracingEnabled = parseBoolean(
+    import.meta.env.VITE_SENTRY_ENABLE_BROWSER_TRACING,
+    true
+  )
+
+  if (!browserTracingEnabled) return false
+
+  // Browser tracing boots web-vitals observers. On iOS WebKit/WKWebView this
+  // has produced a startup crash in production, so keep error reporting on but
+  // skip tracing on that browser family.
+  return !isIosWebKit()
+}
+
 let initialized = false
 
 const STALE_BUNDLE_MESSAGE_PATTERNS = [
@@ -134,6 +166,11 @@ const initSentry = () => {
   const enabled = parseBoolean(import.meta.env.VITE_SENTRY_ENABLED, true)
   if (!enabled) return
 
+  const integrations = []
+  if (shouldEnableBrowserTracing()) {
+    integrations.push(Sentry.browserTracingIntegration())
+  }
+
   Sentry.init({
     dsn,
     environment: import.meta.env.VITE_SENTRY_ENVIRONMENT || import.meta.env.MODE || 'development',
@@ -143,7 +180,7 @@ const initSentry = () => {
       import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE,
       import.meta.env.PROD ? 0.05 : 1
     ),
-    integrations: [Sentry.browserTracingIntegration()],
+    integrations,
     beforeSend(event, hint) {
       // Fail open: never let filter logic crash error reporting.
       try {
