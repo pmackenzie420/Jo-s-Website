@@ -15,20 +15,27 @@ const parseBoolean = (value, fallback = false) => {
   return fallback
 }
 
-const isIosWebKit = () => {
+const APPLE_VENDOR = 'Apple Computer, Inc.'
+const ALTERNATIVE_APPLE_WEBKIT_BROWSER_PATTERN = /CriOS|FxiOS|EdgiOS|EdgA|Edg|OPiOS|OPR|Chrome|Chromium|Firefox|DuckDuckGo/i
+const APPLE_MAIL_NOISE_PATTERN = /\bbird_[a-z0-9_]+\b/i
+
+const isAppleWebKit = () => {
   if (typeof navigator === 'undefined') return false
 
   const ua = navigator.userAgent || ''
+  const vendor = navigator.vendor || ''
   const platform = navigator.platform || ''
   const maxTouchPoints = Number(navigator.maxTouchPoints || 0)
 
-  const isIosDevice = /iPad|iPhone|iPod/.test(ua)
+  const isApplePlatform = /iPad|iPhone|iPod|Macintosh/.test(ua)
+    || /iPad|iPhone|iPod|Mac/.test(platform)
+    || vendor === APPLE_VENDOR
     || (platform === 'MacIntel' && maxTouchPoints > 1)
 
-  if (!isIosDevice) return false
+  if (!isApplePlatform) return false
 
   const isWebKit = /AppleWebKit/i.test(ua)
-  const isAlternativeBrowser = /CriOS|FxiOS|EdgiOS|OPiOS/i.test(ua)
+  const isAlternativeBrowser = ALTERNATIVE_APPLE_WEBKIT_BROWSER_PATTERN.test(ua)
 
   return isWebKit && !isAlternativeBrowser
 }
@@ -41,10 +48,11 @@ const shouldEnableBrowserTracing = () => {
 
   if (!browserTracingEnabled) return false
 
-  // Browser tracing boots web-vitals observers. On iOS WebKit/WKWebView this
-  // has produced a startup crash in production, so keep error reporting on but
+  // Browser tracing boots web-vitals observers. Apple WebKit browsers and
+  // embedded webviews have produced startup/runtime crashes in production,
+  // including iOS WKWebView and macOS Apple Mail. Keep error reporting on but
   // skip tracing on that browser family.
-  return !isIosWebKit()
+  return !isAppleWebKit()
 }
 
 let initialized = false
@@ -114,6 +122,35 @@ const getErrorText = (event, hint) => {
   return parts.join('\n').toLowerCase()
 }
 
+const getEventStringValue = (event, path, tagKey) => {
+  try {
+    const contextValue = path.reduce((value, key) => value?.[key], event)
+    if (typeof contextValue === 'string' && contextValue.trim()) {
+      return contextValue.trim()
+    }
+  } catch {
+    // Ignore context lookup issues and fall back to tags.
+  }
+
+  try {
+    const tagValue = event?.tags?.[tagKey]
+    return typeof tagValue === 'string' ? tagValue.trim() : ''
+  } catch {
+    return ''
+  }
+}
+
+const isAppleMailRuntimeNoise = (event, hint) => {
+  const browserName = getEventStringValue(event, ['contexts', 'browser', 'name'], 'browser.name').toLowerCase()
+  const deviceFamily = getEventStringValue(event, ['contexts', 'device', 'family'], 'device.family').toLowerCase()
+
+  if (browserName !== 'apple mail' || deviceFamily !== 'mac') {
+    return false
+  }
+
+  return APPLE_MAIL_NOISE_PATTERN.test(getErrorText(event, hint))
+}
+
 const isLikelyStaleBundleError = (event, hint) => {
   const text = getErrorText(event, hint)
   const stackFiles = getStackFilenames(event)
@@ -159,6 +196,28 @@ const isLikelyStaleBundleError = (event, hint) => {
   )
 }
 
+const buildSentryOptions = (integrations) => ({
+  dsn: import.meta.env.VITE_SENTRY_DSN || '',
+  environment: import.meta.env.VITE_SENTRY_ENVIRONMENT || import.meta.env.MODE || 'development',
+  release: import.meta.env.VITE_SENTRY_RELEASE || undefined,
+  sendDefaultPii: parseBoolean(import.meta.env.VITE_SENTRY_SEND_DEFAULT_PII, false),
+  tracesSampleRate: parseSampleRate(
+    import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE,
+    import.meta.env.PROD ? 0.05 : 1
+  ),
+  integrations,
+  beforeSend(event, hint) {
+    // Fail open: never let filter logic crash error reporting.
+    try {
+      if (isLikelyStaleBundleError(event, hint)) return null
+      if (isAppleMailRuntimeNoise(event, hint)) return null
+    } catch {
+      return event
+    }
+    return event
+  }
+})
+
 const initSentry = () => {
   if (initialized) return
   const dsn = (import.meta.env.VITE_SENTRY_DSN || '').trim()
@@ -166,31 +225,18 @@ const initSentry = () => {
   const enabled = parseBoolean(import.meta.env.VITE_SENTRY_ENABLED, true)
   if (!enabled) return
 
-  const integrations = []
   if (shouldEnableBrowserTracing()) {
-    integrations.push(Sentry.browserTracingIntegration())
+    try {
+      Sentry.init(buildSentryOptions([Sentry.browserTracingIntegration()]))
+      initialized = true
+      return
+    } catch {
+      // If tracing bootstrap crashes in a browser-specific runtime, keep
+      // Sentry error reporting enabled rather than taking down the app.
+    }
   }
 
-  Sentry.init({
-    dsn,
-    environment: import.meta.env.VITE_SENTRY_ENVIRONMENT || import.meta.env.MODE || 'development',
-    release: import.meta.env.VITE_SENTRY_RELEASE || undefined,
-    sendDefaultPii: parseBoolean(import.meta.env.VITE_SENTRY_SEND_DEFAULT_PII, false),
-    tracesSampleRate: parseSampleRate(
-      import.meta.env.VITE_SENTRY_TRACES_SAMPLE_RATE,
-      import.meta.env.PROD ? 0.05 : 1
-    ),
-    integrations,
-    beforeSend(event, hint) {
-      // Fail open: never let filter logic crash error reporting.
-      try {
-        if (isLikelyStaleBundleError(event, hint)) return null
-      } catch {
-        return event
-      }
-      return event
-    }
-  })
+  Sentry.init(buildSentryOptions([]))
 
   initialized = true
 }
