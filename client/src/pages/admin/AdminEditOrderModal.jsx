@@ -117,6 +117,64 @@ const areQuantityMapsEqual = (first, second) => {
   return true;
 };
 
+const getDepositInfoForItems = (items) => {
+  let lohmannQty = 0;
+  let lohmannSubtotalCents = 0;
+  let nonLohmannSubtotalCents = 0;
+  let lambQty = 0;
+  let lambSubtotalCents = 0;
+
+  (Array.isArray(items) ? items : []).forEach((item) => {
+    const name = String(item?.name || '').trim();
+    const qtyRaw = Number(item?.qty ?? item?.quantity);
+    const qty = Number.isFinite(qtyRaw) ? Math.max(Math.floor(qtyRaw), 0) : 0;
+    const lineCentsRaw = Number(item?.lineCents ?? item?.line_cents);
+    const lineCents = Number.isFinite(lineCentsRaw) ? Math.max(Math.floor(lineCentsRaw), 0) : 0;
+
+    if (!name || qty <= 0) return;
+
+    if (isLohmannHenName(name)) {
+      lohmannQty += qty;
+      lohmannSubtotalCents += lineCents;
+      return;
+    }
+
+    nonLohmannSubtotalCents += lineCents;
+    if (isLambName(name)) {
+      lambQty += qty;
+      lambSubtotalCents += lineCents;
+    }
+  });
+
+  const depositEligibleMinQty = Math.max(getDepositEligibleMinQty() || 13, 1);
+  const depositRequiredAboveQty = Math.max(getDepositRequiredAboveQty() || 0, 0);
+  const lohmannDepositEligible = lohmannQty >= depositEligibleMinQty;
+  const depositRequired = depositRequiredAboveQty > 0 && lohmannQty > depositRequiredAboveQty;
+  const hasLambs = lambQty > 0;
+  const depositEligible = lohmannDepositEligible || hasLambs;
+  const lohmannDepositCents = lohmannDepositEligible
+    ? Math.floor(lohmannSubtotalCents / 4)
+    : 0;
+  const depositNowCents = nonLohmannSubtotalCents + lohmannDepositCents;
+  const depositDueCents = lohmannDepositEligible
+    ? lohmannSubtotalCents - lohmannDepositCents
+    : 0;
+
+  return {
+    lohmannQty,
+    lohmannSubtotalCents,
+    lohmannDepositCents,
+    nonLohmannSubtotalCents,
+    lambSubtotalCents,
+    hasLambs,
+    depositEligible,
+    depositRequired,
+    depositRequiredAboveQty,
+    depositNowCents,
+    depositDueCents
+  };
+};
+
 export default function AdminEditOrderModal({
   order,
   dates,
@@ -206,6 +264,36 @@ export default function AdminEditOrderModal({
     }
     return map;
   }, [sourceOrderItems]);
+  const sourceLineItems = useMemo(
+    () => sourceOrderItems.map((item) => {
+      const qty = Number.isFinite(Number(item.quantity))
+        ? Math.max(Math.floor(Number(item.quantity)), 0)
+        : 0;
+      const stored = storedPriceById.get(item.id);
+      const fallbackUnitCents = qty > 0
+        ? Math.round(getTierPrice(item.name, qty) * 100)
+        : 0;
+
+      return {
+        id: item.id,
+        name: item.name,
+        qty,
+        lineCents: stored?.lineCents ?? (fallbackUnitCents * qty)
+      };
+    }),
+    [sourceOrderItems, storedPriceById]
+  );
+  const sourceDepositInfo = useMemo(
+    () => getDepositInfoForItems(sourceLineItems),
+    [sourceLineItems]
+  );
+  const sourceTotalCents = useMemo(
+    () => sourceLineItems.reduce((sum, item) => sum + (Number(item.lineCents) || 0), 0),
+    [sourceLineItems]
+  );
+  const initialOrderTotalCents = sourceTotalCents > 0
+    ? sourceTotalCents
+    : originalOrderInfo.totalCentsOrig;
 
   const editableProducts = useMemo(() => {
     const productMap = new Map();
@@ -334,61 +422,7 @@ export default function AdminEditOrderModal({
   );
 
   // Deposit eligibility — same logic as regular checkout
-  const depositInfo = useMemo(() => {
-    let lohmannQty = 0;
-    let lohmannSubtotalCents = 0;
-    let nonLohmannSubtotalCents = 0;
-    let lambQty = 0;
-    let lambSubtotalCents = 0;
-
-    orderItems.forEach((row) => {
-      if (isLohmannHenName(row.name)) {
-        lohmannQty += row.qty;
-        lohmannSubtotalCents += row.lineCents;
-      } else {
-        nonLohmannSubtotalCents += row.lineCents;
-        if (isLambName(row.name)) {
-          lambQty += row.qty;
-          lambSubtotalCents += row.lineCents;
-        }
-      }
-    });
-
-    const depositEligibleMinQty = Math.max(getDepositEligibleMinQty() || 13, 1);
-    const depositRequiredAboveQty = Math.max(getDepositRequiredAboveQty() || 0, 0);
-    const lohmannDepositEligible = lohmannQty >= depositEligibleMinQty;
-    const depositRequired = depositRequiredAboveQty > 0 && lohmannQty > depositRequiredAboveQty;
-    const hasLambs = lambQty > 0;
-
-    // Deposit eligible if hens qualify OR has lambs (lambs are always deposit)
-    const depositEligible = lohmannDepositEligible || hasLambs;
-
-    // Lohmann deposit = 25% of lohmann subtotal
-    const lohmannDepositCents = lohmannDepositEligible
-      ? Math.floor(lohmannSubtotalCents / 4)
-      : 0;
-
-    // Deposit now = non-lohmann items + lohmann deposit (lambs are always full price as deposit)
-    const depositNowCents = nonLohmannSubtotalCents + lohmannDepositCents;
-    // Due at pickup = lohmann balance
-    const depositDueCents = lohmannDepositEligible
-      ? lohmannSubtotalCents - lohmannDepositCents
-      : 0;
-
-    return {
-      lohmannQty,
-      lohmannSubtotalCents,
-      lohmannDepositCents,
-      nonLohmannSubtotalCents,
-      lambSubtotalCents,
-      hasLambs,
-      depositEligible,
-      depositRequired,
-      depositRequiredAboveQty,
-      depositNowCents,
-      depositDueCents
-    };
-  }, [orderItems]);
+  const depositInfo = useMemo(() => getDepositInfoForItems(orderItems), [orderItems]);
 
   // Deposit is only switchable if existing paid doesn't exceed the deposit amount
   const canSwitchToDeposit = depositInfo.depositEligible && existingPaidCents <= depositInfo.depositNowCents;
@@ -396,13 +430,16 @@ export default function AdminEditOrderModal({
   // Initialize paymentType from order data
   useEffect(() => {
     if (!order) return;
-    const orderPaid = getOrderPaidCents(order);
-    if (orderPaid < totalCents && depositInfo.depositEligible && orderPaid <= depositInfo.depositNowCents) {
+    if (
+      existingPaidCents < initialOrderTotalCents
+      && sourceDepositInfo.depositEligible
+      && existingPaidCents <= sourceDepositInfo.depositNowCents
+    ) {
       setPaymentType('deposit');
     } else {
       setPaymentType('full');
     }
-  }, [order]);
+  }, [order, existingPaidCents, initialOrderTotalCents, sourceDepositInfo.depositEligible, sourceDepositInfo.depositNowCents]);
 
   // Auto-force deposit when required; reset to full when deposit is no longer valid
   useEffect(() => {

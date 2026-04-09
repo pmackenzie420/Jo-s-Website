@@ -89,6 +89,7 @@ export default function useAdminController() {
   const [stats, setStats] = useState(null);
 
   const dateInputRef = useRef(null);
+  const ordersLengthRef = useRef(0);
   const { notice, setNotice, showToast, handleNoticeAction } = useAdminNotice();
   const {
     emailGroupKey,
@@ -134,6 +135,10 @@ export default function useAdminController() {
     setOrdersHasMore(Boolean(payload?.hasMore));
   }, []);
 
+  useEffect(() => {
+    ordersLengthRef.current = orders.length;
+  }, [orders.length]);
+
   const refreshMeta = useCallback(async () => {
     try {
       const response = await fetchAdminMeta();
@@ -151,7 +156,7 @@ export default function useAdminController() {
         setDataLoading(true);
       }
       try {
-        const limit = Math.max(ORDERS_PAGE_LIMIT, orders.length || 0);
+        const limit = Math.max(ORDERS_PAGE_LIMIT, ordersLengthRef.current || 0);
         const response = await fetchOrdersPage({
           limit,
           offset: 0
@@ -167,7 +172,26 @@ export default function useAdminController() {
         }
       }
     },
-    [applyOrdersPayload, orders.length, showToast, adminLanguage]
+    [applyOrdersPayload, showToast, adminLanguage]
+  );
+
+  const finalizeStripeCheckout = useCallback(
+    async (stripeOrderId, stripeOrderNumber) => {
+      const finalizeResponse = await finalizeAdminOrder(stripeOrderId);
+      await refreshOrders({ quiet: true });
+      const apiOrderNumber = Number(finalizeResponse?.data?.orderNumber);
+      const normalizedApiOrderNumber = Number.isFinite(apiOrderNumber) && apiOrderNumber > 0
+        ? String(Math.floor(apiOrderNumber))
+        : '';
+      const stripeRef = String(stripeOrderNumber || normalizedApiOrderNumber).trim();
+      showToast({
+        type: 'success',
+        text: stripeRef
+          ? tf('toast.stripeConfirmed', adminLanguage, { id: stripeRef })
+          : t('toast.stripeConfirmedGeneric', adminLanguage)
+      });
+    },
+    [refreshOrders, showToast, adminLanguage]
   );
 
   const fetchInitialData = useCallback(async () => {
@@ -221,19 +245,7 @@ export default function useAdminController() {
         if (stripeOrderId) {
           window.history.replaceState({}, '', window.location.pathname);
           try {
-            const finalizeResponse = await finalizeAdminOrder(stripeOrderId);
-            await refreshOrders({ quiet: true });
-            const apiOrderNumber = Number(finalizeResponse?.data?.orderNumber);
-            const normalizedApiOrderNumber = Number.isFinite(apiOrderNumber) && apiOrderNumber > 0
-              ? String(Math.floor(apiOrderNumber))
-              : '';
-            const stripeRef = String(stripeOrderNumber || normalizedApiOrderNumber).trim();
-            showToast({
-              type: 'success',
-              text: stripeRef
-                ? tf('toast.stripeConfirmed', adminLanguage, { id: stripeRef })
-                : t('toast.stripeConfirmedGeneric', adminLanguage)
-            });
+            await finalizeStripeCheckout(stripeOrderId, stripeOrderNumber);
           } catch {
             showToast({ type: 'error', text: t('toast.stripeConfirmFailed', adminLanguage) });
           }
@@ -243,7 +255,7 @@ export default function useAdminController() {
       }
     };
     run();
-  }, [fetchInitialData]);
+  }, [fetchInitialData, finalizeStripeCheckout, showToast, adminLanguage]);
 
   const ordersWithDetails = useMemo(
     () => buildOrdersWithDetails(orders, hens, adminLanguage),

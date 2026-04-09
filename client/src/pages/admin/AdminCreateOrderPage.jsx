@@ -17,6 +17,7 @@ import {
 } from '../../utils/catalog';
 
 const pad2 = (value) => String(value).padStart(2, '0');
+const EMPTY_PICKUP_INVENTORY = Object.freeze({});
 const toIsoLocalDate = (date) => {
   if (!(date instanceof Date) || Number.isNaN(date.getTime())) return '';
   return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
@@ -113,8 +114,8 @@ export default function AdminCreateOrderPage({
   }, [hens]);
 
   const { date: pickupDate, location: pickupLocation } = parsePickupKey(pickupKey);
-  const pickupStocks = allPickupStocks?.[pickupKey] || {};
-  const pickupReserved = allPickupReserved?.[pickupKey] || {};
+  const pickupStocks = allPickupStocks?.[pickupKey] ?? EMPTY_PICKUP_INVENTORY;
+  const pickupReserved = allPickupReserved?.[pickupKey] ?? EMPTY_PICKUP_INVENTORY;
 
   const lineItems = useMemo(() => {
     if (!Array.isArray(hens)) return [];

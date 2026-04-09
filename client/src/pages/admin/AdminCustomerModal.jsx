@@ -2,7 +2,6 @@ import {
   formatDateLong,
   formatCurrency,
   formatPhoneLink,
-  normalizeStatus,
   getOrderNumberText
 } from '../admin-utils';
 import { t, tf } from '../admin-i18n';
