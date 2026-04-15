@@ -151,10 +151,10 @@ const buildGroupedPickups = (ordersWithDetails, language = 'en') => {
         );
         const customerMap = new Map();
         sortedOrders.forEach((order) => {
-          const key = normalizePhoneKey(order.customerPhone) || order.id;
-          if (!customerMap.has(key)) {
-            customerMap.set(key, {
-              key,
+          const customerKey = normalizePhoneKey(order.customerPhone) || order.id;
+          if (!customerMap.has(customerKey)) {
+            customerMap.set(customerKey, {
+              key: `${buildPickupKey(date, location)}::${customerKey}`,
               customerName: order.customerName,
               customerPhone: order.customerPhone,
               customerEmail: order.customerEmail,
@@ -162,7 +162,7 @@ const buildGroupedPickups = (ordersWithDetails, language = 'en') => {
               orders: []
             });
           }
-          customerMap.get(key).orders.push(order);
+          customerMap.get(customerKey).orders.push(order);
         });
 
         const customerOrders = Array.from(customerMap.values()).map((customer) => {
