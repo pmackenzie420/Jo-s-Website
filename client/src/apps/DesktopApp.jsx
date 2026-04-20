@@ -9,19 +9,16 @@ import Contact from '../pages/Contact';
 import Privacy from '../pages/Privacy';
 import Order from '../pages/Order';
 import NotFound from '../pages/NotFound';
+import {
+  isLikelyStaleBundleErrorLike,
+  reloadOnceForStaleBundle
+} from '../utils/staleBundle.js';
 
 const MISSING_DEFAULT_CHUNK_CODE = 'JO_LAZY_MODULE_DEFAULT_MISSING';
 
 const isChunkLoadError = (err) => {
   if (err?.code === MISSING_DEFAULT_CHUNK_CODE) return true;
-  const message = String(err?.message || '').toLowerCase();
-  return (
-    message.includes('failed to fetch dynamically imported module') ||
-    message.includes('importing a module script failed') ||
-    message.includes('loading chunk') ||
-    message.includes('chunkloaderror') ||
-    message.includes('load failed')
-  );
+  return isLikelyStaleBundleErrorLike(err);
 };
 
 const createMissingDefaultChunkError = () => {
@@ -43,13 +40,7 @@ const lazyWithRetry = (importer) =>
       return loadedModule;
     } catch (err) {
       if (typeof window !== 'undefined' && isChunkLoadError(err)) {
-        const key = 'jowebsite:chunk-reload-attempted';
-        try {
-          if (!window.sessionStorage.getItem(key)) {
-            window.sessionStorage.setItem(key, '1');
-            window.location.reload();
-          }
-        } catch { /* storage blocked */ }
+        reloadOnceForStaleBundle();
       }
       throw err;
     }

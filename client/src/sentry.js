@@ -1,4 +1,5 @@
 import * as Sentry from '@sentry/react'
+import { isLikelyStaleBundleMessage } from './utils/staleBundle.js'
 
 const parseSampleRate = (value, fallback) => {
   const parsed = Number(value)
@@ -70,14 +71,6 @@ const shouldEnableBrowserTracing = () => {
 }
 
 let initialized = false
-
-const STALE_BUNDLE_MESSAGE_PATTERNS = [
-  'failed to fetch dynamically imported module',
-  'importing a module script failed',
-  'unable to preload css for /assets/',
-  'loading chunk',
-  'chunkloaderror'
-]
 
 const getStackFilenames = (event) => {
   const values = Array.isArray(event?.exception?.values) ? event.exception.values : []
@@ -167,47 +160,8 @@ const isAppleMailRuntimeNoise = (event, hint) => {
 
 const isLikelyStaleBundleError = (event, hint) => {
   const text = getErrorText(event, hint)
-  const stackFiles = getStackFilenames(event)
-
-  const hasAssetPathInStack = stackFiles.some((file) => /\/assets\/.+\.(js|css)\b/i.test(file))
-  const hasAssetPathInMessage = /\/assets\/.+\.(js|css)\b/i.test(text)
-    || text.includes('for /assets/')
-  const hasHashedAssetFile = stackFiles.some((file) =>
-    /\/assets\/[a-z0-9._-]+-[a-z0-9_-]{6,}\.(js|css)\b/i.test(file)
-  )
-  const hasKnownMessage = STALE_BUNDLE_MESSAGE_PATTERNS.some((pattern) =>
-    text.includes(pattern)
-  )
-  const hasLikelyStaleLoadFailed = text.includes('load failed')
-    && hasAssetPathInMessage
-    && (
-      text.includes('module')
-      || text.includes('chunk')
-      || text.includes('import')
-      || text.includes('preload')
-    )
-  const hasCannotReadDefaultMismatch = (
-    text.includes("cannot read properties of undefined (reading 'default')")
-    || text.includes('cannot read properties of undefined (reading "default")')
-  ) && (
-    hasAssetPathInMessage
-    || hasAssetPathInStack
-    || hasHashedAssetFile
-    || stackFiles.some((file) => file.includes('/assets/index-'))
-  )
-  const hasReactLazyResultMismatch = (
-    /_+result\.default/.test(text)
-    || text.includes("undefined is not an object (evaluating 'b._result.default')")
-    || text.includes("undefined is not an object (evaluating 'b.__result.default')")
-  )
-    && (hasHashedAssetFile || stackFiles.some((file) => file.includes('/assets/index-')))
-
-  return (
-    (hasKnownMessage && (hasAssetPathInMessage || hasHashedAssetFile))
-    || (hasLikelyStaleLoadFailed && (hasAssetPathInStack || hasHashedAssetFile))
-    || hasCannotReadDefaultMismatch
-    || hasReactLazyResultMismatch
-  )
+  const stackText = getStackFilenames(event).join('\n')
+  return isLikelyStaleBundleMessage(text, stackText)
 }
 
 const buildSentryOptions = (integrations) => ({
