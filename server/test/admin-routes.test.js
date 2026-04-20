@@ -118,35 +118,20 @@ test('admin meta returns hens, dates, pickup stock map, and reserved quantities 
     const pool = {
         async query(sql) {
             const normalizedSql = normalizeSql(sql);
-            if (normalizedSql.includes('FROM hens WHERE is_active = true ORDER BY id ASC')) {
-                return {
-                    rows: [{ id: 1, name: 'Ready-to-Lay Hens / Poules Prêtes à Pondre' }]
-                };
-            }
-            if (normalizedSql.includes('FROM orders')) {
+            if (normalizedSql.includes('WITH active_hens AS')) {
                 return {
                     rows: [
                         {
-                            date_value: '2026-06-01',
-                            location: 'bristol',
-                            items: JSON.stringify([{ id: 1, quantity: 3 }])
-                        },
-                        {
-                            date_value: '2026-06-01',
-                            location: 'bristol',
-                            items: [{ id: 1, quantity: 2 }]
+                            hens: [{ id: 1, name: 'Ready-to-Lay Hens / Poules Prêtes à Pondre' }],
+                            dates: [{ id: 'date_1', date_value: '2026-06-01', location: 'bristol' }],
+                            pickupStocks: {
+                                '2026-06-01::bristol': { 1: 9 }
+                            },
+                            pickupReserved: {
+                                '2026-06-01::bristol': { 1: 5 }
+                            }
                         }
                     ]
-                };
-            }
-            if (normalizedSql.includes('FROM pickup_stock')) {
-                return {
-                    rows: [{ date_value: '2026-06-01', location: 'bristol', hen_id: 1, stock: 9 }]
-                };
-            }
-            if (normalizedSql.includes('FROM pickup_dates WHERE is_active = true')) {
-                return {
-                    rows: [{ id: 'date_1', date_value: '2026-06-01', location: 'bristol' }]
                 };
             }
             throw new Error(`Unexpected SQL: ${normalizedSql}`);

@@ -1,8 +1,5 @@
 const {
-    fetchPickupDates,
     findPickupDateId,
-    fetchAllPickupStocks,
-    fetchReservedPickupItems
 } = require('../logic/pickup');
 const {
     verifyPassword,
@@ -398,9 +395,128 @@ const registerAdminRoutes = (app, deps) => {
         };
     };
 
-    const fetchActiveHens = async () => {
-        const result = await pool.query('SELECT * FROM hens WHERE is_active = true ORDER BY id ASC');
-        return result.rows;
+    const fetchAdminMetaPayload = async () => {
+        const result = await pool.query(
+            `
+            WITH active_hens AS (
+                SELECT COALESCE(
+                    jsonb_agg(to_jsonb(hens) ORDER BY hens.id ASC),
+                    '[]'::jsonb
+                ) AS data
+                FROM hens
+                WHERE hens.is_active = true
+            ),
+            canonical_dates AS (
+                SELECT DISTINCT ON (date_value, location)
+                    id,
+                    date_value,
+                    location,
+                    is_active,
+                    created_at
+                FROM pickup_dates
+                WHERE is_active = true
+                ORDER BY date_value, location, created_at ASC, id ASC
+            ),
+            active_dates AS (
+                SELECT COALESCE(
+                    jsonb_agg(to_jsonb(canonical_dates) ORDER BY date_value ASC, location ASC, created_at ASC, id ASC),
+                    '[]'::jsonb
+                ) AS data
+                FROM canonical_dates
+            ),
+            stock_rows AS (
+                SELECT
+                    canonical_dates.date_value::text || '::' || canonical_dates.location AS pickup_key,
+                    pickup_stock.hen_id,
+                    COALESCE(pickup_stock.stock, 0) AS stock
+                FROM pickup_stock
+                INNER JOIN canonical_dates
+                    ON canonical_dates.id = pickup_stock.pickup_date_id
+            ),
+            stock_map AS (
+                SELECT COALESCE(
+                    jsonb_object_agg(pickup_key, stocks_by_hen),
+                    '{}'::jsonb
+                ) AS data
+                FROM (
+                    SELECT
+                        pickup_key,
+                        jsonb_object_agg(hen_id::text, stock ORDER BY hen_id) AS stocks_by_hen
+                    FROM stock_rows
+                    GROUP BY pickup_key
+                ) AS grouped_stock
+            ),
+            reserved_rows AS (
+                SELECT
+                    orders.pickup_date::text || '::' || TRIM(orders.pickup_location) AS pickup_key,
+                    parsed_items.item_id AS hen_id,
+                    SUM(parsed_items.quantity)::int AS reserved
+                FROM orders
+                CROSS JOIN LATERAL (
+                    SELECT
+                        CASE
+                            WHEN COALESCE(item->>'id', '') ~ '^[0-9]+$'
+                                THEN (item->>'id')::int
+                            ELSE NULL
+                        END AS item_id,
+                        CASE
+                            WHEN COALESCE(item->>'quantity', item->>'qty', '') ~ '^[0-9]+$'
+                                THEN COALESCE(item->>'quantity', item->>'qty')::int
+                            ELSE 0
+                        END AS quantity
+                    FROM jsonb_array_elements(
+                        CASE
+                            WHEN jsonb_typeof(COALESCE(orders.items, '[]'::jsonb)) = 'array'
+                                THEN COALESCE(orders.items, '[]'::jsonb)
+                            ELSE '[]'::jsonb
+                        END
+                    ) AS item
+                ) AS parsed_items
+                WHERE orders.pickup_date IS NOT NULL
+                  AND COALESCE(TRIM(orders.pickup_location), '') <> ''
+                  AND LOWER(COALESCE(orders.status, 'pending')) <> 'cancelled'
+                  AND parsed_items.item_id IS NOT NULL
+                  AND parsed_items.quantity > 0
+                GROUP BY pickup_key, parsed_items.item_id
+            ),
+            reserved_map AS (
+                SELECT COALESCE(
+                    jsonb_object_agg(pickup_key, reserved_by_hen),
+                    '{}'::jsonb
+                ) AS data
+                FROM (
+                    SELECT
+                        pickup_key,
+                        jsonb_object_agg(hen_id::text, reserved ORDER BY hen_id) AS reserved_by_hen
+                    FROM reserved_rows
+                    GROUP BY pickup_key
+                ) AS grouped_reserved
+            )
+            SELECT
+                active_hens.data AS hens,
+                active_dates.data AS dates,
+                stock_map.data AS "pickupStocks",
+                reserved_map.data AS "pickupReserved"
+            FROM active_hens
+            CROSS JOIN active_dates
+            CROSS JOIN stock_map
+            CROSS JOIN reserved_map
+            `
+        );
+
+        const row = result.rows[0] || {};
+        return {
+            hens: Array.isArray(row.hens) ? row.hens : [],
+            dates: Array.isArray(row.dates) ? row.dates : [],
+            pickupStocks:
+                row.pickupStocks && typeof row.pickupStocks === 'object'
+                    ? row.pickupStocks
+                    : {},
+            pickupReserved:
+                row.pickupReserved && typeof row.pickupReserved === 'object'
+                    ? row.pickupReserved
+                    : {}
+        };
     };
 
     const runInTransaction = async (work) => {
@@ -1659,44 +1775,8 @@ const registerAdminRoutes = (app, deps) => {
 
     app.get('/api/admin/meta', checkAuth, async (req, res) => {
         try {
-            const [hens, dates, pickupStocks, pickupReservedItems] = await Promise.all([
-                fetchActiveHens(),
-                fetchPickupDates(pool),
-                fetchAllPickupStocks(pool),
-                fetchReservedPickupItems(pool)
-            ]);
-            const pickupStocksByKey = {};
-            for (const row of pickupStocks) {
-                const dateValue = formatPickupDate(row.date_value);
-                const location = sanitizeText(row.location, 40);
-                const key = `${dateValue}::${location}`;
-                if (!pickupStocksByKey[key]) {
-                    pickupStocksByKey[key] = {};
-                }
-                pickupStocksByKey[key][Number(row.hen_id)] = Number(row.stock || 0);
-            }
-
-            const pickupReservedByKey = {};
-            for (const row of pickupReservedItems) {
-                const dateValue = formatPickupDate(row.date_value);
-                const location = sanitizeText(row.location, 40);
-                const key = `${dateValue}::${location}`;
-                if (!pickupReservedByKey[key]) {
-                    pickupReservedByKey[key] = {};
-                }
-                const henId = Number(row.hen_id);
-                const reserved = Number(row.reserved || 0);
-                if (!Number.isInteger(henId) || henId <= 0) continue;
-                pickupReservedByKey[key][henId] =
-                    (pickupReservedByKey[key][henId] || 0) + Math.max(reserved, 0);
-            }
-
-            return res.json({
-                hens,
-                dates,
-                pickupStocks: pickupStocksByKey,
-                pickupReserved: pickupReservedByKey
-            });
+            const payload = await fetchAdminMetaPayload();
+            return res.json(payload);
         } catch (err) {
             return sendServerError(res, err, 'Failed to load admin metadata');
         }

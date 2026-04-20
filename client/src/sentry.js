@@ -18,6 +18,8 @@ const parseBoolean = (value, fallback = false) => {
 const APPLE_VENDOR = 'Apple Computer, Inc.'
 const ALTERNATIVE_APPLE_WEBKIT_BROWSER_PATTERN = /CriOS|FxiOS|EdgiOS|EdgA|Edg|OPiOS|OPR|Chrome|Chromium|Firefox|DuckDuckGo/i
 const APPLE_MAIL_NOISE_PATTERN = /\bbird_[a-z0-9_]+\b/i
+const EMBEDDED_BROWSER_PATTERN = /FBAN|FBAV|FB_IAB|Instagram|Line\/|MicroMessenger/i
+const ANDROID_WEBVIEW_PATTERN = /\bwv\b/i
 
 const isAppleWebKit = () => {
   if (typeof navigator === 'undefined') return false
@@ -40,6 +42,18 @@ const isAppleWebKit = () => {
   return isWebKit && !isAlternativeBrowser
 }
 
+const isEmbeddedBrowser = () => {
+  if (typeof navigator === 'undefined') return false
+
+  const ua = navigator.userAgent || ''
+
+  if (EMBEDDED_BROWSER_PATTERN.test(ua)) {
+    return true
+  }
+
+  return /Android/i.test(ua) && ANDROID_WEBVIEW_PATTERN.test(ua)
+}
+
 const shouldEnableBrowserTracing = () => {
   const browserTracingEnabled = parseBoolean(
     import.meta.env.VITE_SENTRY_ENABLE_BROWSER_TRACING,
@@ -49,10 +63,10 @@ const shouldEnableBrowserTracing = () => {
   if (!browserTracingEnabled) return false
 
   // Browser tracing boots web-vitals observers. Apple WebKit browsers and
-  // embedded webviews have produced startup/runtime crashes in production,
-  // including iOS WKWebView and macOS Apple Mail. Keep error reporting on but
-  // skip tracing on that browser family.
-  return !isAppleWebKit()
+  // embedded/in-app webviews have produced startup/runtime crashes in
+  // production, including iOS WKWebView, macOS Apple Mail, and Android
+  // Facebook webviews. Keep error reporting on but skip tracing there.
+  return !isAppleWebKit() && !isEmbeddedBrowser()
 }
 
 let initialized = false

@@ -96,11 +96,58 @@ const parseTrustProxySetting = (value) => {
     }
     return value;
 };
+
+const DEFAULT_PORTS = {
+    'http:': '80',
+    'https:': '443'
+};
+
+const normalizeOrigin = (value) => {
+    if (typeof value !== 'string') return '';
+    const trimmed = value.trim().replace(/\/+$/, '');
+    if (!trimmed) return '';
+
+    try {
+        const parsed = new URL(trimmed);
+        const protocol = parsed.protocol.toLowerCase();
+        const hostname = parsed.hostname.toLowerCase();
+        const port = parsed.port || '';
+        const defaultPort = DEFAULT_PORTS[protocol] || '';
+        const normalizedPort = port && port !== defaultPort ? `:${port}` : '';
+        return `${protocol}//${hostname}${normalizedPort}`;
+    } catch {
+        return trimmed.toLowerCase();
+    }
+};
+
+const stripWwwPrefix = (value) => String(value || '').replace(/^www\./i, '');
+
+const areOriginsEquivalent = (left, right) => {
+    try {
+        const leftUrl = new URL(left);
+        const rightUrl = new URL(right);
+        const leftProtocol = leftUrl.protocol.toLowerCase();
+        const rightProtocol = rightUrl.protocol.toLowerCase();
+        if (leftProtocol !== rightProtocol) return false;
+
+        const leftPort = leftUrl.port || DEFAULT_PORTS[leftProtocol] || '';
+        const rightPort = rightUrl.port || DEFAULT_PORTS[rightProtocol] || '';
+        if (leftPort !== rightPort) return false;
+
+        const leftHost = leftUrl.hostname.toLowerCase();
+        const rightHost = rightUrl.hostname.toLowerCase();
+        return leftHost === rightHost
+            || stripWwwPrefix(leftHost) === stripWwwPrefix(rightHost);
+    } catch {
+        return left === right;
+    }
+};
+
 app.set('trust proxy', parseTrustProxySetting(process.env.TRUST_PROXY));
 
-const corsOrigins = parseOriginList(process.env.CORS_ORIGINS || process.env.CLIENT_URL);
+const configuredCorsOrigins = parseOriginList(process.env.CORS_ORIGINS || process.env.CLIENT_URL);
 if (!isProduction) {
-    corsOrigins.push(
+    configuredCorsOrigins.push(
         'http://localhost:5173',
         'http://127.0.0.1:5173',
         'http://localhost:3000',
@@ -108,21 +155,28 @@ if (!isProduction) {
     );
 }
 
+const corsOrigins = Array.from(
+    new Set(configuredCorsOrigins.map((origin) => normalizeOrigin(origin)).filter(Boolean))
+);
+
+const isAllowedCorsOrigin = (origin) => {
+    const normalizedOrigin = normalizeOrigin(origin);
+    if (!normalizedOrigin) return false;
+    return corsOrigins.some((allowedOrigin) => areOriginsEquivalent(normalizedOrigin, allowedOrigin));
+};
+
 const corsOptions = {
     origin: (origin, callback) => {
         if (!origin) {
             callback(null, true);
             return;
         }
-        if (corsOrigins.length === 0) {
-            callback(new Error('CORS_ORIGINS not configured'));
-            return;
-        }
-        if (corsOrigins.includes(origin)) {
+        if (corsOrigins.length > 0 && isAllowedCorsOrigin(origin)) {
             callback(null, true);
             return;
         }
-        callback(new Error('Not allowed by CORS'));
+        // Fail closed without surfacing routine cross-origin probes as server errors.
+        callback(null, false);
     },
     credentials: true,
     optionsSuccessStatus: 200
@@ -131,16 +185,15 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 const getRequestBaseUrl = (req) => {
-    const envUrl = process.env.CLIENT_URL;
+    const envUrl = normalizeOrigin(process.env.CLIENT_URL || '');
     const originHeader = req.get('origin');
-    const sanitizedOrigin =
-        typeof originHeader === 'string' ? originHeader.trim().replace(/\/+$/, '') : '';
+    const sanitizedOrigin = normalizeOrigin(originHeader || '');
 
     if (envUrl) {
-        return envUrl.replace(/\/+$/, '');
+        return envUrl;
     }
 
-    if (sanitizedOrigin && corsOrigins.includes(sanitizedOrigin)) {
+    if (sanitizedOrigin && isAllowedCorsOrigin(sanitizedOrigin)) {
         return sanitizedOrigin;
     }
 
@@ -152,12 +205,12 @@ const getRequestBaseUrl = (req) => {
     const host = typeof forwardedHost === 'string'
         ? forwardedHost.split(',')[0]
         : req.get('host');
-    const candidate = `${proto}://${host}`;
+    const candidate = normalizeOrigin(`${proto}://${host}`);
 
     if (!isProduction && corsOrigins.length === 0) {
         return candidate;
     }
-    if (corsOrigins.includes(candidate)) {
+    if (candidate && isAllowedCorsOrigin(candidate)) {
         return candidate;
     }
     return null;
