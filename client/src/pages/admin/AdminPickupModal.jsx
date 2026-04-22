@@ -7,18 +7,6 @@ import {
 } from '../admin-utils';
 import { t, tf } from '../admin-i18n';
 
-const formatDateTime = (value, language) => {
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return '';
-  return new Intl.DateTimeFormat(language === 'fr' ? 'fr-CA' : 'en-US', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
-  }).format(parsed);
-};
-
 const getEmailStatusLabel = (status, language) => {
   const normalized = String(status || '').trim().toLowerCase();
   const map = {
@@ -33,6 +21,18 @@ const getEmailStatusLabel = (status, language) => {
     warning: t('emailStatus.warning', language)
   };
   return map[normalized] || normalized || t('emailStatus.notSent', language);
+};
+
+const shouldShowConfirmationStatus = (status) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  return [
+    'not_sent',
+    'failed',
+    'bounced',
+    'complained',
+    'suppressed',
+    'blocked'
+  ].includes(normalized);
 };
 
 const getEmailTypeLabel = (emailType, language) => {
@@ -209,10 +209,6 @@ export default function AdminPickupModal({
                     ? t('pickup.unarchive', adminLanguage)
                     : t('pickup.archive', adminLanguage);
                   const confirmation = order?.confirmationEmail || { status: 'not_sent' };
-                  const confirmationTimestamp = formatDateTime(
-                    confirmation?.createdAt,
-                    adminLanguage
-                  );
                   const canResendConfirmation = Boolean(
                     onResendConfirmationEmail
                     && order?.customerEmail
@@ -229,10 +225,11 @@ export default function AdminPickupModal({
                           )}
                           {' '}· {order.paymentSummary}
                         </div>
-                        <div className="history-email">
-                          {t('emailStatus.confirmation', adminLanguage)}: {getEmailStatusLabel(confirmation?.status, adminLanguage)}
-                          {confirmationTimestamp ? ` · ${confirmationTimestamp}` : ''}
-                        </div>
+                        {shouldShowConfirmationStatus(confirmation?.status) && (
+                          <div className="history-email">
+                            {t('emailStatus.confirmation', adminLanguage)}: {getEmailStatusLabel(confirmation?.status, adminLanguage)}
+                          </div>
+                        )}
                         {confirmation?.error && (
                           <div className="history-email-error">{confirmation.error}</div>
                         )}
