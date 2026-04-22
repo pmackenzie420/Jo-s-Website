@@ -33,6 +33,101 @@ const createMockRes = () => {
     return res;
 };
 
+const defaultVerifyManagedEmailAddress = async ({ email, language, verifyEmail }) => {
+    const normalizedEmail = String(email || '').trim().toLowerCase();
+    if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
+        return {
+            normalizedEmail,
+            status: 'invalid',
+            shouldBlock: true,
+            message: 'Invalid email address.'
+        };
+    }
+    if (typeof verifyEmail !== 'function') {
+        return {
+            normalizedEmail,
+            status: 'valid',
+            shouldBlock: false,
+            message: ''
+        };
+    }
+    const verification = await verifyEmail(normalizedEmail, { language });
+    return {
+        normalizedEmail: verification?.normalizedEmail || normalizedEmail,
+        status: String(
+            verification?.status
+            || (verification?.shouldBlock ? 'invalid' : 'valid')
+        ).trim().toLowerCase() || 'valid',
+        shouldBlock: Boolean(verification?.shouldBlock),
+        message: String(verification?.message || '').trim(),
+        reason: String(verification?.reason || '').trim(),
+        suggestion: verification?.suggestion || null,
+        verification
+    };
+};
+
+const defaultPreviewTrackedEmailMessage = async ({ verifyEmail, message }) => {
+    const assessment = await defaultVerifyManagedEmailAddress({
+        email: message?.to?.email,
+        language: message?.language || 'en',
+        verifyEmail
+    });
+    return {
+        email: String(message?.to?.email || '').trim().toLowerCase(),
+        name: String(message?.to?.name || '').trim() || undefined,
+        status: assessment.shouldBlock
+            ? (assessment.status === 'suppressed' ? 'suppressed' : 'blocked')
+            : (assessment.status === 'warning' ? 'warning' : 'ready'),
+        reason: assessment.message || undefined,
+        verificationStatus: assessment.status
+    };
+};
+
+const defaultSendTrackedEmailMessage = async ({
+    verifyEmail,
+    sendEmailMessage,
+    message
+}) => {
+    const assessment = await defaultVerifyManagedEmailAddress({
+        email: message?.to?.email,
+        language: message?.language || 'en',
+        verifyEmail
+    });
+    if (assessment.shouldBlock) {
+        return {
+            success: false,
+            email: String(message?.to?.email || '').trim().toLowerCase(),
+            name: String(message?.to?.name || '').trim() || undefined,
+            status: assessment.status === 'suppressed' ? 'suppressed' : 'blocked',
+            reason: assessment.message || undefined,
+            verificationStatus: assessment.status
+        };
+    }
+
+    try {
+        if (typeof sendEmailMessage === 'function') {
+            await sendEmailMessage(message);
+        }
+        return {
+            success: true,
+            email: String(message?.to?.email || '').trim().toLowerCase(),
+            name: String(message?.to?.name || '').trim() || undefined,
+            status: assessment.status === 'warning' ? 'warning' : 'sent',
+            reason: assessment.status === 'warning' ? assessment.message || undefined : undefined,
+            verificationStatus: assessment.status
+        };
+    } catch (error) {
+        return {
+            success: false,
+            email: String(message?.to?.email || '').trim().toLowerCase(),
+            name: String(message?.to?.name || '').trim() || undefined,
+            status: 'failed',
+            reason: String(error?.message || 'Email send failed.').trim(),
+            verificationStatus: assessment.status
+        };
+    }
+};
+
 const registerRoutesForTest = (pool, overrides = {}) => {
     const routeHandlers = {};
     const app = {
@@ -67,6 +162,10 @@ const registerRoutesForTest = (pool, overrides = {}) => {
         sendOrderConfirmationEmail: async () => ({ sent: true }),
         formatPickupDate,
         handlePickupStockRequest: async (_req, res) => res.json({ ok: true }),
+        listEmailActivity: async () => [],
+        previewTrackedEmailMessage: defaultPreviewTrackedEmailMessage,
+        sendTrackedEmailMessage: defaultSendTrackedEmailMessage,
+        verifyManagedEmailAddress: defaultVerifyManagedEmailAddress,
         ...overrides
     });
 
@@ -1433,4 +1532,404 @@ test('admin email route builds branded html for plain-text reminder messages', a
     assert.match(String(sentMessages[0]?.html || ''), /max-width:\s*600px/);
     assert.match(String(sentMessages[0]?.html || ''), /Les Fermes Soulard/);
     assert.match(String(sentMessages[0]?.html || ''), /This is a reminder for your pickup\.<br>Thank you\./);
+});
+
+test('admin email route reports invalid, blocked, and provider-rejected recipients', async () => {
+    const pool = {
+        async query(sql) {
+            throw new Error(`Unexpected SQL: ${normalizeSql(sql)}`);
+        }
+    };
+
+    const sentMessages = [];
+    const handlers = registerRoutesForTest(pool, {
+        verifyCheckoutEmail: async (email) => {
+            if (email === 'blocked@example.com') {
+                return {
+                    accepted: false,
+                    shouldBlock: true,
+                    message: 'Mailbox does not exist.'
+                };
+            }
+            return {
+                accepted: true,
+                shouldBlock: false
+            };
+        },
+        sendEmailMessage: async (payload) => {
+            sentMessages.push(payload);
+            if (payload?.to?.email === 'rejected@example.com') {
+                throw new Error('Email send failed: {"message":"Recipient rejected by provider."}');
+            }
+        }
+    });
+    const handler = handlers['POST /api/admin/email'];
+    assert.ok(handler);
+
+    const req = {
+        body: {
+            messages: [
+                {
+                    to: { email: 'not-an-email', name: 'Broken Address' },
+                    subject: 'Pickup reminder',
+                    text: 'Reminder'
+                },
+                {
+                    to: { email: 'blocked@example.com', name: 'Blocked Mailbox' },
+                    subject: 'Pickup reminder',
+                    text: 'Reminder'
+                },
+                {
+                    to: { email: 'rejected@example.com', name: 'Rejected By Provider' },
+                    subject: 'Pickup reminder',
+                    text: 'Reminder'
+                },
+                {
+                    to: { email: 'ok@example.com', name: 'Delivered' },
+                    subject: 'Pickup reminder',
+                    text: 'Reminder'
+                }
+            ]
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.success, false);
+    assert.equal(res.body?.attempted, 4);
+    assert.equal(res.body?.sent, 1);
+    assert.equal(res.body?.failed, 3);
+    assert.ok(res.body?.completedAt);
+    assert.equal(sentMessages.length, 2);
+
+    const failedByEmail = new Map(
+        (Array.isArray(res.body?.failedRecipients) ? res.body.failedRecipients : [])
+            .map((recipient) => [recipient.email, recipient])
+    );
+
+    assert.equal(failedByEmail.get('not-an-email')?.reason, 'Invalid email address.');
+    assert.equal(failedByEmail.get('blocked@example.com')?.reason, 'Mailbox does not exist.');
+    assert.equal(failedByEmail.get('rejected@example.com')?.reason, 'Recipient rejected by provider.');
+});
+
+test('admin email preview summarizes warnings, blocks, suppressions, and duplicates', async () => {
+    const pool = {
+        async query(sql) {
+            throw new Error(`Unexpected SQL: ${normalizeSql(sql)}`);
+        }
+    };
+
+    const handlers = registerRoutesForTest(pool, {
+        previewTrackedEmailMessage: async ({ message }) => {
+            const email = String(message?.to?.email || '').trim().toLowerCase();
+            if (email === 'warning@example.com') {
+                return {
+                    email,
+                    status: 'warning',
+                    reason: 'Domain accepts all mailboxes.'
+                };
+            }
+            if (email === 'blocked@example.com') {
+                return {
+                    email,
+                    status: 'blocked',
+                    reason: 'Mailbox does not exist.'
+                };
+            }
+            if (email === 'suppressed@example.com') {
+                return {
+                    email,
+                    status: 'suppressed',
+                    reason: 'Previous send bounced.'
+                };
+            }
+            return {
+                email,
+                status: 'ready'
+            };
+        }
+    });
+    const handler = handlers['POST /api/admin/email/preview'];
+    assert.ok(handler);
+
+    const req = {
+        body: {
+            messages: [
+                { to: { email: 'ready@example.com' }, subject: 'Test', text: 'Hello' },
+                { to: { email: 'warning@example.com' }, subject: 'Test', text: 'Hello' },
+                { to: { email: 'blocked@example.com' }, subject: 'Test', text: 'Hello' },
+                { to: { email: 'suppressed@example.com' }, subject: 'Test', text: 'Hello' },
+                { to: { email: 'ready@example.com' }, subject: 'Test', text: 'Hello again' }
+            ]
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.success, true);
+    assert.equal(res.body?.total, 5);
+    assert.deepEqual(res.body?.counts, {
+        ready: 1,
+        warning: 1,
+        blocked: 1,
+        suppressed: 1,
+        duplicate: 1
+    });
+});
+
+test('admin resend confirmation route forces tracked resend', async () => {
+    const pool = {
+        async query(sql) {
+            throw new Error(`Unexpected SQL: ${normalizeSql(sql)}`);
+        }
+    };
+    let resendCall = null;
+    const handlers = registerRoutesForTest(pool, {
+        sendOrderConfirmationEmail: async (orderId, options) => {
+            resendCall = { orderId, options };
+            return {
+                sent: true,
+                emailMessageId: 'email-message-1',
+                providerEmailId: 'provider-email-1'
+            };
+        }
+    });
+    const handler = handlers['POST /api/admin/orders/:id/resend-confirmation'];
+    assert.ok(handler);
+
+    const req = {
+        params: { id: 'order-123' }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(res.body, {
+        success: true,
+        orderId: 'order-123',
+        emailMessageId: 'email-message-1',
+        providerEmailId: 'provider-email-1'
+    });
+    assert.deepEqual(resendCall, {
+        orderId: 'order-123',
+        options: {
+            force: true,
+            initiatedBy: 'admin'
+        }
+    });
+});
+
+test('admin pickup stock update records inventory and admin audit entries', async () => {
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+            if (
+                normalizedSql.includes('FROM pickup_dates')
+                && normalizedSql.includes('WHERE is_active = true')
+                && normalizedSql.includes('date_value = $1')
+            ) {
+                assert.deepEqual(params, ['2026-06-01', 'hemmingford']);
+                return { rows: [{ id: 'pickup-date-1' }] };
+            }
+            if (
+                normalizedSql.includes('SELECT hen_id, stock')
+                && normalizedSql.includes('FROM pickup_stock')
+                && normalizedSql.includes('hen_id = ANY($2::int[])')
+            ) {
+                assert.deepEqual(params, ['pickup-date-1', [1, 2]]);
+                return {
+                    rows: [
+                        { hen_id: 1, stock: 5 },
+                        { hen_id: 2, stock: 3 }
+                    ]
+                };
+            }
+            if (
+                normalizedSql.includes('INSERT INTO pickup_stock')
+                && normalizedSql.includes('DO UPDATE SET stock = EXCLUDED.stock')
+            ) {
+                assert.deepEqual(params, ['pickup-date-1', [1, 2], [7, 1]]);
+                return { rowCount: 2, rows: [] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const inventoryCalls = [];
+    const adminActions = [];
+    const handlers = registerRoutesForTest(pool, {
+        recordInventoryEvents: async (_executor, events) => {
+            inventoryCalls.push(events);
+            return ['inv-1', 'inv-2'];
+        },
+        recordAdminAction: async (_executor, payload) => {
+            adminActions.push(payload);
+            return 'admin-action-1';
+        }
+    });
+    const handler = handlers['PUT /api/admin/pickup-stock'];
+    assert.ok(handler);
+
+    const req = {
+        adminSession: { sub: 'operator-1' },
+        requestId: 'req-stock-1',
+        headers: { 'user-agent': 'node-test' },
+        body: {
+            date: '2026-06-01',
+            location: 'hemmingford',
+            items: [
+                { hen_id: 1, stock: 7 },
+                { hen_id: 2, stock: 1 }
+            ]
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(inventoryCalls, [[
+        {
+            pickupDate: '2026-06-01',
+            location: 'hemmingford',
+            itemId: 1,
+            delta: 2,
+            reason: 'admin_pickup_stock_edit',
+            actor: 'operator-1',
+            requestId: 'req-stock-1'
+        },
+        {
+            pickupDate: '2026-06-01',
+            location: 'hemmingford',
+            itemId: 2,
+            delta: -2,
+            reason: 'admin_pickup_stock_edit',
+            actor: 'operator-1',
+            requestId: 'req-stock-1'
+        }
+    ]]);
+    assert.equal(adminActions.length, 1);
+    assert.equal(adminActions[0]?.actionType, 'pickup_stock_edit');
+    assert.equal(adminActions[0]?.targetId, '2026-06-01::hemmingford');
+    assert.deepEqual(adminActions[0]?.after?.items, [
+        { item_id: 1, stock: 7 },
+        { item_id: 2, stock: 1 }
+    ]);
+});
+
+test('admin bulk email send records batch and admin audit metadata', async () => {
+    const pool = {
+        async query(sql) {
+            throw new Error(`Unexpected SQL: ${normalizeSql(sql)}`);
+        }
+    };
+
+    const startedBatches = [];
+    const finalizedBatches = [];
+    const adminActions = [];
+    const sentMessages = [];
+    const handlers = registerRoutesForTest(pool, {
+        startBatchRun: async (_executor, payload) => {
+            startedBatches.push(payload);
+            return 'batch-1';
+        },
+        finalizeBatchRun: async (_executor, batchRunId, payload) => {
+            finalizedBatches.push({ batchRunId, payload });
+            return batchRunId;
+        },
+        recordAdminAction: async (_executor, payload) => {
+            adminActions.push(payload);
+            return 'admin-action-1';
+        },
+        sendTrackedEmailMessage: async ({ message }) => {
+            sentMessages.push(message);
+            return {
+                success: true,
+                email: String(message?.to?.email || '').trim().toLowerCase(),
+                name: String(message?.to?.name || '').trim() || undefined,
+                status: 'sent',
+                emailMessageId: `email-${sentMessages.length}`,
+                providerEmailId: `provider-${sentMessages.length}`
+            };
+        }
+    });
+    const handler = handlers['POST /api/admin/email'];
+    assert.ok(handler);
+
+    const req = {
+        adminSession: { sub: 'operator-2' },
+        requestId: 'req-email-1',
+        headers: { 'user-agent': 'node-test' },
+        body: {
+            messages: [
+                {
+                    to: { email: 'first@example.com', name: 'First' },
+                    subject: 'Pickup reminder',
+                    text: 'Reminder one',
+                    emailType: 'pickup_reminder'
+                },
+                {
+                    to: { email: 'second@example.com', name: 'Second' },
+                    subject: 'Pickup reminder',
+                    text: 'Reminder two',
+                    emailType: 'pickup_reminder'
+                }
+            ]
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(sentMessages.length, 2);
+    assert.deepEqual(startedBatches, [{
+        batchType: 'pickup_reminder_batch',
+        scope: {
+            email_types: ['pickup_reminder'],
+            subjects: ['Pickup reminder'],
+            total_messages: 2
+        },
+        expectedCount: 2,
+        initiatedBy: 'operator-2',
+        requestId: 'req-email-1'
+    }]);
+    assert.deepEqual(finalizedBatches, [{
+        batchRunId: 'batch-1',
+        payload: {
+            attemptedCount: 2,
+            succeededCount: 2,
+            failedCount: 0,
+            initiatedBy: 'operator-2',
+            requestId: 'req-email-1',
+            scope: {
+                email_types: ['pickup_reminder'],
+                subjects: ['Pickup reminder'],
+                counts: {
+                    sent: 2,
+                    warning: 0,
+                    blocked: 0,
+                    suppressed: 0,
+                    failed: 0,
+                    duplicate: 0
+                }
+            }
+        }
+    }]);
+    assert.equal(adminActions.length, 1);
+    assert.equal(adminActions[0]?.actionType, 'bulk_email_send');
+    assert.equal(adminActions[0]?.targetId, 'batch-1');
+    assert.deepEqual(adminActions[0]?.after?.counts, {
+        sent: 2,
+        warning: 0,
+        blocked: 0,
+        suppressed: 0,
+        failed: 0,
+        duplicate: 0
+    });
 });

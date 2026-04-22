@@ -1,3 +1,7 @@
+const {
+    recordInventoryEvents
+} = require('./audit-ops');
+
 const getOrderItemTotals = (parseOrderItems, collectOrderItemTotals, rawItems) => {
     const totals = collectOrderItemTotals(parseOrderItems, rawItems)
         .filter((item) => Number.isInteger(item.id) && item.id > 0)
@@ -23,7 +27,17 @@ const findPickupDateIdByValue = async (client, pickupDate, pickupLocation) => {
     return result.rows[0]?.id || null;
 };
 
-const reserveStockForItems = async (client, { pickupDateId, items, orderId }) => {
+const reserveStockForItems = async (client, {
+    pickupDateId,
+    items,
+    orderId,
+    pickupDate,
+    pickupLocation,
+    inventoryReason = 'stock_reserved',
+    inventoryActor = 'system',
+    requestId = null
+}) => {
+    const inventoryEvents = [];
     for (const item of items) {
         const quantity = item.quantity;
         const itemId = item.id;
@@ -43,11 +57,32 @@ const reserveStockForItems = async (client, { pickupDateId, items, orderId }) =>
                     `Insufficient pickup stock while reserving order ${orderId} for hen ${itemId}.`
                 );
             }
+            inventoryEvents.push({
+                pickupDate,
+                location: pickupLocation,
+                itemId,
+                delta: -quantity,
+                reason: inventoryReason,
+                actor: inventoryActor,
+                requestId
+            });
         }
+    }
+    if (inventoryEvents.length > 0) {
+        await recordInventoryEvents(client, inventoryEvents);
     }
 };
 
-const releaseStockForItems = async (client, { pickupDateId, items }) => {
+const releaseStockForItems = async (client, {
+    pickupDateId,
+    items,
+    pickupDate,
+    pickupLocation,
+    inventoryReason = 'stock_released',
+    inventoryActor = 'system',
+    requestId = null
+}) => {
+    const inventoryEvents = [];
     for (const item of items) {
         const quantity = item.quantity;
         const itemId = item.id;
@@ -62,7 +97,19 @@ const releaseStockForItems = async (client, { pickupDateId, items }) => {
                 `,
                 [pickupDateId, itemId, quantity]
             );
+            inventoryEvents.push({
+                pickupDate,
+                location: pickupLocation,
+                itemId,
+                delta: quantity,
+                reason: inventoryReason,
+                actor: inventoryActor,
+                requestId
+            });
         }
+    }
+    if (inventoryEvents.length > 0) {
+        await recordInventoryEvents(client, inventoryEvents);
     }
 };
 

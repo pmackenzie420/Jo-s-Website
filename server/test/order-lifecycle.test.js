@@ -76,7 +76,15 @@ test('releaseReservedOrder releases stock for reserved order and expires Stripe 
     assert.equal(expireCalls.length, 1);
     assert.equal(expireCalls[0], 'cs_test_reserved');
     assert.deepEqual(released, [
-        { pickupDateId: 'pickup_date_1', items: [{ id: 10, quantity: 2 }] }
+        {
+            pickupDateId: 'pickup_date_1',
+            items: [{ id: 10, quantity: 2 }],
+            pickupDate: '2026-04-28',
+            pickupLocation: 'hemmingford',
+            inventoryReason: 'order_cancelled_release',
+            inventoryActor: 'system',
+            requestId: null
+        }
     ]);
 });
 
@@ -133,7 +141,15 @@ test('releaseReservedOrder releases stock for paid order but does not attempt to
     assert.equal(result.status, 'released');
     assert.equal(expireCalls.length, 0);
     assert.deepEqual(released, [
-        { pickupDateId: 'pickup_date_1', items: [{ id: 12, quantity: 1 }] }
+        {
+            pickupDateId: 'pickup_date_1',
+            items: [{ id: 12, quantity: 1 }],
+            pickupDate: '2026-04-28',
+            pickupLocation: 'hemmingford',
+            inventoryReason: 'order_cancelled_release',
+            inventoryActor: 'system',
+            requestId: null
+        }
     ]);
 });
 
@@ -237,4 +253,3 @@ test('finalizeOrderFromSession does not revive cancelled orders', async () => {
     assert.equal(reserveCalled, false);
     assert.equal(emailCalled, false);
 });
-

@@ -50,8 +50,25 @@ const finalizeAdminOrder = (orderId) =>
 
 const fetchAdminStats = () => axios.get(`${API_URL}/admin/stats`, withAuth);
 
+const fetchEmailActivity = ({ limit = 100, query = '', status = '', emailType = '' } = {}) =>
+  axios.get(`${API_URL}/admin/email-activity`, {
+    ...withAuth,
+    params: {
+      limit,
+      query,
+      status,
+      email_type: emailType
+    }
+  });
+
+const previewGroupEmail = ({ messages }) =>
+  axios.post(`${API_URL}/admin/email/preview`, { messages }, withAuth);
+
 const sendGroupEmail = ({ messages }) =>
   axios.post(`${API_URL}/admin/email`, { messages }, withAuth);
+
+const resendConfirmationEmail = (orderId) =>
+  axios.post(`${API_URL}/admin/orders/${orderId}/resend-confirmation`, {}, withAuth);
 
 export {
   login,
@@ -67,6 +84,9 @@ export {
   updateAdminOrder,
   deleteAdminOrder,
   fetchAdminStats,
+  fetchEmailActivity,
   finalizeAdminOrder,
-  sendGroupEmail
+  previewGroupEmail,
+  sendGroupEmail,
+  resendConfirmationEmail
 };

@@ -25,6 +25,95 @@ const parseCalendarDateKey = (value) => {
   };
 };
 
+const normalizeTimestamp = (value) => {
+  const text = String(value || '').trim();
+  return text || '';
+};
+
+const normalizeEmailHistory = (value) => (
+  Array.isArray(value)
+    ? value.reduce((acc, entry) => {
+      const id = String(entry?.id || '').trim();
+      if (!id) return acc;
+      acc.push({
+        id,
+        emailType: String(entry?.emailType || entry?.email_type || '').trim().toLowerCase(),
+        sendStatus: String(entry?.sendStatus || entry?.send_status || '').trim().toLowerCase(),
+        verificationStatus: String(entry?.verificationStatus || entry?.verification_status || '').trim().toLowerCase(),
+        toEmail: String(entry?.toEmail || entry?.to_email || '').trim(),
+        toName: String(entry?.toName || entry?.to_name || '').trim(),
+        subject: String(entry?.subject || '').trim(),
+        createdAt: normalizeTimestamp(entry?.createdAt || entry?.created_at),
+        sentAt: normalizeTimestamp(entry?.sentAt || entry?.sent_at),
+        deliveredAt: normalizeTimestamp(entry?.deliveredAt || entry?.delivered_at),
+        failedAt: normalizeTimestamp(entry?.failedAt || entry?.failed_at),
+        bouncedAt: normalizeTimestamp(entry?.bouncedAt || entry?.bounced_at),
+        complainedAt: normalizeTimestamp(entry?.complainedAt || entry?.complained_at),
+        suppressedAt: normalizeTimestamp(entry?.suppressedAt || entry?.suppressed_at),
+        lastEventAt: normalizeTimestamp(entry?.lastEventAt || entry?.last_event_at),
+        lastEventType: String(entry?.lastEventType || entry?.last_event_type || '').trim(),
+        lastError: String(entry?.lastError || entry?.last_error || '').trim(),
+        providerEmailId: String(entry?.providerEmailId || entry?.provider_email_id || '').trim(),
+        batchKey: String(entry?.batchKey || entry?.batch_key || '').trim(),
+        initiatedBy: String(entry?.initiatedBy || entry?.initiated_by || '').trim()
+      });
+      return acc;
+    }, [])
+    : []
+);
+
+const buildConfirmationEmailSummary = (order, emailHistory) => {
+  const trackedConfirmation = emailHistory.find((entry) => entry.emailType === 'confirmation') || null;
+  const trackedStatus = String(
+    order?.latest_confirmation_email_status
+    || trackedConfirmation?.sendStatus
+    || ''
+  ).trim().toLowerCase();
+  if (trackedStatus) {
+    return {
+      status: trackedStatus,
+      createdAt: normalizeTimestamp(order?.latest_confirmation_email_at || trackedConfirmation?.createdAt),
+      error: String(order?.latest_confirmation_email_error || trackedConfirmation?.lastError || '').trim(),
+      verificationStatus: String(
+        order?.latest_confirmation_verification_status
+        || trackedConfirmation?.verificationStatus
+        || ''
+      ).trim().toLowerCase(),
+      tracked: true
+    };
+  }
+
+  if (order?.confirmation_email_sent_at) {
+    return {
+      status: 'sent',
+      createdAt: normalizeTimestamp(order.confirmation_email_sent_at),
+      error: '',
+      verificationStatus: '',
+      tracked: false
+    };
+  }
+
+  return {
+    status: 'not_sent',
+    createdAt: '',
+    error: '',
+    verificationStatus: '',
+    tracked: false
+  };
+};
+
+const buildEmailSuppression = (order) => {
+  const reasonType = String(order?.email_suppression_reason_type || '').trim().toLowerCase();
+  const reason = String(order?.email_suppression_reason || '').trim();
+  const suppressedAt = normalizeTimestamp(order?.email_suppressed_at);
+  return {
+    active: Boolean(reasonType || reason || suppressedAt),
+    reasonType,
+    reason,
+    suppressedAt
+  };
+};
+
 const buildOrdersWithDetails = (orders, hens, language = 'en') => {
   const henNameById = new Map(hens.map((henItem) => [Number(henItem.id), henItem.name]));
 
@@ -64,6 +153,9 @@ const buildOrdersWithDetails = (orders, hens, language = 'en') => {
     const amountDue = dueCents / 100;
     const paymentType = normalizePaymentType(order.payment_type, dueCents);
     const status = String(order.status || '').trim().toLowerCase();
+    const emailHistory = normalizeEmailHistory(order.email_history);
+    const confirmationEmail = buildConfirmationEmailSummary(order, emailHistory);
+    const emailSuppression = buildEmailSuppression(order);
     const PAYMENT_METHOD_LABELS = {
       etransfer: 'E-transfer',
       cash: 'Cash',
@@ -109,7 +201,10 @@ const buildOrdersWithDetails = (orders, hens, language = 'en') => {
       itemCount,
       itemSummary,
       itemSummaryCompact,
-      itemSummaryShort
+      itemSummaryShort,
+      emailHistory,
+      confirmationEmail,
+      emailSuppression
     };
   });
 };

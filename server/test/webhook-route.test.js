@@ -85,3 +85,39 @@ test('webhook route finalizes completed sessions and releases expired reservatio
     assert.deepEqual(expiredRes.body, { received: true });
     assert.deepEqual(releaseCalls, ['ord_2']);
 });
+
+test('email webhook route returns 503 when Resend webhook secret is missing', async () => {
+    const routeHandlers = {};
+    const app = {
+        post(path, ...handlers) {
+            routeHandlers[`POST ${path}`] = handlers[handlers.length - 1];
+        }
+    };
+
+    registerWebhookRoutes(app, {
+        stripe: {
+            webhooks: {
+                constructEvent(body) {
+                    return body;
+                }
+            }
+        },
+        webhookSecret: 'whsec_test',
+        finalizeOrderFromSession: async () => ({ status: 'paid', orderId: 'order-1' }),
+        releaseReservedOrder: async () => ({ status: 'released', orderId: 'order-1' })
+    });
+
+    const emailWebhookHandler = routeHandlers['POST /api/email/webhook'];
+    assert.ok(emailWebhookHandler);
+
+    const req = {
+        headers: {},
+        body: Buffer.from('{}', 'utf8')
+    };
+    const res = createMockRes();
+
+    await emailWebhookHandler(req, res);
+
+    assert.equal(res.statusCode, 503);
+    assert.equal(res.body, 'Resend webhook not configured');
+});

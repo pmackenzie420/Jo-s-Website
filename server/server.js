@@ -1,4 +1,5 @@
 const path = require('path');
+const { randomUUID } = require('crypto');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 
 const { Sentry, sentryEnabled, captureException } = require('./sentry');
@@ -41,6 +42,21 @@ const {
     sendOrderConfirmationEmail,
     sendEmailMessage
 } = require('./logic/email');
+const {
+    ensureEmailOpsSchema,
+    applyEmailWebhookEvent,
+    verifyManagedEmailAddress
+} = require('./logic/email-ops');
+const {
+    ensureAuditOpsSchema,
+    recordOrderEvent,
+    recordAdminAction,
+    recordPaymentEvent,
+    startBatchRun,
+    finalizeBatchRun,
+    recordInventoryEvent,
+    recordInventoryEvents
+} = require('./logic/audit-ops');
 const {
     createRateLimiter,
     signAdminSession,
@@ -183,6 +199,12 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+app.use((req, res, next) => {
+    const incomingRequestId = String(req.get('x-request-id') || '').trim();
+    req.requestId = incomingRequestId || randomUUID();
+    res.setHeader('X-Request-Id', req.requestId);
+    next();
+});
 
 const getRequestBaseUrl = (req) => {
     const envUrl = normalizeOrigin(process.env.CLIENT_URL || '');
@@ -286,6 +308,8 @@ const {
     reserveStockForItems,
     releaseStockForItems,
     sendOrderConfirmationEmail,
+    recordOrderEvent,
+    recordPaymentEvent,
     PAID_STATUSES,
     RESERVED_ORDER_STATUS,
     CHECKOUT_RESERVATION_TTL_MINUTES,
@@ -321,7 +345,13 @@ registerWebhookRoutes(app, {
     stripe,
     webhookSecret: process.env.STRIPE_WEBHOOK_SECRET,
     finalizeOrderFromSession,
-    releaseReservedOrder
+    releaseReservedOrder,
+    resendWebhookSecret: process.env.RESEND_WEBHOOK_SECRET,
+    recordPaymentEvent: (payload) => recordPaymentEvent(pool, payload),
+    applyEmailWebhookEvent: (payload) => applyEmailWebhookEvent({
+        pool,
+        ...payload
+    })
 });
 
 app.use(express.json());
@@ -356,6 +386,7 @@ registerCheckoutRoutes(app, {
     signOrderConfirmToken,
     verifyOrderConfirmToken,
     verifyCheckoutEmail,
+    verifyManagedEmailAddress,
     getCookieOptions,
     ORDER_CONFIRM_COOKIE,
     ORDER_CONFIRM_TTL_MS,
@@ -367,7 +398,8 @@ registerCheckoutRoutes(app, {
     withTransaction,
     finalizeOrderFromSession,
     releaseReservedOrder,
-    sweepExpiredReservedOrders
+    sweepExpiredReservedOrders,
+    recordPaymentEvent
 });
 
 registerMainAuthRoutes(app, {
@@ -402,7 +434,14 @@ registerAdminRoutes(app, {
     stripe,
     CHECKOUT_RESERVATION_TTL_MINUTES,
     getRequestBaseUrl,
-    finalizeOrderFromSession
+    finalizeOrderFromSession,
+    recordOrderEvent,
+    recordAdminAction,
+    recordPaymentEvent,
+    startBatchRun,
+    finalizeBatchRun,
+    recordInventoryEvent,
+    recordInventoryEvents
 });
 
 if (sentryEnabled) {
@@ -451,4 +490,24 @@ app.use((err, req, res, next) => {
     return res.status(statusCode).json(payload);
 });
 
-app.listen(port, () => logInfo(`Server on port ${port}`));
+const startServer = async () => {
+    try {
+        await ensureAuditOpsSchema(pool);
+    } catch (err) {
+        logError('Failed to ensure audit operations schema', err);
+        process.exitCode = 1;
+        return;
+    }
+
+    try {
+        await ensureEmailOpsSchema(pool);
+    } catch (err) {
+        logError('Failed to ensure email operations schema', err);
+        process.exitCode = 1;
+        return;
+    }
+
+    app.listen(port, () => logInfo(`Server on port ${port}`));
+};
+
+startServer();

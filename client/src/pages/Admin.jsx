@@ -41,8 +41,16 @@ export default function Admin() {
     emailGroupKey,
     emailSubject,
     emailMessage,
+    emailTargetInput,
     emailSending,
+    emailPreviewLoading,
+    emailPreviewReport,
+    emailLastReport,
     emailFailedRecipients,
+    emailActivity,
+    emailActivityLoading,
+    emailActivityQuery,
+    emailActivityStatus,
     allPickupStocks,
     allPickupReserved,
     pickupStockSaving,
@@ -70,6 +78,9 @@ export default function Admin() {
     setChangeEmailUsers,
     setEmailSubject,
     setEmailMessage,
+    setEmailTargetInput,
+    setEmailActivityQuery,
+    setEmailActivityStatus,
     handleLogin,
     handleLoadMoreOrders,
     handleExportDownload,
@@ -93,7 +104,10 @@ export default function Admin() {
     handleCreateAdminOrder,
     handleArchiveOrder,
     handleEditOrder,
-    handleUpdateAdminOrder
+    handleUpdateAdminOrder,
+    handlePreviewGroupEmail,
+    handleRefreshEmailActivity,
+    handleResendConfirmationEmail
   } = useAdminController();
 
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -316,13 +330,26 @@ export default function Admin() {
               emailGroupKey={emailGroupKey}
               emailSubject={emailSubject}
               emailMessage={emailMessage}
+              emailTargetInput={emailTargetInput}
               emailSending={emailSending}
+              emailPreviewLoading={emailPreviewLoading}
+              emailPreviewReport={emailPreviewReport}
+              emailLastReport={emailLastReport}
               emailFailedRecipients={emailFailedRecipients}
+              emailActivity={emailActivity}
+              emailActivityLoading={emailActivityLoading}
+              emailActivityQuery={emailActivityQuery}
+              emailActivityStatus={emailActivityStatus}
               adminLanguage={adminLanguage}
               onToggleGroup={handleToggleEmailGroup}
               onSubjectChange={setEmailSubject}
               onMessageChange={setEmailMessage}
+              onTargetInputChange={setEmailTargetInput}
+              onPreviewGroupEmail={handlePreviewGroupEmail}
               onSendGroupEmail={handleSendGroupEmail}
+              onEmailActivityQueryChange={setEmailActivityQuery}
+              onEmailActivityStatusChange={setEmailActivityStatus}
+              onRefreshEmailActivity={() => handleRefreshEmailActivity({ showError: true })}
             />
           )}
         </main>
@@ -347,6 +374,7 @@ export default function Admin() {
         adminLanguage={adminLanguage}
         onExportCustomerInvoices={handleInvoiceExportForCustomer}
         onExportOrderInvoice={handleInvoiceExportForOrder}
+        onResendConfirmationEmail={handleResendConfirmationEmail}
         onClose={() => setSelectedCustomer(null)}
       />
       <AdminPickupModal
@@ -358,6 +386,7 @@ export default function Admin() {
         onExportOrderInvoice={handleInvoiceExportForOrder}
         onEditOrder={handleEditOrder}
         onArchiveOrder={handleArchiveOrder}
+        onResendConfirmationEmail={handleResendConfirmationEmail}
       />
       <AdminEditOrderModal
         order={editingOrder}

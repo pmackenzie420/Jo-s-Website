@@ -11,7 +11,8 @@ const {
     formatPickupDateLong,
     escapeHtml,
     extractEmailAddress,
-    parseOrderItems
+    parseOrderItems,
+    getClientIp
 } = require('../utils/helpers');
 const { normalizePhoneForStorage } = require('../logic/checkout-validation');
 const { reserveStockForItems, releaseStockForItems } = require('../logic/order-stock');
@@ -31,7 +32,14 @@ const {
     COMPANY_CONTACT
 } = require('../config/constants');
 const { buildBrandedEmailHtml } = require('../utils/email-template');
-const { logError } = require('../utils/logger');
+const { logError, logInfo, logWarn } = require('../utils/logger');
+const {
+    EMAIL_TYPES,
+    listEmailActivity,
+    previewTrackedEmailMessage,
+    sendTrackedEmailMessage,
+    verifyManagedEmailAddress
+} = require('../logic/email-ops');
 
 const ADMIN_ALLOWED_ORDER_STATUSES = new Set([
     'reserved',
@@ -46,6 +54,7 @@ const ADMIN_EDITABLE_ORDER_STATUSES = new Set(['pending', 'paid']);
 const ADMIN_ARCHIVABLE_ORDER_STATUSES = new Set(['pending', 'paid', 'cancelled']);
 const ADMIN_RESTORE_FROM_ARCHIVE_STATUSES = new Set(['pending', 'paid']);
 const VALID_ADMIN_PAYMENT_METHODS = new Set(['etransfer', 'cash', 'cheque', 'credit_card']);
+const ADMIN_EMAIL_ACTIVITY_LIMIT = 250;
 
 const parsePositiveInt = (value, fallback) => {
     const parsed = Number(value);
@@ -345,45 +354,333 @@ const registerAdminRoutes = (app, deps) => {
         stripe,
         CHECKOUT_RESERVATION_TTL_MINUTES = 30,
         getRequestBaseUrl,
-        finalizeOrderFromSession
+        finalizeOrderFromSession,
+        listEmailActivity: listEmailActivityOverride,
+        previewTrackedEmailMessage: previewTrackedEmailMessageOverride,
+        sendTrackedEmailMessage: sendTrackedEmailMessageOverride,
+        verifyManagedEmailAddress: verifyManagedEmailAddressOverride,
+        recordOrderEvent: recordOrderEventOverride,
+        recordAdminAction: recordAdminActionOverride,
+        recordPaymentEvent: recordPaymentEventOverride,
+        startBatchRun: startBatchRunOverride,
+        finalizeBatchRun: finalizeBatchRunOverride,
+        recordInventoryEvent: recordInventoryEventOverride,
+        recordInventoryEvents: recordInventoryEventsOverride
     } = deps;
     const verifyEmail = typeof verifyCheckoutEmail === 'function'
         ? verifyCheckoutEmail
         : null;
+    const listTrackedEmailActivity = typeof listEmailActivityOverride === 'function'
+        ? listEmailActivityOverride
+        : listEmailActivity;
+    const previewEmailMessage = typeof previewTrackedEmailMessageOverride === 'function'
+        ? previewTrackedEmailMessageOverride
+        : previewTrackedEmailMessage;
+    const sendManagedEmailMessage = typeof sendTrackedEmailMessageOverride === 'function'
+        ? sendTrackedEmailMessageOverride
+        : sendTrackedEmailMessage;
+    const verifyManagedAddress = typeof verifyManagedEmailAddressOverride === 'function'
+        ? verifyManagedEmailAddressOverride
+        : verifyManagedEmailAddress;
+    const recordOrderAuditEvent = typeof recordOrderEventOverride === 'function'
+        ? recordOrderEventOverride
+        : async () => null;
+    const recordAdminAuditAction = typeof recordAdminActionOverride === 'function'
+        ? recordAdminActionOverride
+        : async () => null;
+    const recordPaymentAuditEvent = typeof recordPaymentEventOverride === 'function'
+        ? recordPaymentEventOverride
+        : async () => null;
+    const startAuditBatchRun = typeof startBatchRunOverride === 'function'
+        ? startBatchRunOverride
+        : async () => null;
+    const finalizeAuditBatchRun = typeof finalizeBatchRunOverride === 'function'
+        ? finalizeBatchRunOverride
+        : async () => null;
+    const recordInventoryAuditEvent = typeof recordInventoryEventOverride === 'function'
+        ? recordInventoryEventOverride
+        : async () => null;
+    const recordInventoryAuditEvents = typeof recordInventoryEventsOverride === 'function'
+        ? recordInventoryEventsOverride
+        : async () => [];
+    const orderEventAuditEnabled = typeof recordOrderEventOverride === 'function';
+    const adminActionAuditEnabled = typeof recordAdminActionOverride === 'function';
+    const inventoryEventAuditEnabled =
+        typeof recordInventoryEventOverride === 'function'
+        || typeof recordInventoryEventsOverride === 'function';
+    const getAdminIdentifier = (req) => sanitizeText(req?.adminSession?.sub, 120) || 'admin';
+    const getRequestMetadata = (req) => ({
+        requestId: sanitizeText(req?.requestId, 200) || null,
+        ip: sanitizeText(getClientIp(req), 200) || null,
+        userAgent: sanitizeText(req?.get?.('user-agent') || req?.headers?.['user-agent'], 500) || null
+    });
+    const summarizeOrderForAudit = (value) => ({
+        id: sanitizeText(value?.id, 120) || null,
+        order_number: Number(value?.order_number || 0) || null,
+        status: sanitizeText(value?.status, 80).toLowerCase() || null,
+        pickup_date: sanitizeText(value?.pickup_date, 40) || null,
+        pickup_location: sanitizeText(value?.pickup_location, 80) || null,
+        total_cents: Number(value?.total_cents || 0) || 0,
+        amount_paid_cents: Number(value?.amount_paid_cents || 0) || 0,
+        amount_due_cents: Number(value?.amount_due_cents || 0) || 0,
+        payment_type: sanitizeText(value?.payment_type, 40) || null,
+        payment_method: sanitizeText(value?.payment_method, 40) || null,
+        customer_email: sanitizeText(value?.customer_email, 320).toLowerCase() || null,
+        items: Array.isArray(value?.items) ? value.items : normalizeStoredOrderItems(value?.items)
+    });
+    const normalizeEmailFailureReason = (value, fallback) => {
+        const raw = String(value || '').replace(/^Email send failed:\s*/i, '').trim();
+        if (!raw) return fallback;
+
+        try {
+            const parsed = JSON.parse(raw);
+            const parsedMessage = sanitizeText(
+                parsed?.message
+                || parsed?.error
+                || parsed?.name
+                || parsed?.detail,
+                300
+            );
+            if (parsedMessage) {
+                return parsedMessage;
+            }
+        } catch {
+            // Keep the raw string when it is not JSON.
+        }
+
+        return sanitizeText(raw, 300) || fallback;
+    };
+    const buildFailedRecipient = ({ email, name, reason, fallbackReason }) => {
+        const normalizedEmail = sanitizeText(email, 320).toLowerCase() || 'invalid-email';
+        const normalizedName = sanitizeText(name, 120);
+        const normalizedReason = normalizeEmailFailureReason(reason, fallbackReason);
+
+        return {
+            email: normalizedEmail,
+            ...(normalizedName ? { name: normalizedName } : {}),
+            ...(normalizedReason ? { reason: normalizedReason } : {})
+        };
+    };
+    const buildTrackedConfirmationOptions = ({
+        force = false,
+        initiatedBy,
+        actorType,
+        actorId,
+        requestId
+    }) => ({
+        ...(force ? { force: true } : {}),
+        initiatedBy,
+        ...(requestId ? { requestId } : {}),
+        ...(actorType && actorType !== initiatedBy ? { actorType } : {}),
+        ...(actorId && actorId !== initiatedBy ? { actorId } : {})
+    });
+    const toDistinctSanitizedStrings = (values, maxLength = 200) => (
+        Array.from(
+            new Set(
+                (Array.isArray(values) ? values : [])
+                    .map((value) => sanitizeText(value, maxLength))
+                    .filter(Boolean)
+            )
+        )
+    );
+    const buildEmailBatchType = (emailTypes) => {
+        if (emailTypes.length === 1 && emailTypes[0] === EMAIL_TYPES.PICKUP_REMINDER) {
+            return 'pickup_reminder_batch';
+        }
+        if (emailTypes.length === 1 && emailTypes[0] === EMAIL_TYPES.PICKUP_DATE_CHANGE) {
+            return 'pickup_date_change_batch';
+        }
+        return 'admin_email_batch';
+    };
+    const buildAdminOrdersQuery = (limitPlaceholder, offsetPlaceholder) => `
+        SELECT
+            orders.*,
+            customers.name AS customer_name,
+            customers.phone AS customer_phone,
+            customers.address AS customer_address,
+            COALESCE(email_history_data.data, '[]'::jsonb) AS email_history,
+            confirmation_email_data.latest_confirmation_email_status,
+            confirmation_email_data.latest_confirmation_email_at,
+            confirmation_email_data.latest_confirmation_email_error,
+            confirmation_email_data.latest_confirmation_verification_status,
+            suppression_data.email_suppression_reason_type,
+            suppression_data.email_suppression_reason,
+            suppression_data.email_suppressed_at
+        FROM orders
+        LEFT JOIN customers
+            ON orders.customer_id = customers.id
+        LEFT JOIN LATERAL (
+            SELECT COALESCE(
+                jsonb_agg(
+                    jsonb_build_object(
+                        'id', email_history_entry.id,
+                        'emailType', email_history_entry.email_type,
+                        'sendStatus', email_history_entry.send_status,
+                        'verificationStatus', email_history_entry.verification_status,
+                        'toEmail', email_history_entry.to_email,
+                        'toName', email_history_entry.to_name,
+                        'subject', email_history_entry.subject,
+                        'createdAt', email_history_entry.created_at,
+                        'sentAt', email_history_entry.sent_at,
+                        'deliveredAt', email_history_entry.delivered_at,
+                        'failedAt', email_history_entry.failed_at,
+                        'bouncedAt', email_history_entry.bounced_at,
+                        'complainedAt', email_history_entry.complained_at,
+                        'suppressedAt', email_history_entry.suppressed_at,
+                        'lastEventAt', email_history_entry.last_event_at,
+                        'lastEventType', email_history_entry.last_event_type,
+                        'lastError', email_history_entry.last_error,
+                        'providerEmailId', email_history_entry.provider_email_id,
+                        'batchKey', email_history_entry.batch_key,
+                        'initiatedBy', email_history_entry.initiated_by
+                    )
+                    ORDER BY email_history_entry.created_at DESC
+                ),
+                '[]'::jsonb
+            ) AS data
+            FROM (
+                SELECT em.*
+                FROM email_messages em
+                INNER JOIN email_message_orders emo
+                    ON emo.email_message_id = em.id
+                WHERE emo.order_id = orders.id
+                ORDER BY em.created_at DESC
+                LIMIT 8
+            ) AS email_history_entry
+        ) AS email_history_data
+            ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT
+                em.send_status AS latest_confirmation_email_status,
+                em.created_at AS latest_confirmation_email_at,
+                em.last_error AS latest_confirmation_email_error,
+                em.verification_status AS latest_confirmation_verification_status
+            FROM email_messages em
+            INNER JOIN email_message_orders emo
+                ON emo.email_message_id = em.id
+            WHERE emo.order_id = orders.id
+              AND em.email_type = '${EMAIL_TYPES.CONFIRMATION}'
+            ORDER BY em.created_at DESC
+            LIMIT 1
+        ) AS confirmation_email_data
+            ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT
+                es.reason_type AS email_suppression_reason_type,
+                es.reason AS email_suppression_reason,
+                es.first_seen_at AS email_suppressed_at
+            FROM email_suppressions es
+            WHERE es.normalized_email = LOWER(COALESCE(NULLIF(TRIM(orders.customer_email), ''), ''))
+              AND es.active = true
+            LIMIT 1
+        ) AS suppression_data
+            ON TRUE
+        ORDER BY orders.created_at DESC
+        LIMIT ${limitPlaceholder}
+        OFFSET ${offsetPlaceholder}
+    `;
+    const normalizeAdminSendMessages = ({ messages, recipients, subject, message, defaultEmailType = EMAIL_TYPES.ADMIN_MESSAGE }) => {
+        let sendMessages = [];
+
+        if (Array.isArray(messages) && messages.length > 0) {
+            sendMessages = messages.map((item) => ({
+                ...item,
+                to: typeof item?.to === 'string' ? { email: item.to } : item?.to
+            }));
+        } else if (Array.isArray(recipients) && subject && message) {
+            sendMessages = recipients.map((recipient) => ({
+                to: typeof recipient === 'string' ? { email: recipient } : recipient,
+                subject,
+                text: message
+            }));
+        }
+
+        return sendMessages.map((item) => ({
+            ...item,
+            to: {
+                email: sanitizeText(item?.to?.email, 320).toLowerCase(),
+                name: sanitizeText(item?.to?.name, 120)
+            },
+            subject: sanitizeText(item?.subject, 300),
+            text: sanitizeText(item?.text, 20000),
+            html: String(item?.html || '').trim(),
+            emailType: sanitizeText(item?.emailType, 80).toLowerCase() || defaultEmailType,
+            batchKey: sanitizeText(item?.batchKey, 200),
+            pickupDate: sanitizeText(item?.pickupDate, 40),
+            pickupLocation: sanitizeText(item?.pickupLocation, 80),
+            language: normalizeLanguage(item?.language),
+            initiatedBy: sanitizeText(item?.initiatedBy, 80) || 'admin',
+            orderIds: Array.isArray(item?.orderIds)
+                ? item.orderIds.map((id) => sanitizeText(id, 120)).filter(Boolean)
+                : [],
+            metadata: item?.metadata && typeof item.metadata === 'object'
+                ? item.metadata
+                : {},
+            attachments: Array.isArray(item?.attachments)
+                ? item.attachments.map((attachment) => ({
+                    Name: attachment.filename || attachment.name || 'attachment',
+                    Content: attachment.content,
+                    ContentType: attachment.type || 'text/plain'
+                }))
+                : undefined,
+            csv: typeof item?.csv === 'string' ? item.csv : '',
+            filename: sanitizeText(item?.filename, 120)
+        }));
+    };
+    const previewAdminSendMessages = async (messagesToPreview) => {
+        const recipients = [];
+        const seenEmails = new Set();
+        const counts = {
+            ready: 0,
+            warning: 0,
+            blocked: 0,
+            suppressed: 0,
+            duplicate: 0
+        };
+
+        for (const item of messagesToPreview) {
+            const normalizedEmail = sanitizeText(item?.to?.email, 320).toLowerCase();
+            if (normalizedEmail && seenEmails.has(normalizedEmail)) {
+                recipients.push({
+                    email: normalizedEmail,
+                    name: sanitizeText(item?.to?.name, 120) || undefined,
+                    status: 'duplicate',
+                    reason: 'Duplicate recipient in this batch.'
+                });
+                counts.duplicate += 1;
+                continue;
+            }
+            if (normalizedEmail) {
+                seenEmails.add(normalizedEmail);
+            }
+
+            const preview = await previewEmailMessage({
+                pool,
+                verifyEmail,
+                message: item
+            });
+            recipients.push(preview);
+            if (Object.prototype.hasOwnProperty.call(counts, preview.status)) {
+                counts[preview.status] += 1;
+            }
+        }
+
+        return {
+            total: recipients.length,
+            counts,
+            recipients
+        };
+    };
 
     const fetchAdminOrders = async ({ limit = 2000, offset = 0 } = {}) => {
-        const query = `
-            SELECT 
-                orders.*, 
-                customers.name as customer_name,
-                customers.phone as customer_phone,
-                customers.address as customer_address
-            FROM orders
-            LEFT JOIN customers ON orders.customer_id = customers.id
-            ORDER BY orders.created_at DESC
-            LIMIT $1
-            OFFSET $2
-        `;
-        const result = await pool.query(query, [limit, offset]);
+        const result = await pool.query(buildAdminOrdersQuery('$1', '$2'), [limit, offset]);
         return result.rows;
     };
 
     const fetchAdminOrdersPage = async ({ limit = 500, offset = 0 } = {}) => {
         const pageSize = Math.min(parsePositiveInt(limit, 500), 2000);
         const pageOffset = parseNonNegativeInt(offset, 0);
-        const query = `
-            SELECT
-                orders.*,
-                customers.name as customer_name,
-                customers.phone as customer_phone,
-                customers.address as customer_address
-            FROM orders
-            LEFT JOIN customers ON orders.customer_id = customers.id
-            ORDER BY orders.created_at DESC
-            LIMIT $1
-            OFFSET $2
-        `;
-        const result = await pool.query(query, [pageSize + 1, pageOffset]);
+        const result = await pool.query(buildAdminOrdersQuery('$1', '$2'), [pageSize + 1, pageOffset]);
         const hasMore = result.rows.length > pageSize;
         const orders = hasMore ? result.rows.slice(0, pageSize) : result.rows;
         return {
@@ -544,13 +841,25 @@ const registerAdminRoutes = (app, deps) => {
         }
     };
 
-    const attemptSendOrderConfirmationEmail = async (orderId, context) => {
+    const attemptSendOrderConfirmationEmail = async (orderId, context, req) => {
         if (!orderId || typeof sendOrderConfirmationEmail !== 'function') {
             return { skipped: 'unavailable' };
         }
 
         try {
-            return await sendOrderConfirmationEmail(orderId);
+            const requestMeta = req ? getRequestMetadata(req) : { requestId: null };
+            const initiatedBy = context === 'admin order creation'
+                || context === 'admin order update'
+                || context === 'admin status update'
+                || context === 'admin resend confirmation'
+                ? 'admin'
+                : 'system';
+            return await sendOrderConfirmationEmail(orderId, buildTrackedConfirmationOptions({
+                initiatedBy,
+                actorType: initiatedBy,
+                actorId: initiatedBy === 'admin' ? getAdminIdentifier(req) : initiatedBy,
+                requestId: requestMeta.requestId
+            }));
         } catch (err) {
             logError(`Failed to send confirmation email after ${context} for order ${orderId}`, err);
             return { skipped: 'send_failed' };
@@ -563,7 +872,8 @@ const registerAdminRoutes = (app, deps) => {
             SELECT
                 orders.customer_email,
                 orders.language,
-                customers.name AS customer_name
+                customers.name AS customer_name,
+                orders.id AS order_id
             FROM orders
             LEFT JOIN customers
                 ON customers.id = orders.customer_id
@@ -580,12 +890,20 @@ const registerAdminRoutes = (app, deps) => {
         for (const row of result.rows) {
             const email = sanitizeText(row?.customer_email, 320).toLowerCase();
             if (!isValidEmail(email) || recipientsByEmail.has(email)) {
+                if (!isValidEmail(email)) {
+                    continue;
+                }
+            }
+            const existing = recipientsByEmail.get(email);
+            if (existing) {
+                existing.orderIds.push(sanitizeText(row?.order_id, 120));
                 continue;
             }
             recipientsByEmail.set(email, {
                 email,
                 name: sanitizeText(row?.customer_name, 120),
-                language: normalizeLanguage(row?.language)
+                language: normalizeLanguage(row?.language),
+                orderIds: [sanitizeText(row?.order_id, 120)].filter(Boolean)
             });
         }
 
@@ -638,6 +956,8 @@ const registerAdminRoutes = (app, deps) => {
 
     app.post('/api/admin/orders', checkAuth, async (req, res) => {
         try {
+            const adminIdentifier = getAdminIdentifier(req);
+            const requestMeta = getRequestMetadata(req);
             const headerLanguage = req.get('accept-language') || '';
             const orderLanguage = normalizeLanguage(req.body?.language || headerLanguage);
 
@@ -674,6 +994,19 @@ const registerAdminRoutes = (app, deps) => {
             }
             if (customerEmail && !isValidEmail(customerEmail)) {
                 return res.status(400).json({ error: 'Customer email is invalid.' });
+            }
+            if (customerEmail) {
+                const emailAssessment = await verifyManagedAddress({
+                    pool,
+                    email: customerEmail,
+                    language: orderLanguage,
+                    verifyEmail
+                });
+                if (emailAssessment.shouldBlock) {
+                    return res.status(400).json({
+                        error: emailAssessment.message || 'Customer email cannot receive mail.'
+                    });
+                }
             }
             if (isCreditCard && !customerEmail) {
                 return res.status(400).json({ error: 'Customer email is required for credit card orders.' });
@@ -840,7 +1173,12 @@ const registerAdminRoutes = (app, deps) => {
                 await reserveStockForItems(client, {
                     pickupDateId,
                     items,
-                    orderId: 'admin'
+                    orderId: 'admin',
+                    pickupDate,
+                    pickupLocation,
+                    inventoryReason: 'admin_order_create_reserve',
+                    inventoryActor: adminIdentifier,
+                    requestId: requestMeta.requestId
                 });
 
                 const newOrder = await client.query(
@@ -875,16 +1213,51 @@ const registerAdminRoutes = (app, deps) => {
                         paymentMethod
                     ]
                 );
-                return {
+                const createdRow = {
                     id: newOrder.rows[0].id,
-                    orderNumber: Number(newOrder.rows[0].order_number) || null
+                    order_number: Number(newOrder.rows[0].order_number) || null,
+                    status,
+                    pickup_date: pickupDate,
+                    pickup_location: pickupLocation,
+                    total_cents: totalCents,
+                    amount_paid_cents: amountPaidCents,
+                    amount_due_cents: amountDueCents,
+                    payment_type: paymentType,
+                    payment_method: paymentMethod,
+                    customer_email: customerEmail || null,
+                    items: orderItemsForStorage
+                };
+                await recordOrderAuditEvent(client, {
+                    orderId: createdRow.id,
+                    eventType: 'order_created',
+                    fromStatus: null,
+                    toStatus: status,
+                    actorType: 'admin',
+                    actorId: adminIdentifier,
+                    requestId: requestMeta.requestId,
+                    payload: summarizeOrderForAudit(createdRow)
+                });
+                await recordAdminAuditAction(client, {
+                    actionType: 'order_create',
+                    targetType: 'order',
+                    targetId: createdRow.id,
+                    adminIdentifier,
+                    requestId: requestMeta.requestId,
+                    before: {},
+                    after: summarizeOrderForAudit(createdRow),
+                    ip: requestMeta.ip,
+                    userAgent: requestMeta.userAgent
+                });
+                return {
+                    id: createdRow.id,
+                    orderNumber: createdRow.order_number
                 };
             });
             const orderId = createdOrder.id;
             const orderNumber = Number(createdOrder.orderNumber) || null;
 
             if (!isCreditCard && status === 'paid') {
-                await attemptSendOrderConfirmationEmail(orderId, 'admin order creation');
+                await attemptSendOrderConfirmationEmail(orderId, 'admin order creation', req);
             }
 
             if (isCreditCard && stripe) {
@@ -928,6 +1301,20 @@ const registerAdminRoutes = (app, deps) => {
                     'UPDATE orders SET stripe_payment_id = $1 WHERE id = $2',
                     [session.id, orderId]
                 );
+                await recordPaymentAuditEvent(pool, {
+                    orderId,
+                    provider: 'stripe',
+                    providerEventId: session.id,
+                    eventType: 'admin.credit_card_session_created',
+                    status: 'reserved',
+                    payload: {
+                        request_id: requestMeta.requestId,
+                        admin_identifier: adminIdentifier,
+                        payment_type: paymentType,
+                        amount_paid_cents: amountPaidCents,
+                        amount_due_cents: amountDueCents
+                    }
+                });
 
                 return res.json({ success: true, orderId, orderNumber, stripeUrl: session.url });
             }
@@ -960,10 +1347,34 @@ const registerAdminRoutes = (app, deps) => {
             return res.status(400).json({ error: 'Invalid status value.' });
         }
         try {
+            const adminIdentifier = getAdminIdentifier(req);
+            const requestMeta = getRequestMetadata(req);
+            const shouldCaptureStatusAudit = orderEventAuditEnabled || adminActionAuditEnabled;
+            const existingOrdersById = new Map();
+            if (shouldCaptureStatusAudit) {
+                const existingOrdersResult = await pool.query(
+                    `
+                    SELECT id, order_number, status
+                    FROM orders
+                    WHERE id::text = ANY($1::text[])
+                    `,
+                    [uniqueIds]
+                );
+                for (const row of existingOrdersResult.rows) {
+                    existingOrdersById.set(String(row.id), row);
+                }
+            }
             if (status === 'cancelled') {
                 const directUpdateIds = [];
                 for (const orderId of uniqueIds) {
-                    const releaseResult = await releaseReservedOrder(orderId, { expireStripeSession: true });
+                    const releaseResult = await releaseReservedOrder(orderId, {
+                        expireStripeSession: true,
+                        actorType: 'admin',
+                        actorId: adminIdentifier,
+                        requestId: requestMeta.requestId,
+                        inventoryReason: 'admin_status_cancel_release',
+                        orderEventType: 'status_changed'
+                    });
                     if (releaseResult?.status === 'not_reserved') {
                         directUpdateIds.push(orderId);
                     }
@@ -973,6 +1384,38 @@ const registerAdminRoutes = (app, deps) => {
                         'UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])',
                         [status, directUpdateIds]
                     );
+                    for (const orderId of directUpdateIds) {
+                        const previous = existingOrdersById.get(orderId) || null;
+                        await recordOrderAuditEvent(pool, {
+                            orderId,
+                            eventType: 'status_changed',
+                            fromStatus: previous?.status || null,
+                            toStatus: status,
+                            actorType: 'admin',
+                            actorId: adminIdentifier,
+                            requestId: requestMeta.requestId,
+                            payload: {
+                                order_number: Number(previous?.order_number || 0) || null
+                            }
+                        });
+                        await recordAdminAuditAction(pool, {
+                            actionType: 'order_status_update',
+                            targetType: 'order',
+                            targetId: orderId,
+                            adminIdentifier,
+                            requestId: requestMeta.requestId,
+                            before: {
+                                status: sanitizeText(previous?.status, 80).toLowerCase() || null,
+                                order_number: Number(previous?.order_number || 0) || null
+                            },
+                            after: {
+                                status,
+                                order_number: Number(previous?.order_number || 0) || null
+                            },
+                            ip: requestMeta.ip,
+                            userAgent: requestMeta.userAgent
+                        });
+                    }
                 }
             } else if (ADMIN_RESTORE_FROM_ARCHIVE_STATUSES.has(status)) {
                 const directUpdateIds = [];
@@ -1022,7 +1465,18 @@ const registerAdminRoutes = (app, deps) => {
                                     `,
                                     [required, pickupDateId, item.id]
                                 );
-                                if (reserveResult.rowCount > 0) continue;
+                                if (reserveResult.rowCount > 0) {
+                                    await recordInventoryAuditEvent(client, {
+                                        pickupDate,
+                                        location: pickupLocation,
+                                        itemId: item.id,
+                                        delta: -required,
+                                        reason: 'admin_status_restore_reserve',
+                                        actor: adminIdentifier,
+                                        requestId: requestMeta.requestId
+                                    });
+                                    continue;
+                                }
                                 return {
                                     status: 'insufficient_stock',
                                     orderId,
@@ -1035,6 +1489,35 @@ const registerAdminRoutes = (app, deps) => {
                             'UPDATE orders SET status = $1 WHERE id = $2',
                             [status, orderId]
                         );
+                        await recordOrderAuditEvent(client, {
+                            orderId,
+                            eventType: 'status_changed',
+                            fromStatus: existingStatus,
+                            toStatus: status,
+                            actorType: 'admin',
+                            actorId: adminIdentifier,
+                            requestId: requestMeta.requestId,
+                            payload: {
+                                order_number: Number(existingOrder.order_number || 0) || null
+                            }
+                        });
+                        await recordAdminAuditAction(client, {
+                            actionType: 'order_status_update',
+                            targetType: 'order',
+                            targetId: orderId,
+                            adminIdentifier,
+                            requestId: requestMeta.requestId,
+                            before: {
+                                status: existingStatus,
+                                order_number: Number(existingOrder.order_number || 0) || null
+                            },
+                            after: {
+                                status,
+                                order_number: Number(existingOrder.order_number || 0) || null
+                            },
+                            ip: requestMeta.ip,
+                            userAgent: requestMeta.userAgent
+                        });
                         return { status: 'restored' };
                     });
 
@@ -1057,16 +1540,80 @@ const registerAdminRoutes = (app, deps) => {
                         'UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])',
                         [status, directUpdateIds]
                     );
+                    for (const orderId of directUpdateIds) {
+                        const previous = existingOrdersById.get(orderId) || null;
+                        await recordOrderAuditEvent(pool, {
+                            orderId,
+                            eventType: 'status_changed',
+                            fromStatus: previous?.status || null,
+                            toStatus: status,
+                            actorType: 'admin',
+                            actorId: adminIdentifier,
+                            requestId: requestMeta.requestId,
+                            payload: {
+                                order_number: Number(previous?.order_number || 0) || null
+                            }
+                        });
+                        await recordAdminAuditAction(pool, {
+                            actionType: 'order_status_update',
+                            targetType: 'order',
+                            targetId: orderId,
+                            adminIdentifier,
+                            requestId: requestMeta.requestId,
+                            before: {
+                                status: sanitizeText(previous?.status, 80).toLowerCase() || null,
+                                order_number: Number(previous?.order_number || 0) || null
+                            },
+                            after: {
+                                status,
+                                order_number: Number(previous?.order_number || 0) || null
+                            },
+                            ip: requestMeta.ip,
+                            userAgent: requestMeta.userAgent
+                        });
+                    }
                 }
             } else {
                 await pool.query(
                     'UPDATE orders SET status = $1 WHERE id::text = ANY($2::text[])',
                     [status, uniqueIds]
                 );
+                for (const orderId of uniqueIds) {
+                    const previous = existingOrdersById.get(orderId) || null;
+                    await recordOrderAuditEvent(pool, {
+                        orderId,
+                        eventType: 'status_changed',
+                        fromStatus: previous?.status || null,
+                        toStatus: status,
+                        actorType: 'admin',
+                        actorId: adminIdentifier,
+                        requestId: requestMeta.requestId,
+                        payload: {
+                            order_number: Number(previous?.order_number || 0) || null
+                        }
+                    });
+                    await recordAdminAuditAction(pool, {
+                        actionType: 'order_status_update',
+                        targetType: 'order',
+                        targetId: orderId,
+                        adminIdentifier,
+                        requestId: requestMeta.requestId,
+                        before: {
+                            status: sanitizeText(previous?.status, 80).toLowerCase() || null,
+                            order_number: Number(previous?.order_number || 0) || null
+                        },
+                        after: {
+                            status,
+                            order_number: Number(previous?.order_number || 0) || null
+                        },
+                        ip: requestMeta.ip,
+                        userAgent: requestMeta.userAgent
+                    });
+                }
             }
             if (status === 'paid' && uniqueIds.length > 0) {
                 await sendWithConcurrency(uniqueIds, 10, async (orderId) => {
-                    await attemptSendOrderConfirmationEmail(orderId, 'admin status update');
+                    await attemptSendOrderConfirmationEmail(orderId, 'admin status update', req);
                 });
             }
             return res.json({ success: true, message: 'Status updated' });
@@ -1078,6 +1625,8 @@ const registerAdminRoutes = (app, deps) => {
     app.put('/api/admin/orders/:id', checkAuth, async (req, res) => {
         const body = req.body || {};
         const orderId = sanitizeText(req.params?.id, 120);
+        const adminIdentifier = getAdminIdentifier(req);
+        const requestMeta = getRequestMetadata(req);
         const pickupDate = sanitizeText(body?.pickup?.date, 40);
         const pickupLocation = sanitizeText(body?.pickup?.location, 40);
         const hasTotalField = Boolean(
@@ -1135,6 +1684,19 @@ const registerAdminRoutes = (app, deps) => {
         if (hasCustomerEmailField && customerEmail && !isValidEmail(customerEmail)) {
             return res.status(400).json({ error: 'Customer email is invalid.' });
         }
+        if (hasCustomerEmailField && customerEmail) {
+            const emailAssessment = await verifyManagedAddress({
+                pool,
+                email: customerEmail,
+                language: 'en',
+                verifyEmail
+            });
+            if (emailAssessment.shouldBlock) {
+                return res.status(400).json({
+                    error: emailAssessment.message || 'Customer email cannot receive mail.'
+                });
+            }
+        }
 
         const reserveStockForItemsAtPickup = async ({
             client,
@@ -1183,7 +1745,18 @@ const registerAdminRoutes = (app, deps) => {
                     `,
                     [required, pickupDateId, item.id]
                 );
-                if (reserveResult.rowCount > 0) continue;
+                if (reserveResult.rowCount > 0) {
+                    await recordInventoryAuditEvent(client, {
+                        pickupDate: pickupDateValue,
+                        location: pickupLocationValue,
+                        itemId: item.id,
+                        delta: -required,
+                        reason: 'admin_order_edit_reserve',
+                        actor: adminIdentifier,
+                        requestId: requestMeta.requestId
+                    });
+                    continue;
+                }
 
                 const currentStockResult = await client.query(
                     `
@@ -1219,6 +1792,15 @@ const registerAdminRoutes = (app, deps) => {
                     `,
                     [pickupDateId, item.id, quantity]
                 );
+                await recordInventoryAuditEvent(client, {
+                    pickupDate: pickupDate,
+                    location: pickupLocation,
+                    itemId: item.id,
+                    delta: quantity,
+                    reason: 'admin_order_edit_release',
+                    actor: adminIdentifier,
+                    requestId: requestMeta.requestId
+                });
             }
         };
 
@@ -1251,6 +1833,7 @@ const registerAdminRoutes = (app, deps) => {
 
                 const existingOrder = existingOrderResult.rows[0];
                 const existingStatus = String(existingOrder.status || 'pending').trim().toLowerCase();
+                const beforeSnapshot = summarizeOrderForAudit(existingOrder);
                 if (!ADMIN_EDITABLE_ORDER_STATUSES.has(existingStatus)) {
                     return {
                         status: 'blocked_status',
@@ -1556,6 +2139,45 @@ const registerAdminRoutes = (app, deps) => {
                     );
                 }
 
+                const afterSnapshot = summarizeOrderForAudit({
+                    ...existingOrder,
+                    total_cents: nextTotalCents,
+                    status: nextStatus,
+                    pickup_date: pickupDate,
+                    pickup_location: pickupLocation,
+                    payment_type: paymentType,
+                    amount_paid_cents: amountPaidCents,
+                    amount_due_cents: amountDueCents,
+                    customer_email: hasCustomerEmailField
+                        ? customerEmailToStore
+                        : existingOrder.customer_email,
+                    items: hasItemsField ? nextItemsForStock : storedItems
+                });
+                await recordOrderAuditEvent(client, {
+                    orderId,
+                    eventType: 'order_edited',
+                    fromStatus: existingStatus,
+                    toStatus: nextStatus,
+                    actorType: 'admin',
+                    actorId: adminIdentifier,
+                    requestId: requestMeta.requestId,
+                    payload: {
+                        before: beforeSnapshot,
+                        after: afterSnapshot
+                    }
+                });
+                await recordAdminAuditAction(client, {
+                    actionType: 'order_edit',
+                    targetType: 'order',
+                    targetId: orderId,
+                    adminIdentifier,
+                    requestId: requestMeta.requestId,
+                    before: beforeSnapshot,
+                    after: afterSnapshot,
+                    ip: requestMeta.ip,
+                    userAgent: requestMeta.userAgent
+                });
+
                 return {
                     status: 'updated',
                     orderId,
@@ -1613,7 +2235,7 @@ const registerAdminRoutes = (app, deps) => {
             }
 
             if (updateResult.nextStatus === 'paid') {
-                await attemptSendOrderConfirmationEmail(updateResult.orderId, 'admin order update');
+                await attemptSendOrderConfirmationEmail(updateResult.orderId, 'admin order update', req);
             }
 
             return res.json({
@@ -1642,6 +2264,8 @@ const registerAdminRoutes = (app, deps) => {
 
     app.delete('/api/admin/orders/:id', checkAuth, async (req, res) => {
         const orderId = sanitizeText(req.params?.id, 120);
+        const adminIdentifier = getAdminIdentifier(req);
+        const requestMeta = getRequestMetadata(req);
         if (!orderId) {
             return res.status(400).json({ error: 'Order id is required.' });
         }
@@ -1669,6 +2293,7 @@ const registerAdminRoutes = (app, deps) => {
 
                 const existingOrder = existingOrderResult.rows[0];
                 const existingStatus = String(existingOrder.status || 'pending').trim().toLowerCase();
+                const beforeSnapshot = summarizeOrderForAudit(existingOrder);
                 if (!ADMIN_ARCHIVABLE_ORDER_STATUSES.has(existingStatus)) {
                     return {
                         status: 'blocked_status',
@@ -1681,19 +2306,53 @@ const registerAdminRoutes = (app, deps) => {
                 const storedItems = normalizeStoredOrderItems(existingOrder.items);
                 const shouldReleaseStock = existingStatus === 'pending' || existingStatus === 'paid';
                 if (shouldReleaseStock && pickupDate && pickupLocation && storedItems.length > 0) {
-                    const pickupDateId = await findPickupDateId(client, pickupDate, pickupLocation);
-                    if (pickupDateId) {
-                        await releaseStockForItems(client, {
-                            pickupDateId,
-                            items: storedItems
-                        });
+                        const pickupDateId = await findPickupDateId(client, pickupDate, pickupLocation);
+                        if (pickupDateId) {
+                            await releaseStockForItems(client, {
+                                pickupDateId,
+                                items: storedItems,
+                                pickupDate,
+                                pickupLocation,
+                                inventoryReason: 'admin_order_archive_release',
+                                inventoryActor: adminIdentifier,
+                                requestId: requestMeta.requestId
+                            });
+                        }
                     }
-                }
 
                 await client.query(
                     'UPDATE orders SET status = $1 WHERE id = $2',
                     ['archived', orderId]
                 );
+                const afterSnapshot = summarizeOrderForAudit({
+                    ...existingOrder,
+                    status: 'archived'
+                });
+                await recordOrderAuditEvent(client, {
+                    orderId,
+                    eventType: 'order_deleted',
+                    fromStatus: existingStatus,
+                    toStatus: 'archived',
+                    actorType: 'admin',
+                    actorId: adminIdentifier,
+                    requestId: requestMeta.requestId,
+                    payload: {
+                        before: beforeSnapshot,
+                        after: afterSnapshot,
+                        archive_mode: true
+                    }
+                });
+                await recordAdminAuditAction(client, {
+                    actionType: 'order_archive',
+                    targetType: 'order',
+                    targetId: orderId,
+                    adminIdentifier,
+                    requestId: requestMeta.requestId,
+                    before: beforeSnapshot,
+                    after: afterSnapshot,
+                    ip: requestMeta.ip,
+                    userAgent: requestMeta.userAgent
+                });
                 return {
                     status: 'archived',
                     orderId,
@@ -1721,8 +2380,67 @@ const registerAdminRoutes = (app, deps) => {
         }
     });
 
+    app.post('/api/admin/orders/:id/resend-confirmation', checkAuth, async (req, res) => {
+        const orderId = sanitizeText(req.params?.id, 120);
+        const adminIdentifier = getAdminIdentifier(req);
+        const requestMeta = getRequestMetadata(req);
+        if (!orderId) {
+            return res.status(400).json({ error: 'Order id is required.' });
+        }
+        if (typeof sendOrderConfirmationEmail !== 'function') {
+            return res.status(503).json({ error: 'Confirmation email is not available.' });
+        }
+
+        try {
+            const result = await sendOrderConfirmationEmail(orderId, buildTrackedConfirmationOptions({
+                force: true,
+                initiatedBy: 'admin',
+                actorType: 'admin',
+                actorId: adminIdentifier,
+                requestId: requestMeta.requestId
+            }));
+            if (result?.skipped === 'missing_order') {
+                return res.status(404).json({ error: 'Order not found.' });
+            }
+            if (result?.skipped === 'missing_email') {
+                return res.status(400).json({ error: 'Order does not have a customer email.' });
+            }
+            if (result?.skipped === 'not_paid') {
+                return res.status(409).json({ error: 'Confirmation emails can only be resent for paid orders.' });
+            }
+            if (result?.skipped === 'not_configured') {
+                return res.status(503).json({ error: 'Confirmation email is not configured.' });
+            }
+            await recordAdminAuditAction(pool, {
+                actionType: 'resend_confirmation',
+                targetType: 'order',
+                targetId: orderId,
+                adminIdentifier,
+                requestId: requestMeta.requestId,
+                before: {},
+                after: {
+                    email_message_id: result?.emailMessageId || null,
+                    provider_email_id: result?.providerEmailId || null
+                },
+                ip: requestMeta.ip,
+                userAgent: requestMeta.userAgent
+            });
+
+            return res.json({
+                success: true,
+                orderId,
+                emailMessageId: result?.emailMessageId || null,
+                providerEmailId: result?.providerEmailId || null
+            });
+        } catch (err) {
+            return sendServerError(res, err, 'Failed to resend confirmation email');
+        }
+    });
+
     app.post('/api/admin/orders/:id/finalize-payment', checkAuth, async (req, res) => {
         try {
+            const adminIdentifier = getAdminIdentifier(req);
+            const requestMeta = getRequestMetadata(req);
             const orderId = req.params.id;
             const orderResult = await pool.query(
                 'SELECT stripe_payment_id, status, order_number FROM orders WHERE id = $1',
@@ -1738,7 +2456,30 @@ const registerAdminRoutes = (app, deps) => {
             }
             const session = await stripe.checkout.sessions.retrieve(stripeSessionId);
             if (session.payment_status === 'paid') {
-                const result = await finalizeOrderFromSession(session);
+                const result = await finalizeOrderFromSession(session, {
+                    source: 'admin_finalize_payment',
+                    actorType: 'admin',
+                    actorId: adminIdentifier,
+                    requestId: requestMeta.requestId,
+                    providerEventId: stripeSessionId,
+                    paymentEventType: 'admin.finalize_payment'
+                });
+                await recordAdminAuditAction(pool, {
+                    actionType: 'finalize_payment',
+                    targetType: 'order',
+                    targetId: orderId,
+                    adminIdentifier,
+                    requestId: requestMeta.requestId,
+                    before: {
+                        status: sanitizeText(order.status, 80).toLowerCase() || null
+                    },
+                    after: {
+                        finalize_result: result.status,
+                        payment_status: session.payment_status
+                    },
+                    ip: requestMeta.ip,
+                    userAgent: requestMeta.userAgent
+                });
                 const refreshedOrder = await pool.query(
                     'SELECT status, order_number FROM orders WHERE id = $1',
                     [orderId]
@@ -1750,6 +2491,34 @@ const registerAdminRoutes = (app, deps) => {
                     orderNumber: Number(refreshedRow.order_number) || null
                 });
             }
+            await recordPaymentAuditEvent(pool, {
+                orderId,
+                provider: 'stripe',
+                providerEventId: stripeSessionId,
+                eventType: 'admin.finalize_payment',
+                status: session.payment_status || 'unpaid',
+                payload: {
+                    request_id: requestMeta.requestId,
+                    admin_identifier: adminIdentifier,
+                    session_status: session.status || null
+                }
+            });
+            await recordAdminAuditAction(pool, {
+                actionType: 'finalize_payment',
+                targetType: 'order',
+                targetId: orderId,
+                adminIdentifier,
+                requestId: requestMeta.requestId,
+                before: {
+                    status: sanitizeText(order.status, 80).toLowerCase() || null
+                },
+                after: {
+                    payment_status: session.payment_status || null,
+                    session_status: session.status || null
+                },
+                ip: requestMeta.ip,
+                userAgent: requestMeta.userAgent
+            });
             return res.json({
                 success: true,
                 status: order.status,
@@ -1790,7 +2559,32 @@ const registerAdminRoutes = (app, deps) => {
             return res.status(400).json({ error: 'Valid stock is required.' });
         }
         try {
+            const adminIdentifier = getAdminIdentifier(req);
+            const requestMeta = getRequestMetadata(req);
+            let beforeStock = null;
+            if (adminActionAuditEnabled) {
+                const beforeResult = await pool.query(
+                    'SELECT stock FROM hens WHERE id = $1',
+                    [id]
+                );
+                beforeStock = Number(beforeResult.rows[0]?.stock ?? null);
+            }
             await pool.query('UPDATE hens SET stock = $1 WHERE id = $2', [Math.floor(normalizedStock), id]);
+            await recordAdminAuditAction(pool, {
+                actionType: 'hen_stock_edit',
+                targetType: 'hen',
+                targetId: sanitizeText(id, 120),
+                adminIdentifier,
+                requestId: requestMeta.requestId,
+                before: {
+                    stock: Number.isFinite(beforeStock) ? Math.floor(beforeStock) : null
+                },
+                after: {
+                    stock: Math.floor(normalizedStock)
+                },
+                ip: requestMeta.ip,
+                userAgent: requestMeta.userAgent
+            });
             return res.json({ success: true, message: "Stock updated" });
         } catch (err) {
             return sendServerError(res, err, 'Failed to update stock');
@@ -1804,6 +2598,8 @@ const registerAdminRoutes = (app, deps) => {
             return res.status(400).send('Date and location are required.');
         }
         try {
+            const adminIdentifier = getAdminIdentifier(req);
+            const requestMeta = getRequestMetadata(req);
             const existing = await pool.query(
                 `
                 SELECT id
@@ -1840,6 +2636,22 @@ const registerAdminRoutes = (app, deps) => {
                     [pickupDate.id, henIds, stocks]
                 );
             }
+            await recordAdminAuditAction(pool, {
+                actionType: 'pickup_date_create',
+                targetType: 'pickup_date',
+                targetId: sanitizeText(pickupDate?.id, 120),
+                adminIdentifier,
+                requestId: requestMeta.requestId,
+                before: {},
+                after: {
+                    id: sanitizeText(pickupDate?.id, 120) || null,
+                    date_value: sanitizeText(pickupDate?.date_value, 40) || dateValue,
+                    location: sanitizeText(pickupDate?.location, 40) || location,
+                    seeded_hen_count: Number(hensRes.rows.length || 0)
+                },
+                ip: requestMeta.ip,
+                userAgent: requestMeta.userAgent
+            });
             return res.json(pickupDate);
         } catch (err) {
             if (err?.code === '23505') {
@@ -1868,6 +2680,8 @@ const registerAdminRoutes = (app, deps) => {
         }
 
         try {
+            const adminIdentifier = getAdminIdentifier(req);
+            const requestMeta = getRequestMetadata(req);
             const updateResult = await runInTransaction(async (client) => {
                 const sourceResult = await client.query(
                     `
@@ -2010,9 +2824,24 @@ const registerAdminRoutes = (app, deps) => {
                 });
             }
 
+            let batchRunId = null;
             let emailSent = 0;
             let emailFailed = 0;
+            const failedRecipients = [];
             if (emailUsers && updateResult.recipients.length > 0) {
+                batchRunId = await startAuditBatchRun(pool, {
+                    batchType: 'pickup_date_change_batch',
+                    scope: {
+                        from_date: updateResult.fromDateValue,
+                        from_location: updateResult.fromLocation,
+                        to_date: updateResult.toDateValue,
+                        to_location: updateResult.toLocation,
+                        recipient_count: updateResult.recipients.length
+                    },
+                    expectedCount: updateResult.recipients.length,
+                    initiatedBy: adminIdentifier,
+                    requestId: requestMeta.requestId
+                });
                 await sendWithConcurrency(updateResult.recipients, 10, async (recipient) => {
                     const payload = buildPickupDateChangeEmail({
                         language: recipient.language,
@@ -2022,8 +2851,11 @@ const registerAdminRoutes = (app, deps) => {
                         toDateValue: updateResult.toDateValue,
                         toLocation: updateResult.toLocation
                     });
-                    try {
-                        await sendEmailMessage({
+                    const sendResult = await sendManagedEmailMessage({
+                        pool,
+                        verifyEmail,
+                        sendEmailMessage,
+                        message: {
                             to: {
                                 email: recipient.email,
                                 name: recipient.name || undefined
@@ -2033,14 +2865,67 @@ const registerAdminRoutes = (app, deps) => {
                             html: payload.html,
                             from: DATE_CHANGE_EMAIL_FROM || undefined,
                             replyTo: DATE_CHANGE_EMAIL_REPLY_TO || undefined,
-                            headers: DATE_CHANGE_EMAIL_HEADERS
-                        });
+                            headers: DATE_CHANGE_EMAIL_HEADERS,
+                            emailType: EMAIL_TYPES.PICKUP_DATE_CHANGE,
+                            initiatedBy: 'admin',
+                            language: recipient.language,
+                            batchKey: `${updateResult.fromDateValue}::${updateResult.fromLocation}=>${updateResult.toDateValue}::${updateResult.toLocation}`,
+                            pickupDate: updateResult.toDateValue,
+                            pickupLocation: updateResult.toLocation,
+                            orderIds: recipient.orderIds,
+                            metadata: {
+                                from_date: updateResult.fromDateValue,
+                                from_location: updateResult.fromLocation,
+                                to_date: updateResult.toDateValue,
+                                to_location: updateResult.toLocation
+                            }
+                        }
+                    });
+                    if (sendResult.success) {
                         emailSent += 1;
-                    } catch (_emailErr) {
+                    } else {
                         emailFailed += 1;
+                        failedRecipients.push(buildFailedRecipient({
+                            email: recipient.email,
+                            name: recipient.name,
+                            reason: sendResult.reason,
+                            fallbackReason: 'Email provider rejected this recipient.'
+                        }));
                     }
                 });
+                await finalizeAuditBatchRun(pool, batchRunId, {
+                    attemptedCount: updateResult.recipients.length,
+                    succeededCount: emailSent,
+                    failedCount: emailFailed,
+                    initiatedBy: adminIdentifier,
+                    requestId: requestMeta.requestId
+                });
             }
+
+            await recordAdminAuditAction(pool, {
+                actionType: 'pickup_date_change',
+                targetType: 'pickup_date',
+                targetId: sourceId,
+                adminIdentifier,
+                requestId: requestMeta.requestId,
+                before: {
+                    date_value: updateResult.fromDateValue,
+                    location: updateResult.fromLocation
+                },
+                after: {
+                    date_value: updateResult.toDateValue,
+                    location: updateResult.toLocation,
+                    merged: updateResult.merged,
+                    moved_orders: updateResult.movedOrders,
+                    email_requested: emailUsers,
+                    email_recipients: updateResult.recipients.length,
+                    email_sent: emailSent,
+                    email_failed: emailFailed,
+                    batch_run_id: batchRunId
+                },
+                ip: requestMeta.ip,
+                userAgent: requestMeta.userAgent
+            });
 
             return res.json({
                 success: true,
@@ -2050,6 +2935,7 @@ const registerAdminRoutes = (app, deps) => {
                 emailRecipients: updateResult.recipients.length,
                 emailSent,
                 emailFailed,
+                failedRecipients,
                 fromDateValue: updateResult.fromDateValue,
                 fromLocation: updateResult.fromLocation,
                 toDateValue: updateResult.toDateValue,
@@ -2068,6 +2954,8 @@ const registerAdminRoutes = (app, deps) => {
     app.delete('/api/admin/pickup-dates/:id', checkAuth, async (req, res) => {
         const { id } = req.params;
         try {
+            const adminIdentifier = getAdminIdentifier(req);
+            const requestMeta = getRequestMetadata(req);
             const targetDate = await pool.query(
                 'SELECT date_value, location FROM pickup_dates WHERE id = $1',
                 [id]
@@ -2095,6 +2983,22 @@ const registerAdminRoutes = (app, deps) => {
             }
 
             await pool.query('DELETE FROM pickup_dates WHERE id = $1', [id]);
+            await recordAdminAuditAction(pool, {
+                actionType: 'pickup_date_delete',
+                targetType: 'pickup_date',
+                targetId: sanitizeText(id, 120),
+                adminIdentifier,
+                requestId: requestMeta.requestId,
+                before: {
+                    date_value: sanitizeText(dateValue, 40) || null,
+                    location: sanitizeText(location, 40) || null
+                },
+                after: {
+                    deleted: true
+                },
+                ip: requestMeta.ip,
+                userAgent: requestMeta.userAgent
+            });
             return res.json({ success: true });
         } catch (err) {
             return sendServerError(res, err, 'Failed to delete pickup date');
@@ -2142,10 +3046,8 @@ const registerAdminRoutes = (app, deps) => {
             return res.status(400).json({ error: 'items array is required' });
         }
         try {
-            const pickupDateId = await findPickupDateId(pool, date, location);
-            if (!pickupDateId) {
-                return res.status(404).json({ error: 'Pickup date not found.' });
-            }
+            const adminIdentifier = getAdminIdentifier(req);
+            const requestMeta = getRequestMetadata(req);
             const normalizedItems = items
                 .map((item) => ({
                     henId: Number(item?.hen_id ?? item?.henId),
@@ -2159,122 +3061,320 @@ const registerAdminRoutes = (app, deps) => {
             if (henIds.length === 0) {
                 return res.status(400).json({ error: 'Invalid item payload.' });
             }
-            await pool.query(
-                `
-                INSERT INTO pickup_stock (pickup_date_id, hen_id, stock)
-                SELECT $1, UNNEST($2::int[]), UNNEST($3::int[])
-                ON CONFLICT (pickup_date_id, hen_id)
-                DO UPDATE SET stock = EXCLUDED.stock
-                `,
-                [pickupDateId, henIds, stocks]
-            );
+
+            const updateResult = await runInTransaction(async (client) => {
+                const pickupDateId = await findPickupDateId(client, date, location);
+                if (!pickupDateId) {
+                    return { status: 'missing_pickup' };
+                }
+
+                const beforeRows = await client.query(
+                    `
+                    SELECT hen_id, stock
+                    FROM pickup_stock
+                    WHERE pickup_date_id = $1
+                      AND hen_id = ANY($2::int[])
+                    `,
+                    [pickupDateId, henIds]
+                );
+                const beforeStockByHenId = new Map(
+                    beforeRows.rows.map((row) => [Number(row.hen_id), Number(row.stock || 0)])
+                );
+
+                await client.query(
+                    `
+                    INSERT INTO pickup_stock (pickup_date_id, hen_id, stock)
+                    SELECT $1, UNNEST($2::int[]), UNNEST($3::int[])
+                    ON CONFLICT (pickup_date_id, hen_id)
+                    DO UPDATE SET stock = EXCLUDED.stock
+                    `,
+                    [pickupDateId, henIds, stocks]
+                );
+
+                const changedItems = [];
+                const inventoryEvents = [];
+                for (const item of normalizedItems) {
+                    const henId = Number(item.henId);
+                    const nextStock = Number.isFinite(item.stock) && item.stock >= 0
+                        ? Math.floor(item.stock)
+                        : 0;
+                    const previousStock = beforeStockByHenId.get(henId) ?? 0;
+                    if (previousStock === nextStock) {
+                        continue;
+                    }
+                    changedItems.push({
+                        item_id: henId,
+                        from_stock: previousStock,
+                        to_stock: nextStock,
+                        delta: nextStock - previousStock
+                    });
+                    inventoryEvents.push({
+                        pickupDate: sanitizeText(date, 40),
+                        location: sanitizeText(location, 80),
+                        itemId: henId,
+                        delta: nextStock - previousStock,
+                        reason: 'admin_pickup_stock_edit',
+                        actor: adminIdentifier,
+                        requestId: requestMeta.requestId
+                    });
+                }
+
+                if (inventoryEventAuditEnabled && inventoryEvents.length > 0) {
+                    await recordInventoryAuditEvents(client, inventoryEvents);
+                }
+                await recordAdminAuditAction(client, {
+                    actionType: 'pickup_stock_edit',
+                    targetType: 'pickup_stock',
+                    targetId: `${sanitizeText(date, 40)}::${sanitizeText(location, 80)}`,
+                    adminIdentifier,
+                    requestId: requestMeta.requestId,
+                    before: {
+                        pickup_date: sanitizeText(date, 40),
+                        location: sanitizeText(location, 80),
+                        items: changedItems.map((item) => ({
+                            item_id: item.item_id,
+                            stock: item.from_stock
+                        }))
+                    },
+                    after: {
+                        pickup_date: sanitizeText(date, 40),
+                        location: sanitizeText(location, 80),
+                        items: changedItems.map((item) => ({
+                            item_id: item.item_id,
+                            stock: item.to_stock
+                        }))
+                    },
+                    ip: requestMeta.ip,
+                    userAgent: requestMeta.userAgent
+                });
+                return { status: 'updated' };
+            });
+
+            if (updateResult.status === 'missing_pickup') {
+                return res.status(404).json({ error: 'Pickup date not found.' });
+            }
             return res.json({ success: true });
         } catch (err) {
             return sendServerError(res, err, 'Failed to update pickup stock');
         }
     });
 
-    app.post('/api/admin/email', checkAuth, async (req, res) => {
-        const { messages, recipients, subject, message } = req.body;
-        let sendMessages = [];
-
-        if (Array.isArray(messages) && messages.length > 0) {
-            sendMessages = messages.map((item) => ({
-                ...item,
-                to: typeof item?.to === 'string' ? { email: item.to } : item?.to
-            }));
-        } else if (Array.isArray(recipients) && subject && message) {
-            sendMessages = recipients.map((recipient) => ({
-                to: typeof recipient === 'string' ? { email: recipient } : recipient,
-                subject,
-                text: message
-            }));
+    app.get('/api/admin/email-activity', checkAuth, async (req, res) => {
+        try {
+            const activity = await listTrackedEmailActivity({
+                pool,
+                limit: Math.min(parsePositiveInt(req.query.limit, ADMIN_EMAIL_ACTIVITY_LIMIT), 500),
+                query: sanitizeText(req.query.query, 120),
+                status: sanitizeText(req.query.status, 80).toLowerCase(),
+                emailType: sanitizeText(req.query.email_type ?? req.query.emailType, 80).toLowerCase()
+            });
+            return res.json({ activity });
+        } catch (err) {
+            return sendServerError(res, err, 'Failed to load email activity');
         }
+    });
 
+    app.post('/api/admin/email/preview', checkAuth, async (req, res) => {
+        try {
+            const previewMessages = normalizeAdminSendMessages({
+                messages: req.body?.messages,
+                recipients: req.body?.recipients,
+                subject: req.body?.subject,
+                message: req.body?.message,
+                defaultEmailType: EMAIL_TYPES.ADMIN_MESSAGE
+            });
+            if (previewMessages.length === 0) {
+                return res.status(400).json({ error: 'No email recipients provided.' });
+            }
+            if (previewMessages.length > 500) {
+                return res.status(400).json({ error: 'Too many email recipients in one request.' });
+            }
+            const preview = await previewAdminSendMessages(previewMessages);
+            return res.json({
+                success: true,
+                total: preview.total,
+                counts: preview.counts,
+                recipients: preview.recipients,
+                completedAt: new Date().toISOString()
+            });
+        } catch (err) {
+            return sendServerError(res, err, 'Email preview failed');
+        }
+    });
+
+    app.post('/api/admin/email', checkAuth, async (req, res) => {
+        const sendMessages = normalizeAdminSendMessages({
+            messages: req.body?.messages,
+            recipients: req.body?.recipients,
+            subject: req.body?.subject,
+            message: req.body?.message,
+            defaultEmailType: EMAIL_TYPES.ADMIN_MESSAGE
+        });
         if (sendMessages.length === 0) {
             return res.status(400).json({ error: 'No email recipients provided.' });
         }
-
-        const validMessages = sendMessages.filter((item) => {
-            const toEmail = sanitizeText(item?.to?.email, 320).toLowerCase();
-            return (
-                isValidEmail(toEmail)
-                && sanitizeText(item?.subject, 300).length > 0
-                && (sanitizeText(item?.text, 20000).length > 0 || item?.attachments?.length || item?.csv)
-            );
-        });
-
-        if (validMessages.length === 0) {
-            return res.status(400).json({ error: 'No valid email recipients provided.' });
-        }
-        if (validMessages.length > 500) {
+        if (sendMessages.length > 500) {
             return res.status(400).json({ error: 'Too many email recipients in one request.' });
         }
 
         try {
+            const adminIdentifier = getAdminIdentifier(req);
+            const requestMeta = getRequestMetadata(req);
+            const emailTypes = toDistinctSanitizedStrings(
+                sendMessages.map((item) => item.emailType || EMAIL_TYPES.ADMIN_MESSAGE),
+                80
+            );
+            const subjects = toDistinctSanitizedStrings(
+                sendMessages.map((item) => item.subject),
+                300
+            );
+            const batchRunId = await startAuditBatchRun(pool, {
+                batchType: buildEmailBatchType(emailTypes),
+                scope: {
+                    email_types: emailTypes,
+                    subjects: subjects.slice(0, 10),
+                    total_messages: sendMessages.length
+                },
+                expectedCount: sendMessages.length,
+                initiatedBy: adminIdentifier,
+                requestId: requestMeta.requestId
+            });
             let sentCount = 0;
             const failedRecipients = [];
-            await sendWithConcurrency(validMessages, 10, async (item) => {
-                const toEmail = sanitizeText(item.to.email, 320).toLowerCase();
-                const toName = sanitizeText(item?.to?.name, 120);
-                const normalizedSubject = sanitizeText(item.subject, 300);
-                const normalizedText = sanitizeText(item.text, 20000);
-                const providedHtml = String(item?.html || '').trim();
-                const normalizedHtml = providedHtml
-                    || buildPlainTextEmailHtml({
-                        text: normalizedText
+            const results = [];
+            const counts = {
+                sent: 0,
+                warning: 0,
+                blocked: 0,
+                suppressed: 0,
+                failed: 0,
+                duplicate: 0
+            };
+            const seenEmails = new Set();
+
+            await sendWithConcurrency(sendMessages, 10, async (item) => {
+                const normalizedEmail = sanitizeText(item?.to?.email, 320).toLowerCase();
+                if (normalizedEmail && seenEmails.has(normalizedEmail)) {
+                    counts.duplicate += 1;
+                    failedRecipients.push(buildFailedRecipient({
+                        email: normalizedEmail,
+                        name: item?.to?.name,
+                        reason: 'Duplicate recipient in this batch.',
+                        fallbackReason: 'Duplicate recipient in this batch.'
+                    }));
+                    results.push({
+                        email: normalizedEmail,
+                        name: item?.to?.name || undefined,
+                        status: 'duplicate',
+                        reason: 'Duplicate recipient in this batch.'
                     });
-                const attachments = Array.isArray(item.attachments)
-                    ? item.attachments.map((attachment) => ({
-                        Name: attachment.filename || attachment.name || 'attachment',
-                        Content: attachment.content,
-                        ContentType: attachment.type || 'text/plain'
-                    }))
-                    : (item.csv
-                        ? [{
-                            Name: item.filename || 'pickup-orders.csv',
-                            Content: Buffer.from(item.csv, 'utf8').toString('base64'),
-                            ContentType: 'text/csv'
-                        }]
-                        : undefined);
-                if (verifyEmail) {
-                    try {
-                        const verification = await verifyEmail(toEmail);
-                        if (verification.shouldBlock) {
-                            failedRecipients.push({
-                                email: toEmail,
-                                name: toName || undefined,
-                                reason: verification.message || 'Undeliverable address'
-                            });
-                            return;
-                        }
-                    } catch (_verifyErr) {
-                        // verification unavailable — proceed with send
+                    return;
+                }
+                if (normalizedEmail) {
+                    seenEmails.add(normalizedEmail);
+                }
+
+                const trackedResult = await sendManagedEmailMessage({
+                    pool,
+                    verifyEmail,
+                    sendEmailMessage,
+                    message: {
+                        ...item,
+                        html: item.html || buildPlainTextEmailHtml({ text: item.text })
                     }
-                }
-                try {
-                    await sendEmailMessage({
-                        to: {
-                            email: toEmail,
-                            name: toName || undefined
-                        },
-                        subject: normalizedSubject,
-                        text: normalizedText,
-                        html: normalizedHtml,
-                        attachments
-                    });
+                });
+                results.push({
+                    email: trackedResult.email,
+                    name: trackedResult.name,
+                    status: trackedResult.status,
+                    reason: trackedResult.reason || undefined,
+                    emailMessageId: trackedResult.emailMessageId || undefined,
+                    providerEmailId: trackedResult.providerEmailId || undefined
+                });
+
+                if (trackedResult.success) {
                     sentCount += 1;
-                } catch (_sendErr) {
-                    failedRecipients.push({ email: toEmail, name: toName || undefined });
+                    if (trackedResult.status === 'warning') {
+                        counts.warning += 1;
+                    } else {
+                        counts.sent += 1;
+                    }
+                    return;
                 }
+
+                if (trackedResult.status === 'suppressed') {
+                    counts.suppressed += 1;
+                } else if (trackedResult.status === 'blocked') {
+                    counts.blocked += 1;
+                } else {
+                    counts.failed += 1;
+                }
+                failedRecipients.push(buildFailedRecipient({
+                    email: trackedResult.email,
+                    name: trackedResult.name,
+                    reason: trackedResult.reason,
+                    fallbackReason: 'Email provider rejected this recipient.'
+                }));
             });
 
-            return res.json({
+            const completedAt = new Date().toISOString();
+            const responsePayload = {
                 success: failedRecipients.length === 0,
+                attempted: sendMessages.length,
                 sent: sentCount,
                 failed: failedRecipients.length,
-                failedRecipients
+                counts,
+                results,
+                failedRecipients,
+                completedAt
+            };
+
+            await finalizeAuditBatchRun(pool, batchRunId, {
+                attemptedCount: sendMessages.length,
+                succeededCount: sentCount,
+                failedCount: failedRecipients.length,
+                initiatedBy: adminIdentifier,
+                requestId: requestMeta.requestId,
+                scope: {
+                    email_types: emailTypes,
+                    subjects: subjects.slice(0, 10),
+                    counts
+                }
             });
+            await recordAdminAuditAction(pool, {
+                actionType: 'bulk_email_send',
+                targetType: 'email_batch',
+                targetId: batchRunId || buildEmailBatchType(emailTypes),
+                adminIdentifier,
+                requestId: requestMeta.requestId,
+                before: {},
+                after: {
+                    batch_run_id: batchRunId,
+                    email_types: emailTypes,
+                    attempted: sendMessages.length,
+                    sent: sentCount,
+                    failed: failedRecipients.length,
+                    counts
+                },
+                ip: requestMeta.ip,
+                userAgent: requestMeta.userAgent
+            });
+
+            if (failedRecipients.length > 0) {
+                logWarn('Admin bulk email completed with failures', {
+                    attempted: sendMessages.length,
+                    sent: sentCount,
+                    failed: failedRecipients.length,
+                    failedRecipients
+                });
+            } else {
+                logInfo('Admin bulk email sent successfully', {
+                    attempted: sendMessages.length,
+                    sent: sentCount
+                });
+            }
+
+            return res.json(responsePayload);
         } catch (err) {
             return sendServerError(res, err, 'Email send failed');
         }

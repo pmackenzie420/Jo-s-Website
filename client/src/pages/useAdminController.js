@@ -15,6 +15,7 @@ import {
   fetchAdminMeta,
   fetchOrdersPage,
   fetchAdminStats,
+  fetchEmailActivity,
   updatePickupStock,
   addPickupDate,
   updatePickupDate,
@@ -22,7 +23,8 @@ import {
   updateOrdersStatus,
   createAdminOrder,
   updateAdminOrder,
-  finalizeAdminOrder
+  finalizeAdminOrder,
+  resendConfirmationEmail
 } from './admin-api';
 import {
   buildOrdersWithDetails,
@@ -87,6 +89,10 @@ export default function useAdminController() {
   const [isAddingDate, setIsAddingDate] = useState(false);
   const [optimisticStatuses, setOptimisticStatuses] = useState({});
   const [stats, setStats] = useState(null);
+  const [emailActivity, setEmailActivity] = useState([]);
+  const [emailActivityLoading, setEmailActivityLoading] = useState(false);
+  const [emailActivityQuery, setEmailActivityQuery] = useState('');
+  const [emailActivityStatus, setEmailActivityStatus] = useState('');
 
   const dateInputRef = useRef(null);
   const ordersLengthRef = useRef(0);
@@ -95,12 +101,18 @@ export default function useAdminController() {
     emailGroupKey,
     emailSubject,
     emailMessage,
+    emailTargetInput,
     emailSending,
+    emailPreviewLoading,
+    emailPreviewReport,
+    emailLastReport,
     emailFailedRecipients,
     setEmailGroupKey,
     setEmailSubject,
     setEmailMessage,
+    setEmailTargetInput,
     handleToggleEmailGroup,
+    handlePreviewGroupEmail,
     handleSendGroupEmail
   } = useAdminEmailComposer(showToast);
 
@@ -173,6 +185,29 @@ export default function useAdminController() {
       }
     },
     [applyOrdersPayload, showToast, adminLanguage]
+  );
+
+  const loadEmailActivity = useCallback(
+    async ({ showError = true } = {}) => {
+      setEmailActivityLoading(true);
+      try {
+        const response = await fetchEmailActivity({
+          limit: 120,
+          query: emailActivityQuery,
+          status: emailActivityStatus
+        });
+        setEmailActivity(Array.isArray(response?.data?.activity) ? response.data.activity : []);
+        return true;
+      } catch {
+        if (showError) {
+          showToast({ type: 'error', text: 'Failed to load email activity.' });
+        }
+        return false;
+      } finally {
+        setEmailActivityLoading(false);
+      }
+    },
+    [emailActivityQuery, emailActivityStatus, showToast]
   );
 
   const finalizeStripeCheckout = useCallback(
@@ -256,6 +291,14 @@ export default function useAdminController() {
     };
     run();
   }, [fetchInitialData, finalizeStripeCheckout, showToast, adminLanguage]);
+
+  useEffect(() => {
+    if (!isLoggedIn || activeTab !== 'email') return undefined;
+    const timeoutId = window.setTimeout(() => {
+      loadEmailActivity({ showError: false });
+    }, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [isLoggedIn, activeTab, emailActivityQuery, emailActivityStatus, loadEmailActivity]);
 
   const ordersWithDetails = useMemo(
     () => buildOrdersWithDetails(orders, hens, adminLanguage),
@@ -937,6 +980,35 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     setEditingOrder(order);
   }, []);
 
+  const handleResendConfirmationEmail = useCallback(
+    async (order) => {
+      const orderId = String(order?.id || '').trim();
+      if (!orderId) return false;
+      try {
+        await resendConfirmationEmail(orderId);
+        const orderRef = String(getOrderNumberText(order) || orderId).trim();
+        showToast({
+          type: 'success',
+          text: `Confirmation email resent${orderRef ? ` for order ${orderRef}` : '.'}`
+        });
+        await Promise.all([
+          refreshOrders({ quiet: true }),
+          loadEmailActivity({ showError: false })
+        ]);
+        return true;
+      } catch (error) {
+        const message = (
+          typeof error?.response?.data?.error === 'string'
+            ? error.response.data.error
+            : 'Failed to resend confirmation email.'
+        );
+        showToast({ type: 'error', text: message });
+        return false;
+      }
+    },
+    [loadEmailActivity, refreshOrders, showToast]
+  );
+
   const handleUpdateAdminOrder = useCallback(
     async (orderId, payload) => {
       try {
@@ -966,6 +1038,20 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
       }
     },
     [adminLanguage, showToast, refreshMeta, refreshOrders, ordersWithDetails]
+  );
+
+  const handleSendGroupEmailWithRefresh = useCallback(
+    async (groupKey, recipients, groupMeta = {}) => {
+      const result = await handleSendGroupEmail(groupKey, recipients, groupMeta);
+      if (result) {
+        await Promise.all([
+          refreshOrders({ quiet: true }),
+          loadEmailActivity({ showError: false })
+        ]);
+      }
+      return result;
+    },
+    [handleSendGroupEmail, loadEmailActivity, refreshOrders]
   );
 
   const handleTabChange = useCallback((key) => {
@@ -1008,8 +1094,16 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     emailGroupKey,
     emailSubject,
     emailMessage,
+    emailTargetInput,
     emailSending,
+    emailPreviewLoading,
+    emailPreviewReport,
+    emailLastReport,
     emailFailedRecipients,
+    emailActivity,
+    emailActivityLoading,
+    emailActivityQuery,
+    emailActivityStatus,
     allPickupStocks,
     allPickupReserved,
     pickupStockSaving,
@@ -1037,6 +1131,9 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     setChangeEmailUsers,
     setEmailSubject,
     setEmailMessage,
+    setEmailTargetInput,
+    setEmailActivityQuery,
+    setEmailActivityStatus,
     handleLogin,
     handleLoadMoreOrders,
     handleExportDownload,
@@ -1053,13 +1150,16 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     handleTabChange,
     handleNoticeAction,
     handleToggleEmailGroup,
-    handleSendGroupEmail,
     handleRowClick,
     handleBulkPickup,
     handleMarkPickedUp,
     handleCreateAdminOrder,
     handleArchiveOrder,
     handleEditOrder,
-    handleUpdateAdminOrder
+    handleUpdateAdminOrder,
+    handlePreviewGroupEmail,
+    handleSendGroupEmail: handleSendGroupEmailWithRefresh,
+    handleRefreshEmailActivity: loadEmailActivity,
+    handleResendConfirmationEmail
   };
 }

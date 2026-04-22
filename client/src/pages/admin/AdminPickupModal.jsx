@@ -7,6 +7,45 @@ import {
 } from '../admin-utils';
 import { t, tf } from '../admin-i18n';
 
+const formatDateTime = (value, language) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return new Intl.DateTimeFormat(language === 'fr' ? 'fr-CA' : 'en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(parsed);
+};
+
+const getEmailStatusLabel = (status, language) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  const map = {
+    not_sent: t('emailStatus.notSent', language),
+    sent: t('emailStatus.sent', language),
+    delivered: t('emailStatus.delivered', language),
+    failed: t('emailStatus.failed', language),
+    bounced: t('emailStatus.bounced', language),
+    complained: t('emailStatus.complained', language),
+    suppressed: t('emailStatus.suppressedShort', language),
+    blocked: t('emailStatus.blocked', language),
+    warning: t('emailStatus.warning', language)
+  };
+  return map[normalized] || normalized || t('emailStatus.notSent', language);
+};
+
+const getEmailTypeLabel = (emailType, language) => {
+  const normalized = String(emailType || '').trim().toLowerCase();
+  const map = {
+    confirmation: t('emailType.confirmation', language),
+    pickup_reminder: t('emailType.pickupReminder', language),
+    pickup_date_change: t('emailType.pickupDateChange', language),
+    admin_message: t('emailType.adminMessage', language)
+  };
+  return map[normalized] || normalized || t('emailStatus.section', language);
+};
+
 export default function AdminPickupModal({
   pickup,
   adminLanguage,
@@ -15,13 +54,33 @@ export default function AdminPickupModal({
   onMarkPickedUp,
   onExportOrderInvoice,
   onEditOrder,
-  onArchiveOrder
+  onArchiveOrder,
+  onResendConfirmationEmail
 }) {
   if (!pickup) return null;
 
   const effectiveStatus = normalizeStatus(
     optimisticStatuses[pickup.key] || pickup.status
   );
+  const emailSuppression = (Array.isArray(pickup.orders) ? pickup.orders : [])
+    .map((order) => order?.emailSuppression)
+    .find((suppression) => suppression?.active) || null;
+  const recentEmailActivity = (Array.isArray(pickup.orders) ? pickup.orders : [])
+    .flatMap((order) => (
+      Array.isArray(order?.emailHistory)
+        ? order.emailHistory.map((entry) => ({
+          ...entry,
+          orderId: order.id,
+          orderNumberText: getOrderNumberText(order)
+        }))
+        : []
+    ))
+    .sort((left, right) => (
+      String(right?.lastEventAt || right?.createdAt || '').localeCompare(
+        String(left?.lastEventAt || left?.createdAt || '')
+      )
+    ))
+    .slice(0, 5);
   const orderNumbers = Array.from(
     new Set(
       (Array.isArray(pickup.orders) ? pickup.orders : [])
@@ -67,6 +126,18 @@ export default function AdminPickupModal({
                 </a>
               )}
             </div>
+            {emailSuppression?.active && (
+              <div className="detail-email-alert">
+                <div className="detail-email-alert-title">{t('emailStatus.suppressed', adminLanguage)}</div>
+                {emailSuppression.reason && (
+                  <div className="detail-email-alert-reason">
+                    {tf('emailStatus.suppressedReason', adminLanguage, {
+                      reason: emailSuppression.reason
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
           <button
             type="button"
@@ -130,12 +201,23 @@ export default function AdminPickupModal({
                 .sort((a, b) => b.orderDate.localeCompare(a.orderDate))
                 .map((order) => {
                   const orderStatus = normalizeStatus(order?.status);
+                  const rawOrderStatus = String(order?.status || '').trim().toLowerCase();
                   const canExportInvoice = orderStatus !== 'cancelled' && orderStatus !== 'archived' && orderStatus !== 'reserved';
                   const orderNumberText = getOrderNumberText(order);
                   const canToggleArchive = ['pending', 'paid', 'cancelled', 'archived'].includes(orderStatus);
                   const archiveLabel = orderStatus === 'archived'
                     ? t('pickup.unarchive', adminLanguage)
                     : t('pickup.archive', adminLanguage);
+                  const confirmation = order?.confirmationEmail || { status: 'not_sent' };
+                  const confirmationTimestamp = formatDateTime(
+                    confirmation?.createdAt,
+                    adminLanguage
+                  );
+                  const canResendConfirmation = Boolean(
+                    onResendConfirmationEmail
+                    && order?.customerEmail
+                    && ['paid', 'fulfilled', 'picked_up'].includes(rawOrderStatus)
+                  );
                   return (
                     <div key={order.id} className="history-row">
                       <div>
@@ -147,10 +229,25 @@ export default function AdminPickupModal({
                           )}
                           {' '}· {order.paymentSummary}
                         </div>
+                        <div className="history-email">
+                          {t('emailStatus.confirmation', adminLanguage)}: {getEmailStatusLabel(confirmation?.status, adminLanguage)}
+                          {confirmationTimestamp ? ` · ${confirmationTimestamp}` : ''}
+                        </div>
+                        {confirmation?.error && (
+                          <div className="history-email-error">{confirmation.error}</div>
+                        )}
                       </div>
                       <div className="history-row-actions">
                         <div className="history-total">{formatCurrency(order.totalAmount)}</div>
                         <div className="history-row-buttons">
+                          <button
+                            type="button"
+                            className="admin-button ghost small"
+                            onClick={() => onResendConfirmationEmail?.(order)}
+                            disabled={!canResendConfirmation}
+                          >
+                            {t('emailStatus.resendConfirmation', adminLanguage)}
+                          </button>
                           <button
                             type="button"
                             className="admin-button ghost small"
@@ -186,6 +283,36 @@ export default function AdminPickupModal({
                     </div>
                   );
                 })}
+            </div>
+          </div>
+        )}
+        {recentEmailActivity.length > 0 && (
+          <div className="detail-section">
+            <div className="detail-section-title">{t('emailStatus.recentActivity', adminLanguage)}</div>
+            <div className="detail-history">
+              {recentEmailActivity.map((entry) => {
+                const activityTimestamp = formatDateTime(
+                  entry?.lastEventAt || entry?.createdAt,
+                  adminLanguage
+                );
+                return (
+                  <div key={entry.id} className="history-row">
+                    <div>
+                      <div className="history-title">
+                        {entry.orderNumberText ? `#${entry.orderNumberText} · ` : ''}
+                        {getEmailTypeLabel(entry.emailType, adminLanguage)}
+                      </div>
+                      <div className="history-meta">
+                        {getEmailStatusLabel(entry.sendStatus, adminLanguage)}
+                        {activityTimestamp ? ` · ${activityTimestamp}` : ''}
+                      </div>
+                      {entry.lastError && (
+                        <div className="history-email-error">{entry.lastError}</div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}

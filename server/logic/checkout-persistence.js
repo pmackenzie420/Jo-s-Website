@@ -1,4 +1,5 @@
 const { normalizePhoneForStorage } = require('./checkout-validation');
+const { recordOrderEvent } = require('./audit-ops');
 
 const createReservedOrder = async ({
     pool,
@@ -18,7 +19,10 @@ const createReservedOrder = async ({
     paymentType,
     amountPaidCents,
     amountDueCents,
-    orderLanguage
+    orderLanguage,
+    requestId,
+    actorType = 'checkout',
+    actorId = 'self_service'
 }) => {
     const normalizedPhone = normalizePhoneForStorage(customerPhone);
     return withTransaction(pool, async (client) => {
@@ -45,7 +49,12 @@ const createReservedOrder = async ({
         await reserveStockForItems(client, {
             pickupDateId,
             items: reservationItems,
-            orderId: 'pending'
+            orderId: 'pending',
+            pickupDate,
+            pickupLocation,
+            inventoryReason: 'checkout_reservation_created',
+            inventoryActor: actorId,
+            requestId
         });
 
         const newOrder = await client.query(
@@ -78,7 +87,27 @@ const createReservedOrder = async ({
                 orderLanguage
             ]
         );
-        return newOrder.rows[0].id;
+        const orderId = newOrder.rows[0].id;
+        await recordOrderEvent(client, {
+            orderId,
+            eventType: 'order_created',
+            fromStatus: null,
+            toStatus: RESERVED_ORDER_STATUS,
+            actorType,
+            actorId,
+            requestId,
+            payload: {
+                total_cents: totalCents,
+                pickup_date: pickupDate,
+                pickup_location: pickupLocation,
+                payment_type: paymentType,
+                amount_paid_cents: amountPaidCents,
+                amount_due_cents: amountDueCents,
+                language: orderLanguage,
+                customer_email: customerEmail || null
+            }
+        });
+        return orderId;
     });
 };
 

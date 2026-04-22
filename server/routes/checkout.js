@@ -34,6 +34,7 @@ const registerCheckoutRoutes = (app, deps) => {
         signOrderConfirmToken,
         verifyOrderConfirmToken,
         verifyCheckoutEmail,
+        verifyManagedEmailAddress: verifyManagedEmailAddressOverride,
         getCookieOptions,
         ORDER_CONFIRM_COOKIE,
         ORDER_CONFIRM_TTL_MS,
@@ -64,6 +65,23 @@ const registerCheckoutRoutes = (app, deps) => {
             normalizedEmail: '',
             suggestion: null
         });
+    const verifyManagedAddress = typeof verifyManagedEmailAddressOverride === 'function'
+        ? verifyManagedEmailAddressOverride
+        : async ({ email, language, verifyEmail: verifyEmailOverride }) => {
+            const verification = await verifyEmailOverride(email, { language });
+            return {
+                normalizedEmail: verification?.normalizedEmail || String(email || '').trim().toLowerCase(),
+                status: String(
+                    verification?.status
+                    || (verification?.shouldBlock ? 'invalid' : 'valid')
+                ).trim().toLowerCase() || 'valid',
+                shouldBlock: Boolean(verification?.shouldBlock),
+                message: String(verification?.message || '').trim(),
+                reason: String(verification?.reason || '').trim(),
+                suggestion: verification?.suggestion || null,
+                verification
+            };
+        };
     const configuredSweepIntervalSeconds = Number(process.env.CHECKOUT_SWEEP_MIN_INTERVAL_SECONDS);
     const checkoutSweepMinIntervalSeconds = Number.isFinite(configuredSweepIntervalSeconds)
         ? Math.max(configuredSweepIntervalSeconds, 10)
@@ -92,8 +110,21 @@ const registerCheckoutRoutes = (app, deps) => {
             const email = typeof req.body?.email === 'string' ? req.body.email : '';
             const requestedLanguage = req.body?.language || req.get('accept-language');
             const language = normalizeLanguage(requestedLanguage);
-            const verification = await verifyEmail(email, { language });
-            return res.json(verification);
+            const verification = await verifyManagedAddress({
+                pool,
+                email,
+                language,
+                verifyEmail
+            });
+            return res.json({
+                accepted: !verification.shouldBlock,
+                normalizedEmail: verification.normalizedEmail,
+                status: verification.status,
+                message: verification.message || '',
+                shouldBlock: verification.shouldBlock,
+                suggestion: verification.suggestion || null,
+                reason: verification.reason || verification?.verification?.reason || null
+            });
         } catch (err) {
             return sendServerError(res, err, 'Email verification failed');
         }
@@ -110,6 +141,18 @@ const registerCheckoutRoutes = (app, deps) => {
                 isValidEmail,
                 CHECKOUT_MAX_ITEM_ROWS
             });
+            const emailAssessment = await verifyManagedAddress({
+                pool,
+                email: checkoutContext.customerEmail,
+                language: checkoutContext.orderLanguage,
+                verifyEmail
+            });
+            if (emailAssessment.shouldBlock) {
+                return res.status(400).json({
+                    error: emailAssessment.message || 'Customer email cannot receive mail.'
+                });
+            }
+            const verifiedCustomerEmail = emailAssessment.normalizedEmail || checkoutContext.customerEmail;
 
             const pickupDateId = await resolvePickupDateId(
                 pool,
@@ -149,7 +192,7 @@ const registerCheckoutRoutes = (app, deps) => {
                     reservationItems: quote.reservationItems,
                     customerName: checkoutContext.customerName,
                     customerPhone: checkoutContext.customerPhone,
-                    customerEmail: checkoutContext.customerEmail,
+                    customerEmail: verifiedCustomerEmail,
                     customerAddress: checkoutContext.customerAddress,
                     totalCents: quote.totalCents,
                     orderItemsForStorage: quote.orderItemsForStorage,
@@ -159,7 +202,10 @@ const registerCheckoutRoutes = (app, deps) => {
                     paymentType: quote.paymentType,
                     amountPaidCents: quote.amountPaidCents,
                     amountDueCents: quote.amountDueCents,
-                    orderLanguage: checkoutContext.orderLanguage
+                    orderLanguage: checkoutContext.orderLanguage,
+                    requestId: req.requestId,
+                    actorType: 'checkout',
+                    actorId: verifiedCustomerEmail || checkoutContext.customerPhone || 'self_service'
                 });
 
                 const session = await createCheckoutSession({
@@ -193,7 +239,12 @@ const registerCheckoutRoutes = (app, deps) => {
                 }
                 if (orderId) {
                     try {
-                        await releaseReservedOrder(orderId);
+                        await releaseReservedOrder(orderId, {
+                            actorType: 'system',
+                            actorId: 'checkout_cleanup',
+                            requestId: req.requestId,
+                            inventoryReason: 'checkout_cleanup_release'
+                        });
                     } catch (releaseErr) {
                         logError(`Failed to release reservation for order ${orderId}`, releaseErr);
                     }
@@ -241,7 +292,14 @@ const registerCheckoutRoutes = (app, deps) => {
             const confirmedSession = verifyOrderConfirmToken(confirmToken);
 
             if (session?.payment_status === 'paid') {
-                const result = await finalizeOrderFromSession(session);
+                const result = await finalizeOrderFromSession(session, {
+                    source: 'checkout_confirm',
+                    actorType: 'checkout',
+                    actorId: 'customer',
+                    requestId: req.requestId,
+                    providerEventId: session?.id || sessionId,
+                    paymentEventType: 'checkout_confirm.finalize'
+                });
                 if (result.status !== 'missing_order') {
                     orderId = result.orderId;
                     orderStatus = result.status;

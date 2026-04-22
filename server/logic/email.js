@@ -14,6 +14,9 @@ const {
 } = require('../utils/helpers');
 const { buildBrandedEmailHtml, BRAND_COLOR } = require('../utils/email-template');
 const { getPaymentDetails, getOrderSummary, isLambName } = require('./pricing');
+const { verifyCheckoutEmail } = require('./email-verification');
+const { EMAIL_TYPES, sendTrackedEmailMessage } = require('./email-ops');
+const { recordOrderEvent } = require('./audit-ops');
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM;
@@ -249,7 +252,52 @@ const formatSender = (address) => {
     return EMAIL_FROM_NAME ? `${EMAIL_FROM_NAME} <${normalizedAddress}>` : normalizedAddress;
 };
 
-const sendEmailMessage = async ({ to, subject, text, html, attachments, replyTo, from, headers }) => {
+const extractProviderErrorMessage = async (response) => {
+    const contentType = String(response?.headers?.get?.('content-type') || '').toLowerCase();
+    if (contentType.includes('application/json')) {
+        try {
+            const payload = await response.json();
+            const message = String(
+                payload?.message
+                || payload?.error
+                || payload?.name
+                || payload?.detail
+                || ''
+            ).trim();
+            if (message) {
+                return message;
+            }
+        } catch {
+            // Fall through to plain-text parsing below.
+        }
+    }
+
+    try {
+        const body = String(await response.text()).trim();
+        if (body) {
+            return body;
+        }
+    } catch {
+        // Ignore parse failures and fall back to the status code below.
+    }
+
+    const statusCode = Number(response?.status || 0);
+    return statusCode > 0 ? `HTTP ${statusCode}` : 'Unknown provider error';
+};
+
+const normalizeResendTags = (tags) => {
+    if (!Array.isArray(tags)) return undefined;
+    const normalized = tags.reduce((acc, tag) => {
+        const name = String(tag?.name || '').trim();
+        const value = String(tag?.value || '').trim();
+        if (!name || !value) return acc;
+        acc.push({ name, value });
+        return acc;
+    }, []);
+    return normalized.length > 0 ? normalized : undefined;
+};
+
+const sendEmailMessage = async ({ to, subject, text, html, attachments, csv, filename, replyTo, from, headers, tags, idempotencyKey }) => {
     const formattedSender = formatSender(from || EMAIL_FROM);
     if (!formattedSender) {
         throw new Error('Email sender address is not configured.');
@@ -273,27 +321,50 @@ const sendEmailMessage = async ({ to, subject, text, html, attachments, replyTo,
         }, {});
     }
 
-    const resendAttachments = normalizeResendAttachments(attachments);
+    const attachmentPayload = Array.isArray(attachments)
+        ? attachments
+        : (csv
+            ? [{
+                Name: filename || 'pickup-orders.csv',
+                Content: Buffer.from(String(csv), 'utf8').toString('base64'),
+                ContentType: 'text/csv'
+            }]
+            : undefined);
+    const resendAttachments = normalizeResendAttachments(attachmentPayload);
     if (resendAttachments) {
         payload.attachments = resendAttachments;
+    }
+    const resendTags = normalizeResendTags(tags);
+    if (resendTags) {
+        payload.tags = resendTags;
     }
 
     const response = await fetch('https://api.resend.com/emails', {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            Authorization: `Bearer ${RESEND_API_KEY}`
+            Authorization: `Bearer ${RESEND_API_KEY}`,
+            ...(idempotencyKey ? { 'Idempotency-Key': String(idempotencyKey).trim() } : {})
         },
         body: JSON.stringify(payload)
     });
 
     if (!response.ok) {
-        const errorBody = await response.text();
-        throw new Error(`Email send failed: ${errorBody}`);
+        const errorMessage = await extractProviderErrorMessage(response);
+        throw new Error(`Email send failed: ${errorMessage}`);
+    }
+
+    try {
+        const payload = await response.json();
+        return {
+            id: String(payload?.id || '').trim() || null
+        };
+    } catch {
+        return { id: null };
     }
 };
 
-const sendOrderConfirmationEmail = async (orderId) => {
+const sendOrderConfirmationEmail = async (orderId, options = {}) => {
     if (!RESEND_API_KEY || !EMAIL_FROM) {
         return { skipped: 'not_configured' };
     }
@@ -313,35 +384,80 @@ const sendOrderConfirmationEmail = async (orderId) => {
         return { skipped: 'not_paid' };
     }
 
-    const claim = await pool.query(
-        'UPDATE orders SET confirmation_email_sent_at = NOW() WHERE id = $1 AND confirmation_email_sent_at IS NULL RETURNING confirmation_email_sent_at',
-        [orderId]
-    );
-    if (claim.rows.length === 0) {
-        return { skipped: 'already_sent' };
+    const force = options?.force === true;
+    const previousConfirmationSentAt = order.confirmation_email_sent_at || null;
+    if (!force) {
+        const claim = await pool.query(
+            'UPDATE orders SET confirmation_email_sent_at = NOW() WHERE id = $1 AND confirmation_email_sent_at IS NULL RETURNING confirmation_email_sent_at',
+            [orderId]
+        );
+        if (claim.rows.length === 0) {
+            return { skipped: 'already_sent' };
+        }
     }
 
     const emailPayload = buildOrderConfirmationEmailPayload({ order, items });
 
     try {
-        await sendEmailMessage({
-            to: {
-                email: order.customer_email,
-                name: order.customer_name
-            },
-            subject: emailPayload.subject,
-            text: emailPayload.text,
-            html: emailPayload.html,
-            from: CONFIRMATION_EMAIL_FROM,
-            replyTo: CONFIRMATION_EMAIL_REPLY_TO,
-            headers: CONFIRMATION_NO_REPLY_HEADERS
+        const result = await sendTrackedEmailMessage({
+            pool,
+            verifyEmail: verifyCheckoutEmail,
+            sendEmailMessage,
+            message: {
+                to: {
+                    email: order.customer_email,
+                    name: order.customer_name
+                },
+                subject: emailPayload.subject,
+                text: emailPayload.text,
+                html: emailPayload.html,
+                from: CONFIRMATION_EMAIL_FROM,
+                replyTo: CONFIRMATION_EMAIL_REPLY_TO,
+                headers: CONFIRMATION_NO_REPLY_HEADERS,
+                emailType: EMAIL_TYPES.CONFIRMATION,
+                orderIds: [orderId],
+                initiatedBy: options?.initiatedBy || 'system',
+                language: order.language,
+                metadata: {
+                    order_number: getPublicOrderReference(order)
+                }
+            }
         });
-        return { sent: true };
-    } catch (err) {
+        if (!result.success) {
+            throw new Error(result.reason || 'Email send failed.');
+        }
+
         await pool.query(
-            'UPDATE orders SET confirmation_email_sent_at = NULL WHERE id = $1',
+            'UPDATE orders SET confirmation_email_sent_at = NOW() WHERE id = $1',
             [orderId]
         );
+        await recordOrderEvent(pool, {
+            orderId,
+            eventType: 'confirmation_queued',
+            fromStatus: status,
+            toStatus: status,
+            actorType: String(options?.actorType || options?.initiatedBy || 'system').trim().toLowerCase() || 'system',
+            actorId: String(options?.actorId || options?.initiatedBy || 'system').trim() || 'system',
+            requestId: String(options?.requestId || '').trim() || null,
+            payload: {
+                email_message_id: result.emailMessageId,
+                provider_email_id: result.providerEmailId || null,
+                force,
+                initiated_by: options?.initiatedBy || 'system'
+            }
+        });
+        return {
+            sent: true,
+            emailMessageId: result.emailMessageId,
+            providerEmailId: result.providerEmailId || null
+        };
+    } catch (err) {
+        if (!force || !previousConfirmationSentAt) {
+            await pool.query(
+                'UPDATE orders SET confirmation_email_sent_at = NULL WHERE id = $1',
+                [orderId]
+            );
+        }
         throw err;
     }
 };

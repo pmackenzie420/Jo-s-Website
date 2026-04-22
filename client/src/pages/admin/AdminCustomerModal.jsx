@@ -2,17 +2,50 @@ import {
   formatDateLong,
   formatCurrency,
   formatPhoneLink,
-  getOrderNumberText
+  getOrderNumberText,
+  normalizeStatus
 } from '../admin-utils';
 import { t, tf } from '../admin-i18n';
+
+const formatDateTime = (value, language) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return new Intl.DateTimeFormat(language === 'fr' ? 'fr-CA' : 'en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  }).format(parsed);
+};
+
+const getEmailStatusLabel = (status, language) => {
+  const normalized = String(status || '').trim().toLowerCase();
+  const map = {
+    not_sent: t('emailStatus.notSent', language),
+    sent: t('emailStatus.sent', language),
+    delivered: t('emailStatus.delivered', language),
+    failed: t('emailStatus.failed', language),
+    bounced: t('emailStatus.bounced', language),
+    complained: t('emailStatus.complained', language),
+    suppressed: t('emailStatus.suppressedShort', language),
+    blocked: t('emailStatus.blocked', language),
+    warning: t('emailStatus.warning', language)
+  };
+  return map[normalized] || normalized || t('emailStatus.notSent', language);
+};
 
 export default function AdminCustomerModal({
   customer,
   adminLanguage,
+  onResendConfirmationEmail,
   onClose
 }) {
   if (!customer) return null;
   const customerOrders = Array.isArray(customer.orders) ? customer.orders : [];
+  const emailSuppression = customerOrders
+    .map((order) => order?.emailSuppression)
+    .find((suppression) => suppression?.active) || null;
   return (
     <div className="customer-modal-backdrop" role="dialog" aria-modal="true">
       <div className="customer-modal">
@@ -54,6 +87,18 @@ export default function AdminCustomerModal({
             </a>
           )}
         </div>
+        {emailSuppression?.active && (
+          <div className="detail-email-alert">
+            <div className="detail-email-alert-title">{t('emailStatus.suppressed', adminLanguage)}</div>
+            {emailSuppression.reason && (
+              <div className="detail-email-alert-reason">
+                {tf('emailStatus.suppressedReason', adminLanguage, {
+                  reason: emailSuppression.reason
+                })}
+              </div>
+            )}
+          </div>
+        )}
         <div className="detail-history">
           {[...customerOrders]
             .sort((a, b) => {
@@ -63,6 +108,18 @@ export default function AdminCustomerModal({
             })
             .map((order) => {
               const orderNumberText = getOrderNumberText(order);
+              const confirmation = order?.confirmationEmail || { status: 'not_sent' };
+              const confirmationTimestamp = formatDateTime(
+                confirmation?.createdAt,
+                adminLanguage
+              );
+              const rawOrderStatus = String(order?.status || '').trim().toLowerCase();
+              const canResendConfirmation = Boolean(
+                onResendConfirmationEmail
+                && order?.customerEmail
+                && ['paid', 'fulfilled', 'picked_up'].includes(rawOrderStatus)
+                && normalizeStatus(order?.status) !== 'archived'
+              );
               return (
                 <div key={order.id} className="history-row">
                   <div>
@@ -74,9 +131,26 @@ export default function AdminCustomerModal({
                       {order.itemSummary || `${order.itemCount} items`}
                     </div>
                     <div className="history-payment">{order.paymentSummary}</div>
+                    <div className="history-email">
+                      {t('emailStatus.confirmation', adminLanguage)}: {getEmailStatusLabel(confirmation?.status, adminLanguage)}
+                      {confirmationTimestamp ? ` · ${confirmationTimestamp}` : ''}
+                    </div>
+                    {confirmation?.error && (
+                      <div className="history-email-error">{confirmation.error}</div>
+                    )}
                   </div>
                   <div className="history-row-actions">
                     <div className="history-total">{formatCurrency(order.totalAmount)}</div>
+                    <div className="history-row-buttons">
+                      <button
+                        type="button"
+                        className="admin-button ghost small"
+                        onClick={() => onResendConfirmationEmail?.(order)}
+                        disabled={!canResendConfirmation}
+                      >
+                        {t('emailStatus.resendConfirmation', adminLanguage)}
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
