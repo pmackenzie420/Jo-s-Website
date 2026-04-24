@@ -17,6 +17,7 @@ const { getPaymentDetails, getOrderSummary, isLambName } = require('./pricing');
 const { verifyCheckoutEmail } = require('./email-verification');
 const { EMAIL_TYPES, sendTrackedEmailMessage } = require('./email-ops');
 const { recordOrderEvent } = require('./audit-ops');
+const { logWarn } = require('../utils/logger');
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const EMAIL_FROM = process.env.EMAIL_FROM;
@@ -45,6 +46,68 @@ const CONFIRMATION_NO_REPLY_HEADERS = {
     'Auto-Submitted': 'auto-generated',
     'X-Auto-Response-Suppress': 'All',
     Precedence: 'bulk'
+};
+const RESEND_RATE_LIMIT_PER_SECOND = (() => {
+    const parsed = Number.parseInt(process.env.RESEND_RATE_LIMIT_PER_SECOND, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 5;
+})();
+const RESEND_MIN_REQUEST_INTERVAL_MS = Math.max(
+    Math.ceil(1000 / RESEND_RATE_LIMIT_PER_SECOND),
+    50
+);
+const RESEND_MAX_SEND_ATTEMPTS = (() => {
+    const parsed = Number.parseInt(process.env.RESEND_MAX_SEND_ATTEMPTS, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 4;
+})();
+
+let resendSendQueue = Promise.resolve();
+let lastResendRequestStartedAt = 0;
+
+const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+const runInResendQueue = async (task) => {
+    const previousTask = resendSendQueue;
+    let releaseCurrentTask;
+    resendSendQueue = new Promise((resolve) => {
+        releaseCurrentTask = resolve;
+    });
+
+    await previousTask;
+    try {
+        return await task();
+    } finally {
+        releaseCurrentTask();
+    }
+};
+
+const waitForResendRateLimitWindow = async () => {
+    const waitMs = Math.max(
+        0,
+        (lastResendRequestStartedAt + RESEND_MIN_REQUEST_INTERVAL_MS) - Date.now()
+    );
+    if (waitMs > 0) {
+        await delay(waitMs);
+    }
+    lastResendRequestStartedAt = Date.now();
+};
+
+const parseRetryDelayMs = (response) => {
+    const retryAfterValue = String(response?.headers?.get?.('retry-after') || '').trim();
+    if (/^\d+(\.\d+)?$/.test(retryAfterValue)) {
+        return Math.max(Math.ceil(Number(retryAfterValue) * 1000), RESEND_MIN_REQUEST_INTERVAL_MS);
+    }
+
+    const retryAfterDate = Date.parse(retryAfterValue);
+    if (!Number.isNaN(retryAfterDate)) {
+        return Math.max(retryAfterDate - Date.now(), RESEND_MIN_REQUEST_INTERVAL_MS);
+    }
+
+    const rateLimitResetValue = String(response?.headers?.get?.('ratelimit-reset') || '').trim();
+    if (/^\d+(\.\d+)?$/.test(rateLimitResetValue)) {
+        return Math.max(Math.ceil(Number(rateLimitResetValue) * 1000), RESEND_MIN_REQUEST_INTERVAL_MS);
+    }
+
+    return RESEND_MIN_REQUEST_INTERVAL_MS;
 };
 
 const getPublicOrderReference = (order) => {
@@ -339,15 +402,39 @@ const sendEmailMessage = async ({ to, subject, text, html, attachments, csv, fil
         payload.tags = resendTags;
     }
 
-    const response = await fetch('https://api.resend.com/emails', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${RESEND_API_KEY}`,
-            ...(idempotencyKey ? { 'Idempotency-Key': String(idempotencyKey).trim() } : {})
-        },
-        body: JSON.stringify(payload)
+    const requestHeaders = {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        ...(idempotencyKey ? { 'Idempotency-Key': String(idempotencyKey).trim() } : {})
+    };
+    const response = await runInResendQueue(async () => {
+        for (let attempt = 1; attempt <= RESEND_MAX_SEND_ATTEMPTS; attempt += 1) {
+            await waitForResendRateLimitWindow();
+            const attemptResponse = await fetch('https://api.resend.com/emails', {
+                method: 'POST',
+                headers: requestHeaders,
+                body: JSON.stringify(payload)
+            });
+
+            if (attemptResponse.status !== 429 || attempt >= RESEND_MAX_SEND_ATTEMPTS) {
+                return attemptResponse;
+            }
+
+            const retryDelayMs = parseRetryDelayMs(attemptResponse);
+            logWarn('Resend rate limited email send; retrying', {
+                email: String(to?.email || '').trim().toLowerCase() || 'invalid-email',
+                attempt,
+                retryDelayMs
+            });
+            await delay(retryDelayMs);
+        }
+
+        return null;
     });
+
+    if (!response) {
+        throw new Error('Email send failed: Resend request queue exhausted.');
+    }
 
     if (!response.ok) {
         const errorMessage = await extractProviderErrorMessage(response);
