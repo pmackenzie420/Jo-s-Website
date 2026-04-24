@@ -7,6 +7,8 @@ const EMAIL_TYPES = Object.freeze({
     ADMIN_MESSAGE: 'admin_message'
 });
 
+const EMAIL_ACTIVITY_STALE_PENDING_MS = 10 * 60 * 1000;
+
 const DEFAULT_SUPPRESSION_MESSAGE = {
     en: 'This email address is suppressed because previous deliveries bounced or were marked as spam. Please update it before continuing.',
     fr: "Cette adresse courriel est supprimée parce que des envois précédents ont rebondi ou ont été signalés comme indésirables. Veuillez la corriger avant de continuer."
@@ -24,6 +26,8 @@ const truncate = (value, maxLength = 500) => {
     if (!normalized) return '';
     return normalized.slice(0, maxLength);
 };
+
+const EMAIL_MESSAGE_JSON_COLUMNS = new Set(['tags', 'metadata', 'last_event_payload']);
 
 const normalizeDateValue = (value) => {
     const normalized = String(value || '').trim();
@@ -91,6 +95,15 @@ const toDistinctOrderIds = (orderIds) => (
 
 const nowIso = () => new Date().toISOString();
 
+const parseTimestampValue = (value) => {
+    if (!value) return null;
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? null : value;
+    }
+    const parsed = new Date(value);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
 const buildSuppressionMessage = (reason, language) => (
     truncate(reason, 500)
     || DEFAULT_SUPPRESSION_MESSAGE[normalizeLanguage(language)]
@@ -117,7 +130,15 @@ const updateEmailMessage = async (pool, emailMessageId, changes) => {
     const setSql = entries
         .map(([column], index) => `${column} = $${index + 2}`)
         .join(', ');
-    const params = [emailMessageId, ...entries.map(([, value]) => value)];
+    const params = [
+        emailMessageId,
+        ...entries.map(([column, value]) => {
+            if (value === null || !EMAIL_MESSAGE_JSON_COLUMNS.has(column)) {
+                return value;
+            }
+            return JSON.stringify(value);
+        })
+    ];
     const result = await pool.query(
         `UPDATE email_messages SET ${setSql} WHERE id = $1 RETURNING *`,
         params
@@ -139,6 +160,8 @@ const createEmailMessage = async (pool, payload) => {
             send_status,
             last_error,
             batch_key,
+            batch_run_id,
+            request_id,
             pickup_date,
             pickup_location,
             initiated_by,
@@ -149,7 +172,7 @@ const createEmailMessage = async (pool, payload) => {
             last_event_at
         )
         VALUES (
-            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17, $18
+            $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18::jsonb, $19, $20
         )
         RETURNING *
         `,
@@ -164,6 +187,8 @@ const createEmailMessage = async (pool, payload) => {
             payload.sendStatus || 'pending',
             payload.lastError || null,
             payload.batchKey || null,
+            payload.batchRunId || null,
+            payload.requestId || null,
             payload.pickupDate || null,
             payload.pickupLocation || null,
             payload.initiatedBy || 'system',
@@ -363,6 +388,8 @@ const sendTrackedEmailMessage = async ({
     const orderIds = toDistinctOrderIds(message?.orderIds);
     const emailType = sanitizeTagToken(message?.emailType, EMAIL_TYPES.ADMIN_MESSAGE);
     const batchKey = truncate(message?.batchKey, 200);
+    const batchRunId = truncate(message?.batchRunId, 200);
+    const requestId = truncate(message?.requestId, 200);
     const pickupDate = normalizeDateValue(message?.pickupDate);
     const pickupLocation = truncate(message?.pickupLocation, 80);
     const initiatedBy = truncate(message?.initiatedBy, 80) || 'system';
@@ -389,6 +416,8 @@ const sendTrackedEmailMessage = async ({
         sendStatus: 'pending',
         lastError: null,
         batchKey,
+        batchRunId,
+        requestId,
         pickupDate,
         pickupLocation,
         initiatedBy,
@@ -762,13 +791,18 @@ const listEmailActivity = async ({
     limit = 200,
     query = '',
     status = '',
-    emailType = ''
+    emailType = '',
+    now = new Date(),
+    stalePendingMs = EMAIL_ACTIVITY_STALE_PENDING_MS
 }) => {
     const params = [];
     const where = [];
     const normalizedQuery = truncate(query, 120);
     const normalizedStatus = truncate(status, 80).toLowerCase();
     const normalizedEmailType = sanitizeTagToken(emailType, '').toLowerCase();
+    const nowValue = parseTimestampValue(now) || new Date();
+    const staleThresholdMs = Math.max(Number(stalePendingMs) || 0, 0);
+    const stalePendingCutoff = new Date(nowValue.getTime() - staleThresholdMs);
 
     if (normalizedQuery) {
         params.push(`%${normalizedQuery.toLowerCase()}%`);
@@ -779,6 +813,8 @@ const listEmailActivity = async ({
                 LOWER(em.normalized_email) LIKE ${searchParam}
                 OR LOWER(COALESCE(em.to_name, '')) LIKE ${searchParam}
                 OR LOWER(COALESCE(em.subject, '')) LIKE ${searchParam}
+                OR LOWER(COALESCE(em.batch_run_id, '')) LIKE ${searchParam}
+                OR LOWER(COALESCE(em.request_id, '')) LIKE ${searchParam}
                 OR EXISTS (
                     SELECT 1
                     FROM email_message_orders emo_q
@@ -793,8 +829,18 @@ const listEmailActivity = async ({
     }
 
     if (normalizedStatus) {
-        params.push(normalizedStatus);
-        where.push(`LOWER(COALESCE(em.send_status, '')) = $${params.length}`);
+        if (normalizedStatus === 'stale_pending') {
+            params.push(stalePendingCutoff);
+            where.push(
+                `
+                LOWER(COALESCE(em.send_status, '')) = 'pending'
+                AND COALESCE(em.last_event_at, em.created_at) <= $${params.length}
+                `
+            );
+        } else {
+            params.push(normalizedStatus);
+            where.push(`LOWER(COALESCE(em.send_status, '')) = $${params.length}`);
+        }
     }
 
     if (normalizedEmailType) {
@@ -830,33 +876,45 @@ const listEmailActivity = async ({
         params
     );
 
-    return result.rows.map((row) => ({
-        id: row.id,
-        emailType: row.email_type,
-        sendStatus: row.send_status,
-        verificationStatus: row.verification_status,
-        toEmail: row.to_email,
-        toName: row.to_name,
-        subject: row.subject,
-        createdAt: row.created_at,
-        sentAt: row.sent_at,
-        deliveredAt: row.delivered_at,
-        failedAt: row.failed_at,
-        bouncedAt: row.bounced_at,
-        complainedAt: row.complained_at,
-        suppressedAt: row.suppressed_at,
-        lastEventAt: row.last_event_at,
-        lastEventType: row.last_event_type,
-        lastError: row.last_error,
-        pickupDate: row.pickup_date,
-        pickupLocation: row.pickup_location,
-        batchKey: row.batch_key,
-        initiatedBy: row.initiated_by,
-        orderIds: toJsonArray(row.order_ids),
-        orderNumbers: toJsonArray(row.order_numbers)
-            .map((value) => Number(value))
-            .filter((value) => Number.isFinite(value) && value > 0)
-    }));
+    return result.rows.map((row) => {
+        const activityAt = parseTimestampValue(row.last_event_at) || parseTimestampValue(row.created_at);
+        const ageMs = activityAt ? Math.max(nowValue.getTime() - activityAt.getTime(), 0) : 0;
+        const isPending = String(row.send_status || '').trim().toLowerCase() === 'pending';
+        const isStalePending = isPending && ageMs >= staleThresholdMs;
+
+        return {
+            id: row.id,
+            emailType: row.email_type,
+            sendStatus: row.send_status,
+            displayStatus: isStalePending ? 'stale_pending' : row.send_status,
+            verificationStatus: row.verification_status,
+            toEmail: row.to_email,
+            toName: row.to_name,
+            subject: row.subject,
+            createdAt: row.created_at,
+            sentAt: row.sent_at,
+            deliveredAt: row.delivered_at,
+            failedAt: row.failed_at,
+            bouncedAt: row.bounced_at,
+            complainedAt: row.complained_at,
+            suppressedAt: row.suppressed_at,
+            lastEventAt: row.last_event_at,
+            lastEventType: row.last_event_type,
+            lastError: row.last_error,
+            pickupDate: row.pickup_date,
+            pickupLocation: row.pickup_location,
+            batchKey: row.batch_key,
+            batchRunId: row.batch_run_id,
+            requestId: row.request_id,
+            initiatedBy: row.initiated_by,
+            isStalePending,
+            stalePendingMinutes: isStalePending ? Math.max(1, Math.round(ageMs / 60000)) : 0,
+            orderIds: toJsonArray(row.order_ids),
+            orderNumbers: toJsonArray(row.order_numbers)
+                .map((value) => Number(value))
+                .filter((value) => Number.isFinite(value) && value > 0)
+        };
+    });
 };
 
 const ensureEmailOpsSchema = async (pool) => {
@@ -874,6 +932,8 @@ const ensureEmailOpsSchema = async (pool) => {
             send_status TEXT NOT NULL DEFAULT 'pending',
             last_error TEXT,
             batch_key TEXT,
+            batch_run_id TEXT,
+            request_id TEXT,
             pickup_date DATE,
             pickup_location TEXT,
             initiated_by TEXT NOT NULL DEFAULT 'system',
@@ -891,6 +951,15 @@ const ensureEmailOpsSchema = async (pool) => {
             last_event_payload JSONB,
             created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP
         );
+    `);
+
+    await pool.query(`
+        ALTER TABLE email_messages
+        ADD COLUMN IF NOT EXISTS batch_run_id TEXT;
+    `);
+    await pool.query(`
+        ALTER TABLE email_messages
+        ADD COLUMN IF NOT EXISTS request_id TEXT;
     `);
 
     await pool.query(`
@@ -940,6 +1009,14 @@ const ensureEmailOpsSchema = async (pool) => {
     await pool.query(`
         CREATE INDEX IF NOT EXISTS email_messages_status_created_at_idx
         ON email_messages (send_status, created_at DESC);
+    `);
+    await pool.query(`
+        CREATE INDEX IF NOT EXISTS email_messages_batch_run_id_created_at_idx
+        ON email_messages (batch_run_id, created_at DESC);
+    `);
+    await pool.query(`
+        CREATE INDEX IF NOT EXISTS email_messages_request_id_created_at_idx
+        ON email_messages (request_id, created_at DESC);
     `);
     await pool.query(`
         CREATE INDEX IF NOT EXISTS email_message_orders_order_id_idx

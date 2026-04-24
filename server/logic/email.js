@@ -417,6 +417,7 @@ const sendOrderConfirmationEmail = async (orderId, options = {}) => {
                 emailType: EMAIL_TYPES.CONFIRMATION,
                 orderIds: [orderId],
                 initiatedBy: options?.initiatedBy || 'system',
+                requestId: String(options?.requestId || '').trim() || null,
                 language: order.language,
                 metadata: {
                     order_number: getPublicOrderReference(order)

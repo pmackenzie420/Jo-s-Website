@@ -2851,36 +2851,57 @@ const registerAdminRoutes = (app, deps) => {
                         toDateValue: updateResult.toDateValue,
                         toLocation: updateResult.toLocation
                     });
-                    const sendResult = await sendManagedEmailMessage({
-                        pool,
-                        verifyEmail,
-                        sendEmailMessage,
-                        message: {
-                            to: {
-                                email: recipient.email,
-                                name: recipient.name || undefined
-                            },
-                            subject: payload.subject,
-                            text: payload.text,
-                            html: payload.html,
-                            from: DATE_CHANGE_EMAIL_FROM || undefined,
-                            replyTo: DATE_CHANGE_EMAIL_REPLY_TO || undefined,
-                            headers: DATE_CHANGE_EMAIL_HEADERS,
-                            emailType: EMAIL_TYPES.PICKUP_DATE_CHANGE,
-                            initiatedBy: 'admin',
-                            language: recipient.language,
-                            batchKey: `${updateResult.fromDateValue}::${updateResult.fromLocation}=>${updateResult.toDateValue}::${updateResult.toLocation}`,
-                            pickupDate: updateResult.toDateValue,
-                            pickupLocation: updateResult.toLocation,
-                            orderIds: recipient.orderIds,
-                            metadata: {
-                                from_date: updateResult.fromDateValue,
-                                from_location: updateResult.fromLocation,
-                                to_date: updateResult.toDateValue,
-                                to_location: updateResult.toLocation
+                    let sendResult;
+                    try {
+                        sendResult = await sendManagedEmailMessage({
+                            pool,
+                            verifyEmail,
+                            sendEmailMessage,
+                            message: {
+                                to: {
+                                    email: recipient.email,
+                                    name: recipient.name || undefined
+                                },
+                                subject: payload.subject,
+                                text: payload.text,
+                                html: payload.html,
+                                from: DATE_CHANGE_EMAIL_FROM || undefined,
+                                replyTo: DATE_CHANGE_EMAIL_REPLY_TO || undefined,
+                                headers: DATE_CHANGE_EMAIL_HEADERS,
+                                emailType: EMAIL_TYPES.PICKUP_DATE_CHANGE,
+                                initiatedBy: 'admin',
+                                batchRunId,
+                                requestId: requestMeta.requestId,
+                                language: recipient.language,
+                                batchKey: `${updateResult.fromDateValue}::${updateResult.fromLocation}=>${updateResult.toDateValue}::${updateResult.toLocation}`,
+                                pickupDate: updateResult.toDateValue,
+                                pickupLocation: updateResult.toLocation,
+                                orderIds: recipient.orderIds,
+                                metadata: {
+                                    from_date: updateResult.fromDateValue,
+                                    from_location: updateResult.fromLocation,
+                                    to_date: updateResult.toDateValue,
+                                    to_location: updateResult.toLocation
+                                }
                             }
-                        }
-                    });
+                        });
+                    } catch (err) {
+                        const unexpectedReason = normalizeEmailFailureReason(
+                            err?.message,
+                            'Unexpected email send failure.'
+                        );
+                        logWarn('Pickup date change email worker failed unexpectedly', {
+                            email: sanitizeText(recipient.email, 320).toLowerCase() || 'invalid-email',
+                            requestId: requestMeta.requestId,
+                            batchRunId,
+                            reason: unexpectedReason
+                        });
+                        sendResult = {
+                            success: false,
+                            status: 'failed',
+                            reason: unexpectedReason
+                        };
+                    }
                     if (sendResult.success) {
                         emailSent += 1;
                     } else {
@@ -3274,15 +3295,38 @@ const registerAdminRoutes = (app, deps) => {
                     seenEmails.add(normalizedEmail);
                 }
 
-                const trackedResult = await sendManagedEmailMessage({
-                    pool,
-                    verifyEmail,
-                    sendEmailMessage,
-                    message: {
-                        ...item,
-                        html: item.html || buildPlainTextEmailHtml({ text: item.text })
-                    }
-                });
+                let trackedResult;
+                try {
+                    trackedResult = await sendManagedEmailMessage({
+                        pool,
+                        verifyEmail,
+                        sendEmailMessage,
+                        message: {
+                            ...item,
+                            batchRunId,
+                            requestId: requestMeta.requestId,
+                            html: item.html || buildPlainTextEmailHtml({ text: item.text })
+                        }
+                    });
+                } catch (err) {
+                    const unexpectedReason = normalizeEmailFailureReason(
+                        err?.message,
+                        'Unexpected email send failure.'
+                    );
+                    logWarn('Admin bulk email worker failed unexpectedly', {
+                        email: normalizedEmail || 'invalid-email',
+                        requestId: requestMeta.requestId,
+                        batchRunId,
+                        reason: unexpectedReason
+                    });
+                    trackedResult = {
+                        success: false,
+                        email: normalizedEmail || 'invalid-email',
+                        name: item?.to?.name || undefined,
+                        status: 'failed',
+                        reason: unexpectedReason
+                    };
+                }
                 results.push({
                     email: trackedResult.email,
                     name: trackedResult.name,

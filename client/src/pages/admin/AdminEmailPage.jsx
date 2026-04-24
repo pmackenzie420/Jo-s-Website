@@ -19,9 +19,11 @@ const getEmailStatusLabel = (status, language) => {
   const map = {
     ready: t('emailStatus.ready', language),
     not_sent: t('emailStatus.notSent', language),
+    pending: t('emailStatus.pending', language),
     sent: t('emailStatus.sent', language),
     delivered: t('emailStatus.delivered', language),
     failed: t('emailStatus.failed', language),
+    stale_pending: t('emailStatus.stalePending', language),
     blocked: t('emailStatus.blocked', language),
     suppressed: t('emailStatus.suppressedShort', language),
     duplicate: t('emailStatus.duplicate', language),
@@ -371,6 +373,8 @@ export default function AdminEmailPage({
             onChange={(event) => onEmailActivityStatusChange(event.target.value)}
           >
             <option value="">{t('email.activityAllStatuses', adminLanguage)}</option>
+            <option value="pending">{t('emailStatus.pending', adminLanguage)}</option>
+            <option value="stale_pending">{t('emailStatus.stalePending', adminLanguage)}</option>
             <option value="sent">{t('emailStatus.sent', adminLanguage)}</option>
             <option value="delivered">{t('emailStatus.delivered', adminLanguage)}</option>
             <option value="warning">{t('emailStatus.warning', adminLanguage)}</option>
@@ -395,6 +399,7 @@ export default function AdminEmailPage({
         ) : (
           <div className="email-activity-list">
             {activityRows.map((entry) => {
+              const activityStatus = entry.displayStatus || entry.sendStatus || 'sent';
               const activityTimestamp = formatReportTimestamp(
                 entry.lastEventAt || entry.createdAt,
                 adminLanguage
@@ -402,13 +407,22 @@ export default function AdminEmailPage({
               const orderNumberDisplay = Array.isArray(entry.orderNumbers) && entry.orderNumbers.length > 0
                 ? entry.orderNumbers.map((value) => `#${value}`).join(', ')
                 : '';
+              const activityTrace = [
+                entry.batchRunId ? tf('email.activityBatch', adminLanguage, { batch: entry.batchRunId }) : '',
+                entry.requestId ? tf('email.activityRequest', adminLanguage, { request: entry.requestId }) : ''
+              ].filter(Boolean).join(' · ');
+              const stalePendingNote = entry.isStalePending
+                ? tf('email.activityStalePending', adminLanguage, {
+                  minutes: Number(entry.stalePendingMinutes || 0) || 0
+                })
+                : '';
               return (
                 <div key={entry.id} className="email-activity-row">
                   <div className="email-activity-main">
                     <div className="email-activity-title">
                       <span className="email-activity-type">{getEmailTypeLabel(entry.emailType, adminLanguage)}</span>
-                      <span className={`email-status-badge status-${entry.sendStatus || 'sent'}`}>
-                        {getEmailStatusLabel(entry.sendStatus, adminLanguage)}
+                      <span className={`email-status-badge status-${activityStatus}`}>
+                        {getEmailStatusLabel(activityStatus, adminLanguage)}
                       </span>
                     </div>
                     <div className="email-activity-recipient">
@@ -419,8 +433,14 @@ export default function AdminEmailPage({
                       {activityTimestamp}
                       {orderNumberDisplay ? ` · ${orderNumberDisplay}` : ''}
                     </div>
+                    {activityTrace && (
+                      <div className="email-activity-meta">{activityTrace}</div>
+                    )}
                     {entry.lastError && (
                       <div className="email-activity-error">{entry.lastError}</div>
+                    )}
+                    {stalePendingNote && (
+                      <div className="email-activity-error">{stalePendingNote}</div>
                     )}
                   </div>
                 </div>

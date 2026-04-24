@@ -1198,12 +1198,19 @@ body.admin-modal-open .admin-main {
   border-color: rgba(27, 94, 32, 0.16);
 }
 
+.email-status-badge.status-pending {
+  color: var(--admin-muted);
+  background: rgba(0, 0, 0, 0.04);
+  border-color: rgba(0, 0, 0, 0.12);
+}
+
 .email-status-badge.status-warning {
   color: #9f6a00;
   background: rgba(159, 106, 0, 0.08);
   border-color: rgba(159, 106, 0, 0.16);
 }
 
+.email-status-badge.status-stale_pending,
 .email-status-badge.status-blocked,
 .email-status-badge.status-failed,
 .email-status-badge.status-bounced,

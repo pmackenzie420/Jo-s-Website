@@ -1888,6 +1888,8 @@ test('admin bulk email send records batch and admin audit metadata', async () =>
 
     assert.equal(res.statusCode, 200);
     assert.equal(sentMessages.length, 2);
+    assert.equal(sentMessages.every((message) => message.batchRunId === 'batch-1'), true);
+    assert.equal(sentMessages.every((message) => message.requestId === 'req-email-1'), true);
     assert.deepEqual(startedBatches, [{
         batchType: 'pickup_reminder_batch',
         scope: {
@@ -1932,4 +1934,66 @@ test('admin bulk email send records batch and admin audit metadata', async () =>
         failed: 0,
         duplicate: 0
     });
+});
+
+test('admin bulk email send converts thrown worker errors into recipient failures', async () => {
+    const pool = {
+        async query(sql) {
+            throw new Error(`Unexpected SQL: ${normalizeSql(sql)}`);
+        }
+    };
+
+    const handlers = registerRoutesForTest(pool, {
+        startBatchRun: async () => 'batch-throw',
+        finalizeBatchRun: async () => 'batch-throw',
+        recordAdminAction: async () => 'admin-action-throw',
+        sendTrackedEmailMessage: async ({ message }) => {
+            if (message?.to?.email === 'boom@example.com') {
+                throw new Error('Email send failed: {"message":"Provider connection reset."}');
+            }
+            return {
+                success: true,
+                email: String(message?.to?.email || '').trim().toLowerCase(),
+                name: String(message?.to?.name || '').trim() || undefined,
+                status: 'sent',
+                emailMessageId: 'email-ok',
+                providerEmailId: 'provider-ok'
+            };
+        }
+    });
+    const handler = handlers['POST /api/admin/email'];
+    assert.ok(handler);
+
+    const req = {
+        adminSession: { sub: 'operator-3' },
+        requestId: 'req-email-throw',
+        headers: { 'user-agent': 'node-test' },
+        body: {
+            messages: [
+                {
+                    to: { email: 'ok@example.com', name: 'Okay' },
+                    subject: 'Pickup reminder',
+                    text: 'Reminder one',
+                    emailType: 'pickup_reminder'
+                },
+                {
+                    to: { email: 'boom@example.com', name: 'Boom' },
+                    subject: 'Pickup reminder',
+                    text: 'Reminder two',
+                    emailType: 'pickup_reminder'
+                }
+            ]
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.success, false);
+    assert.equal(res.body?.sent, 1);
+    assert.equal(res.body?.failed, 1);
+    assert.equal(res.body?.counts?.failed, 1);
+    assert.equal(res.body?.failedRecipients?.[0]?.email, 'boom@example.com');
+    assert.equal(res.body?.failedRecipients?.[0]?.reason, 'Provider connection reset.');
 });
