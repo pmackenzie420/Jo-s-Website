@@ -106,8 +106,7 @@ export default function Admin() {
     handleEditOrder,
     handleUpdateAdminOrder,
     handlePreviewGroupEmail,
-    handleRefreshEmailActivity,
-    handleResendConfirmationEmail
+    handleRefreshEmailActivity
   } = useAdminController();
 
   const isMobile = useMediaQuery('(max-width: 767px)');
@@ -374,7 +373,6 @@ export default function Admin() {
         adminLanguage={adminLanguage}
         onExportCustomerInvoices={handleInvoiceExportForCustomer}
         onExportOrderInvoice={handleInvoiceExportForOrder}
-        onResendConfirmationEmail={handleResendConfirmationEmail}
         onClose={() => setSelectedCustomer(null)}
       />
       <AdminPickupModal
@@ -386,7 +384,6 @@ export default function Admin() {
         onExportOrderInvoice={handleInvoiceExportForOrder}
         onEditOrder={handleEditOrder}
         onArchiveOrder={handleArchiveOrder}
-        onResendConfirmationEmail={handleResendConfirmationEmail}
       />
       <AdminEditOrderModal
         order={editingOrder}

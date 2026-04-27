@@ -48,6 +48,8 @@ const ADMIN_STRINGS = {
   'pickup.itemsTitle':      { en: 'Items',            fr: 'Articles' },
   'pickup.orderBreakdown':  { en: 'Order Breakdown',  fr: 'Détails des commandes' },
   'pickup.orderDetails':    { en: 'Order Details',    fr: 'Détails de la commande' },
+  'pickup.locationLabel':   { en: 'Location',         fr: 'Lieu' },
+  'pickup.paymentLabel':    { en: 'Payment',          fr: 'Paiement' },
   'pickup.exportInvoice':   { en: 'Invoice',          fr: 'Facture' },
   'pickup.placed':          { en: 'Placed',           fr: 'Passée le' },
   'pickup.archive':         { en: 'Archive',          fr: 'Archiver' },
@@ -94,6 +96,16 @@ const ADMIN_STRINGS = {
   'customer.email':         { en: 'Email',             fr: 'Courriel' },
   'customer.exportInvoice': { en: 'Invoice',           fr: 'Facture' },
   'customer.exportAllInvoices': { en: 'Export All Invoices', fr: 'Exporter toutes les factures' },
+
+  // Order source
+  'orderSource.label':     { en: 'Source',            fr: 'Source' },
+  'orderSource.customer':  { en: 'Customer',          fr: 'Client' },
+  'orderSource.customerInferred': { en: 'Customer (inferred)', fr: 'Client (inféré)' },
+  'orderSource.team':      { en: 'Team',              fr: 'Équipe' },
+  'orderSource.teamInferred': { en: 'Team (inferred)', fr: 'Équipe (inférée)' },
+  'orderSource.system':    { en: 'System',            fr: 'Système' },
+  'orderSource.systemInferred': { en: 'System (inferred)', fr: 'Système (inféré)' },
+  'orderSource.unknown':   { en: 'Unknown',           fr: 'Inconnue' },
 
   // Email page
   'email.loading':          { en: 'Loading email groups...', fr: 'Chargement des groupes...' },

@@ -505,7 +505,13 @@ const registerAdminRoutes = (app, deps) => {
             confirmation_email_data.latest_confirmation_verification_status,
             suppression_data.email_suppression_reason_type,
             suppression_data.email_suppression_reason,
-            suppression_data.email_suppressed_at
+            suppression_data.email_suppressed_at,
+            order_created_event_data.order_created_actor_type,
+            order_created_event_data.order_created_actor_id,
+            order_created_event_data.order_created_request_id,
+            order_created_event_data.order_created_at,
+            order_created_event_data.order_created_backfilled,
+            order_created_event_data.order_created_inferred_from
         FROM orders
         LEFT JOIN customers
             ON orders.customer_id = customers.id
@@ -574,6 +580,21 @@ const registerAdminRoutes = (app, deps) => {
               AND es.active = true
             LIMIT 1
         ) AS suppression_data
+            ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT
+                oe.actor_type AS order_created_actor_type,
+                oe.actor_id AS order_created_actor_id,
+                oe.request_id AS order_created_request_id,
+                oe.created_at AS order_created_at,
+                COALESCE((oe.payload_json ->> 'backfilled')::boolean, false) AS order_created_backfilled,
+                NULLIF(TRIM(oe.payload_json ->> 'inferred_from'), '') AS order_created_inferred_from
+            FROM order_events oe
+            WHERE oe.order_id = orders.id
+              AND oe.event_type = 'order_created'
+            ORDER BY oe.created_at ASC
+            LIMIT 1
+        ) AS order_created_event_data
             ON TRUE
         ORDER BY orders.created_at DESC
         LIMIT ${limitPlaceholder}

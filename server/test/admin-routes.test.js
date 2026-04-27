@@ -180,7 +180,15 @@ test('admin orders-page returns paged payload with hasMore metadata', async () =
                 assert.deepEqual(params, [3, 0]);
                 return {
                     rows: [
-                        { id: 'ord_1' },
+                        {
+                            id: 'ord_1',
+                            order_created_actor_type: 'checkout',
+                            order_created_actor_id: 'alice@example.com',
+                            order_created_request_id: 'req-order-1',
+                            order_created_at: '2026-04-01T12:00:05.000Z',
+                            order_created_backfilled: true,
+                            order_created_inferred_from: 'stripe_payment_id_present'
+                        },
                         { id: 'ord_2' },
                         { id: 'ord_3' }
                     ]
@@ -211,6 +219,10 @@ test('admin orders-page returns paged payload with hasMore metadata', async () =
     assert.equal(res.body.limit, 2);
     assert.equal(res.body.offset, 0);
     assert.equal(res.body.nextOffset, 2);
+    assert.equal(res.body.orders[0]?.order_created_actor_type, 'checkout');
+    assert.equal(res.body.orders[0]?.order_created_actor_id, 'alice@example.com');
+    assert.equal(res.body.orders[0]?.order_created_backfilled, true);
+    assert.equal(res.body.orders[0]?.order_created_inferred_from, 'stripe_payment_id_present');
 });
 
 test('admin meta returns hens, dates, pickup stock map, and reserved quantities map', async () => {

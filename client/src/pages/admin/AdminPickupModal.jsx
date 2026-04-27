@@ -6,45 +6,11 @@ import {
   getOrderNumberText
 } from '../admin-utils';
 import { t, tf } from '../admin-i18n';
+import { getOrderSourceTranslationKey } from '../admin-order-source';
 
-const getEmailStatusLabel = (status, language) => {
-  const normalized = String(status || '').trim().toLowerCase();
-  const map = {
-    not_sent: t('emailStatus.notSent', language),
-    sent: t('emailStatus.sent', language),
-    delivered: t('emailStatus.delivered', language),
-    failed: t('emailStatus.failed', language),
-    bounced: t('emailStatus.bounced', language),
-    complained: t('emailStatus.complained', language),
-    suppressed: t('emailStatus.suppressedShort', language),
-    blocked: t('emailStatus.blocked', language),
-    warning: t('emailStatus.warning', language)
-  };
-  return map[normalized] || normalized || t('emailStatus.notSent', language);
-};
-
-const shouldShowConfirmationStatus = (status) => {
-  const normalized = String(status || '').trim().toLowerCase();
-  return [
-    'not_sent',
-    'failed',
-    'bounced',
-    'complained',
-    'suppressed',
-    'blocked'
-  ].includes(normalized);
-};
-
-const getEmailTypeLabel = (emailType, language) => {
-  const normalized = String(emailType || '').trim().toLowerCase();
-  const map = {
-    confirmation: t('emailType.confirmation', language),
-    pickup_reminder: t('emailType.pickupReminder', language),
-    pickup_date_change: t('emailType.pickupDateChange', language),
-    admin_message: t('emailType.adminMessage', language)
-  };
-  return map[normalized] || normalized || t('emailStatus.section', language);
-};
+const stripDueSuffix = (value) => String(value || '')
+  .replace(/\s*·\s*Due\s+\$[\d,.]+/i, '')
+  .trim();
 
 export default function AdminPickupModal({
   pickup,
@@ -54,8 +20,7 @@ export default function AdminPickupModal({
   onMarkPickedUp,
   onExportOrderInvoice,
   onEditOrder,
-  onArchiveOrder,
-  onResendConfirmationEmail
+  onArchiveOrder
 }) {
   if (!pickup) return null;
 
@@ -65,186 +30,253 @@ export default function AdminPickupModal({
   const emailSuppression = (Array.isArray(pickup.orders) ? pickup.orders : [])
     .map((order) => order?.emailSuppression)
     .find((suppression) => suppression?.active) || null;
-  const recentEmailActivity = (Array.isArray(pickup.orders) ? pickup.orders : [])
-    .flatMap((order) => (
-      Array.isArray(order?.emailHistory)
-        ? order.emailHistory.map((entry) => ({
-          ...entry,
-          orderId: order.id,
-          orderNumberText: getOrderNumberText(order)
-        }))
-        : []
-    ))
-    .sort((left, right) => (
-      String(right?.lastEventAt || right?.createdAt || '').localeCompare(
-        String(left?.lastEventAt || left?.createdAt || '')
-      )
-    ))
-    .slice(0, 5);
+  const sortedOrders = [...(Array.isArray(pickup.orders) ? pickup.orders : [])]
+    .sort((a, b) => b.orderDate.localeCompare(a.orderDate));
+  const primaryOrder = sortedOrders[0] || null;
+  const isSingleOrder = sortedOrders.length === 1;
   const orderNumbers = Array.from(
     new Set(
-      (Array.isArray(pickup.orders) ? pickup.orders : [])
+      sortedOrders
         .map((order) => getOrderNumberText(order))
         .filter(Boolean)
     )
   );
   const orderNumbersDisplay = orderNumbers.map((orderNumber) => `#${orderNumber}`).join(', ');
   const orderNumbersLabel = adminLanguage === 'fr' ? 'No commande' : 'Order';
+  const primaryOrderNumberText = primaryOrder ? getOrderNumberText(primaryOrder) : '';
+  const primaryOrderSourceLabel = primaryOrder
+    ? t(getOrderSourceTranslationKey(primaryOrder), adminLanguage)
+    : t('orderSource.unknown', adminLanguage);
+  const paymentFactText = primaryOrder
+    ? stripDueSuffix(primaryOrder.paymentSummary) || primaryOrder.paymentSummary
+    : pickup.paymentSummary;
+  const badgeText = pickup.amountDue > 0
+    ? `${t('edit.due', adminLanguage)} ${formatCurrency(pickup.amountDue)}`
+    : effectiveStatus === 'picked_up'
+      ? t('pickup.pickedUp', adminLanguage)
+      : effectiveStatus === 'cancelled'
+        ? 'Cancelled'
+        : effectiveStatus === 'archived'
+          ? 'Archived'
+          : t('edit.paid', adminLanguage);
+  const badgeTone = pickup.amountDue > 0
+    ? 'due'
+    : effectiveStatus === 'picked_up'
+      ? 'success'
+      : effectiveStatus === 'cancelled' || effectiveStatus === 'archived'
+        ? 'muted'
+        : 'paid';
+  const singleOrderStatus = normalizeStatus(primaryOrder?.status);
+  const canExportPrimaryOrder = Boolean(
+    primaryOrder
+    && onExportOrderInvoice
+    && !['cancelled', 'archived', 'reserved'].includes(singleOrderStatus)
+  );
+  const canEditPrimaryOrder = Boolean(
+    primaryOrder
+    && onEditOrder
+    && ['pending', 'paid'].includes(String(primaryOrder?.status || '').toLowerCase())
+  );
+  const canArchivePrimaryOrder = Boolean(
+    primaryOrder
+    && onArchiveOrder
+    && ['pending', 'paid', 'cancelled', 'archived'].includes(singleOrderStatus)
+  );
+  const singleOrderArchiveLabel = singleOrderStatus === 'archived'
+    ? t('pickup.unarchive', adminLanguage)
+    : t('pickup.archive', adminLanguage);
+  const singleOrderPrefix = primaryOrderNumberText
+    ? `${orderNumbersLabel} #${primaryOrderNumberText}`
+    : orderNumbersLabel;
+  const headerSubtitle = isSingleOrder && primaryOrder
+    ? `${singleOrderPrefix} · ${t('pickup.placed', adminLanguage)} ${formatDateLong(primaryOrder.orderDate, adminLanguage)}`
+    : `${t('pickup.pickupLabel', adminLanguage)} ${formatDateLong(pickup.pickupDate, adminLanguage)}${orderNumbersDisplay ? ` · ${orderNumbersDisplay}` : ''}`;
 
   return (
-    <div className="customer-modal-backdrop" role="dialog" aria-modal="true">
-      <div className="customer-modal">
-        <div className="customer-modal-header">
-          <div>
-            <div className="detail-name">{pickup.customerName}</div>
-            {orderNumbersDisplay && (
-              <div className="detail-meta">{orderNumbersLabel} {orderNumbersDisplay}</div>
-            )}
-            <div className="detail-meta">
-              {t('pickup.pickupLabel', adminLanguage)} {formatDateLong(pickup.pickupDate, adminLanguage)} ·{' '}
-              {pickup.pickupLocationLabel || pickup.pickupLocation}
-              {pickup.paymentSummary ? ` · ${pickup.paymentSummary}` : ''}
-            </div>
-            {pickup.customerAddress && (
-              <div className="detail-meta">{pickup.customerAddress}</div>
-            )}
-            <div className="detail-links">
-              {pickup.customerPhone && (
-                <a
-                  className="detail-link"
-                  href={`tel:${formatPhoneLink(pickup.customerPhone)}`}
-                >
-                  {t('pickup.call', adminLanguage)}
-                </a>
-              )}
-              {pickup.customerEmail && (
-                <a
-                  className="detail-link"
-                  href={`mailto:${pickup.customerEmail}`}
-                >
-                  {t('pickup.email', adminLanguage)}
-                </a>
-              )}
-            </div>
-            {emailSuppression?.active && (
-              <div className="detail-email-alert">
-                <div className="detail-email-alert-title">{t('emailStatus.suppressed', adminLanguage)}</div>
-                {emailSuppression.reason && (
-                  <div className="detail-email-alert-reason">
-                    {tf('emailStatus.suppressedReason', adminLanguage, {
-                      reason: emailSuppression.reason
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
-          </div>
-          <button
-            type="button"
-            className="admin-button ghost modal-close"
-            onClick={onClose}
-          >
-            {t('btn.close', adminLanguage)}
-          </button>
-        </div>
-        {pickup.orders?.length > 1 && (
-          <div className="detail-flag">
-            {tf('pickup.mergedFrom', adminLanguage, { count: pickup.orders.length })}
-          </div>
-        )}
+    <div
+      className="customer-modal-backdrop"
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
+      }}
+    >
+      <div className="customer-modal pickup-detail-modal">
         <button
           type="button"
-          className="admin-button"
-          onClick={() => onMarkPickedUp(pickup)}
-          disabled={effectiveStatus !== 'pending'}
+          className="pickup-detail-close"
+          onClick={onClose}
+          aria-label={t('btn.close', adminLanguage)}
+          title={t('btn.close', adminLanguage)}
         >
-          {effectiveStatus === 'picked_up'
-            ? t('pickup.pickedUp', adminLanguage)
-            : t('pickup.markPickedUp', adminLanguage)}
+          ×
         </button>
-        {['cancelled', 'archived'].includes(effectiveStatus) && onArchiveOrder && (
-          <button
-            type="button"
-            className="admin-button ghost"
-            onClick={() => onArchiveOrder(pickup)}
-          >
-            {effectiveStatus === 'archived'
-              ? t('pickup.unarchive', adminLanguage)
-              : t('pickup.archive', adminLanguage)}
-          </button>
-        )}
-        {pickup.mergedItems?.length > 0 && (
-          <div className="detail-section">
-            <div className="detail-section-title">{t('pickup.itemsTitle', adminLanguage)}</div>
-            <div className="detail-history">
-              {pickup.mergedItems.map((item) => (
-                <div
-                  key={`${pickup.key}-${item.displayName}`}
-                  className="history-row"
-                >
-                  <div className="history-title">{item.displayName}</div>
-                  <div className="history-total">{item.quantity}</div>
-                </div>
-              ))}
+        <div className="pickup-detail-card">
+          <div className="pickup-detail-top">
+            <div className="pickup-detail-heading">
+              <div className="detail-name">{pickup.customerName}</div>
+              <div className="pickup-detail-subtitle">{headerSubtitle}</div>
+            </div>
+            <div className={`pickup-detail-pill ${badgeTone}`}>{badgeText}</div>
+          </div>
+          {pickup.orders?.length > 1 && (
+            <div className="detail-flag">
+              {tf('pickup.mergedFrom', adminLanguage, { count: pickup.orders.length })}
+            </div>
+          )}
+          <div className="pickup-detail-facts">
+            <div className="pickup-detail-fact">
+              <div className="pickup-detail-fact-label">{t('pickup.pickupLabel', adminLanguage)}</div>
+              <div className="pickup-detail-fact-value">
+                {formatDateLong(pickup.pickupDate, adminLanguage)}
+              </div>
+            </div>
+            <div className="pickup-detail-fact">
+              <div className="pickup-detail-fact-label">{t('pickup.locationLabel', adminLanguage)}</div>
+              <div className="pickup-detail-fact-value">
+                {pickup.pickupLocationLabel || pickup.pickupLocation}
+              </div>
+            </div>
+            <div className="pickup-detail-fact">
+              <div className="pickup-detail-fact-label">{t('pickup.paymentLabel', adminLanguage)}</div>
+              <div className="pickup-detail-fact-value">{paymentFactText || pickup.paymentSummary}</div>
             </div>
           </div>
-        )}
-        {pickup.orders?.length > 0 && (
-          <div className="detail-section">
-            <div className="detail-section-title">
-              {pickup.orders.length > 1
-                ? t('pickup.orderBreakdown', adminLanguage)
-                : t('pickup.orderDetails', adminLanguage)}
+          {pickup.mergedItems?.length > 0 && (
+            <div className="pickup-detail-section">
+              <div className="detail-section-title">{t('pickup.itemsTitle', adminLanguage)}</div>
+              <div className="pickup-detail-items">
+                {pickup.mergedItems.map((item) => (
+                  <div
+                    key={`${pickup.key}-${item.displayName}`}
+                    className="pickup-detail-item-row"
+                  >
+                    <div className="pickup-detail-item-name">{item.displayName}</div>
+                    <div className="pickup-detail-item-qty">×{item.quantity}</div>
+                  </div>
+                ))}
+              </div>
             </div>
-            <div className="detail-history">
-              {[...pickup.orders]
-                .sort((a, b) => b.orderDate.localeCompare(a.orderDate))
-                .map((order) => {
+          )}
+          {isSingleOrder && primaryOrder && (
+            <div className="pickup-detail-section pickup-detail-statuses">
+              <div className="pickup-detail-meta-row">
+                <div className="pickup-detail-meta-label">{t('orderSource.label', adminLanguage)}</div>
+                <div className="pickup-detail-meta-value">{primaryOrderSourceLabel}</div>
+              </div>
+            </div>
+          )}
+          {emailSuppression?.active && (
+            <div className="detail-email-alert">
+              <div className="detail-email-alert-title">{t('emailStatus.suppressed', adminLanguage)}</div>
+              {emailSuppression.reason && (
+                <div className="detail-email-alert-reason">
+                  {tf('emailStatus.suppressedReason', adminLanguage, {
+                    reason: emailSuppression.reason
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          <button
+            type="button"
+            className="admin-button pickup-detail-primary"
+            onClick={() => onMarkPickedUp(pickup)}
+            disabled={effectiveStatus !== 'pending'}
+          >
+            {effectiveStatus === 'picked_up'
+              ? t('pickup.pickedUp', adminLanguage)
+              : t('pickup.markPickedUp', adminLanguage)}
+          </button>
+          {isSingleOrder && primaryOrder && (
+            <div className="pickup-detail-actions">
+              <button
+                type="button"
+                className="admin-button ghost"
+                onClick={() => onExportOrderInvoice?.(primaryOrder)}
+                disabled={!canExportPrimaryOrder}
+              >
+                {t('pickup.exportInvoice', adminLanguage)}
+              </button>
+              <button
+                type="button"
+                className="admin-button ghost"
+                onClick={() => onEditOrder?.(primaryOrder)}
+                disabled={!canEditPrimaryOrder}
+              >
+                {t('btn.edit', adminLanguage)}
+              </button>
+              <button
+                type="button"
+                className="admin-button ghost danger"
+                onClick={() => onArchiveOrder?.(primaryOrder)}
+                disabled={!canArchivePrimaryOrder}
+              >
+                {singleOrderArchiveLabel}
+              </button>
+            </div>
+          )}
+          {(pickup.customerPhone || pickup.customerEmail || pickup.customerAddress) && (
+            <div className="pickup-detail-footer">
+              <div className="pickup-detail-contact">
+                {pickup.customerPhone && (
+                  <a
+                    className="detail-link"
+                    href={`tel:${formatPhoneLink(pickup.customerPhone)}`}
+                  >
+                    {t('pickup.call', adminLanguage)}
+                  </a>
+                )}
+                {pickup.customerEmail && (
+                  <a
+                    className="detail-link"
+                    href={`mailto:${pickup.customerEmail}`}
+                  >
+                    {t('pickup.email', adminLanguage)}
+                  </a>
+                )}
+                {pickup.customerPhone && (
+                  <span className="pickup-detail-contact-value">{pickup.customerPhone}</span>
+                )}
+              </div>
+              {pickup.customerAddress && (
+                <div className="pickup-detail-contact-subtle">{pickup.customerAddress}</div>
+              )}
+            </div>
+          )}
+          {!isSingleOrder && sortedOrders.length > 0 && (
+            <div className="pickup-detail-section">
+              <div className="detail-section-title">{t('pickup.orderBreakdown', adminLanguage)}</div>
+              <div className="detail-history">
+                {sortedOrders.map((order) => {
                   const orderStatus = normalizeStatus(order?.status);
-                  const rawOrderStatus = String(order?.status || '').trim().toLowerCase();
                   const canExportInvoice = orderStatus !== 'cancelled' && orderStatus !== 'archived' && orderStatus !== 'reserved';
                   const orderNumberText = getOrderNumberText(order);
                   const canToggleArchive = ['pending', 'paid', 'cancelled', 'archived'].includes(orderStatus);
                   const archiveLabel = orderStatus === 'archived'
                     ? t('pickup.unarchive', adminLanguage)
                     : t('pickup.archive', adminLanguage);
-                  const confirmation = order?.confirmationEmail || { status: 'not_sent' };
-                  const canResendConfirmation = Boolean(
-                    onResendConfirmationEmail
-                    && order?.customerEmail
-                    && ['paid', 'fulfilled', 'picked_up'].includes(rawOrderStatus)
-                  );
+                  const orderSourceLabel = t(getOrderSourceTranslationKey(order), adminLanguage);
                   return (
-                    <div key={order.id} className="history-row">
+                    <div key={order.id} className="history-row pickup-detail-order-row">
                       <div>
-                        <div className="history-meta">
+                        <div className="history-title">
                           {orderNumberText ? `#${orderNumberText} · ` : ''}
                           {t('pickup.placed', adminLanguage)} {formatDateLong(order.orderDate, adminLanguage)}
-                          {pickup.orders.length > 1 && (
-                            <> · {order.itemSummary || `${order.itemCount} items`}</>
-                          )}
-                          {' '}· {order.paymentSummary}
                         </div>
-                        {shouldShowConfirmationStatus(confirmation?.status) && (
-                          <div className="history-email">
-                            {t('emailStatus.confirmation', adminLanguage)}: {getEmailStatusLabel(confirmation?.status, adminLanguage)}
-                          </div>
-                        )}
-                        {confirmation?.error && (
-                          <div className="history-email-error">{confirmation.error}</div>
-                        )}
+                        <div className="history-meta">
+                          {order.itemSummary || `${order.itemCount} items`}
+                          {' · '}{order.paymentSummary}
+                        </div>
+                        <div className="history-meta">
+                          {t('orderSource.label', adminLanguage)}: {orderSourceLabel}
+                        </div>
                       </div>
                       <div className="history-row-actions">
                         <div className="history-total">{formatCurrency(order.totalAmount)}</div>
                         <div className="history-row-buttons">
-                          <button
-                            type="button"
-                            className="admin-button ghost small"
-                            onClick={() => onResendConfirmationEmail?.(order)}
-                            disabled={!canResendConfirmation}
-                          >
-                            {t('emailStatus.resendConfirmation', adminLanguage)}
-                          </button>
                           <button
                             type="button"
                             className="admin-button ghost small"
@@ -280,39 +312,10 @@ export default function AdminPickupModal({
                     </div>
                   );
                 })}
+              </div>
             </div>
-          </div>
-        )}
-        {recentEmailActivity.length > 0 && (
-          <div className="detail-section">
-            <div className="detail-section-title">{t('emailStatus.recentActivity', adminLanguage)}</div>
-            <div className="detail-history">
-              {recentEmailActivity.map((entry) => {
-                const activityTimestamp = formatDateTime(
-                  entry?.lastEventAt || entry?.createdAt,
-                  adminLanguage
-                );
-                return (
-                  <div key={entry.id} className="history-row">
-                    <div>
-                      <div className="history-title">
-                        {entry.orderNumberText ? `#${entry.orderNumberText} · ` : ''}
-                        {getEmailTypeLabel(entry.emailType, adminLanguage)}
-                      </div>
-                      <div className="history-meta">
-                        {getEmailStatusLabel(entry.sendStatus, adminLanguage)}
-                        {activityTimestamp ? ` · ${activityTimestamp}` : ''}
-                      </div>
-                      {entry.lastError && (
-                        <div className="history-email-error">{entry.lastError}</div>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
   );

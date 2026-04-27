@@ -6,6 +6,7 @@ import {
   getOrderNumberText
 } from '../admin-utils';
 import { t } from '../admin-i18n';
+import { getOrderSourceTranslationKey, getOrderSourceType } from '../admin-order-source';
 
 export default function AdminPickupsPage({
   dataLoading,
@@ -62,6 +63,10 @@ export default function AdminPickupsPage({
     const status = optimisticStatus || normalizeStatus(order.status);
     const pickupSummary = order.itemSummaryShort || order.itemSummary || `${order.itemCount} items`;
     const orderNumberText = getOrderNumberText(order);
+    const sourceType = getOrderSourceType(order);
+    const orderSourceLabel = sourceType === 'unknown'
+      ? ''
+      : t(getOrderSourceTranslationKey(order), adminLanguage);
     return (
       <div key={order.key} className={`pickup-row-shell ${status}`}>
         <div
@@ -83,7 +88,10 @@ export default function AdminPickupsPage({
               </div>
               <div className="pickup-payment">{order.paymentSummary}</div>
             </div>
-            <div className="pickup-summary">{pickupSummary}</div>
+            <div className="pickup-summary">
+              {pickupSummary}
+              {orderSourceLabel ? ` · ${orderSourceLabel}` : ''}
+            </div>
           </div>
         </div>
       </div>

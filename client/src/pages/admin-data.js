@@ -13,6 +13,7 @@ import {
   buildShortSummary,
   normalizeOrderNumber
 } from './admin-utils';
+import { buildOrderSource } from './admin-order-source.js';
 
 const parseCalendarDateKey = (value) => {
   if (typeof value !== 'string') return null;
@@ -156,6 +157,7 @@ const buildOrdersWithDetails = (orders, hens, language = 'en') => {
     const emailHistory = normalizeEmailHistory(order.email_history);
     const confirmationEmail = buildConfirmationEmailSummary(order, emailHistory);
     const emailSuppression = buildEmailSuppression(order);
+    const orderSource = buildOrderSource(order);
     const PAYMENT_METHOD_LABELS = {
       etransfer: 'E-transfer',
       cash: 'Cash',
@@ -204,7 +206,8 @@ const buildOrdersWithDetails = (orders, hens, language = 'en') => {
       itemSummaryShort,
       emailHistory,
       confirmationEmail,
-      emailSuppression
+      emailSuppression,
+      orderSource
     };
   });
 };

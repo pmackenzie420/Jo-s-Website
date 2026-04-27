@@ -10,6 +10,7 @@ import {
   getLocalizedProductName
 } from '../admin-utils';
 import { t, tf } from '../admin-i18n';
+import { getOrderSourceTranslationKey } from '../admin-order-source';
 import {
   getTierPrice,
   getMinOrderQuantity,
@@ -580,6 +581,8 @@ export default function AdminEditOrderModal({
 
   if (!order) return null;
 
+  const orderSourceLabel = t(getOrderSourceTranslationKey(order), adminLanguage);
+
   return (
     <div className="customer-modal-backdrop" role="dialog" aria-modal="true">
       <div className="customer-modal admin-edit-order-modal">
@@ -593,6 +596,9 @@ export default function AdminEditOrderModal({
               </div>
               <div className="detail-meta">
                 {order.itemSummary || `${order.itemCount || 0} items`}
+              </div>
+              <div className="detail-meta">
+                {t('orderSource.label', adminLanguage)}: {orderSourceLabel}
               </div>
             </div>
             <button
