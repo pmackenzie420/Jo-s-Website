@@ -1707,14 +1707,18 @@ body.admin-modal-open .admin-main {
 }
 
 .pickup-detail-pill.due {
-  background: rgba(230, 81, 0, 0.14);
-  color: var(--admin-accent);
+  background: transparent;
+  color: var(--admin-danger);
+  padding: 0;
+  border-radius: 0;
 }
 
 .pickup-detail-pill.paid,
 .pickup-detail-pill.success {
-  background: rgba(46, 125, 50, 0.14);
+  background: transparent;
   color: var(--admin-brand);
+  padding: 0;
+  border-radius: 0;
 }
 
 .pickup-detail-pill.muted {
@@ -1846,6 +1850,35 @@ body.admin-modal-open .admin-main {
 .pickup-detail-contact-subtle {
   font-size: 13px;
   color: var(--admin-muted);
+}
+
+.customer-detail-modal {
+  max-width: 920px;
+}
+
+.customer-detail-orders {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--admin-border);
+}
+
+.customer-detail-order {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px 0;
+  border-bottom: 1px solid var(--admin-border);
+}
+
+.customer-detail-order:last-child {
+  border-bottom: none;
+}
+
+.customer-detail-order-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
 }
 
 .pickup-detail-order-row {
@@ -2127,6 +2160,12 @@ body.admin-modal-open .admin-main {
 
   .pickup-detail-meta-row {
     align-items: flex-start;
+  }
+
+  .customer-detail-order-top {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
   }
 
   .admin-edit-order-actions {
