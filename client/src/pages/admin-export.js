@@ -6,7 +6,8 @@ import {
   formatPhoneDisplay,
   normalizeDate,
   normalizeOrderNumber
-} from './admin-utils';
+} from './admin-utils.js';
+import { resolveInvoiceDisplayDate } from './admin-invoice-utils.js';
 
 const INVOICE_TEMPLATE_SOURCE_FIXED = '/invoicefixedspelling.jpg';
 const INVOICE_TEMPLATE_SOURCE_FIXED_LONG = '/invoicefixedspellingandlongclient.jpg';
@@ -396,7 +397,7 @@ const buildInvoiceClientLines = (order, context, maxWidth, layout) => {
   const name = String(order?.customerName || order?.customer_name || 'Guest').trim();
   const phone = formatPhoneDisplay(String(order?.customerPhone || order?.customer_phone || '').trim());
   const address = String(order?.customerAddress || order?.customer_address || '').trim();
-  const pickupDate = normalizeDate(order?.pickupDate || order?.pickup_date || order?.created_at);
+  const pickupDate = resolveInvoiceDisplayDate(order);
   const pickupLocation = String(order?.pickupLocationLabel || order?.pickupLocation || order?.pickup_location || '')
     .trim();
   const nameMaxWidth = Math.min(maxWidth, Number(layout.clientNameMaxWidth) || maxWidth);
@@ -513,7 +514,7 @@ const renderInvoicePage = ({
   context.textBaseline = 'top';
   context.textAlign = 'left';
 
-  const dateText = normalizeDate(order?.orderDate || order?.created_at || order?.pickupDate || new Date());
+  const dateText = resolveInvoiceDisplayDate(order);
   const darkColor = 'rgb(55, 55, 55)';
   const redColor = 'rgb(220, 25, 35)';
 
