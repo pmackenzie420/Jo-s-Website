@@ -27,6 +27,7 @@ const {
     isLambName
 } = require('../logic/pricing');
 const { createCheckoutSession } = require('../logic/checkout-persistence');
+const { createOrderCustomerRecord } = require('../logic/order-customer-snapshots');
 const {
     LOCATION_DETAILS,
     COMPANY_CONTACT
@@ -495,9 +496,9 @@ const registerAdminRoutes = (app, deps) => {
     const buildAdminOrdersQuery = (limitPlaceholder, offsetPlaceholder) => `
         SELECT
             orders.*,
-            customers.name AS customer_name,
-            customers.phone AS customer_phone,
-            customers.address AS customer_address,
+            COALESCE(NULLIF(TRIM(orders.customer_name), ''), customers.name) AS customer_name,
+            COALESCE(NULLIF(TRIM(orders.customer_phone), ''), customers.phone) AS customer_phone,
+            COALESCE(NULLIF(TRIM(orders.customer_address), ''), customers.address) AS customer_address,
             COALESCE(email_history_data.data, '[]'::jsonb) AS email_history,
             confirmation_email_data.latest_confirmation_email_status,
             confirmation_email_data.latest_confirmation_email_at,
@@ -893,7 +894,7 @@ const registerAdminRoutes = (app, deps) => {
             SELECT
                 orders.customer_email,
                 orders.language,
-                customers.name AS customer_name,
+                COALESCE(NULLIF(TRIM(orders.customer_name), ''), customers.name) AS customer_name,
                 orders.id AS order_id
             FROM orders
             LEFT JOIN customers
@@ -1171,25 +1172,12 @@ const registerAdminRoutes = (app, deps) => {
                 : (amountPaidCents > 0 ? 'paid' : 'pending');
 
             const createdOrder = await runInTransaction(async (client) => {
-                let customerId;
-                const existingCust = await client.query(
-                    'SELECT id FROM customers WHERE phone = $1 FOR UPDATE',
-                    [customerPhone]
-                );
-
-                if (existingCust.rows.length > 0) {
-                    customerId = existingCust.rows[0].id;
-                    await client.query(
-                        'UPDATE customers SET name=$1, email=$2, address=$3 WHERE id=$4',
-                        [customerName, customerEmail || null, customerAddress || null, customerId]
-                    );
-                } else {
-                    const newCust = await client.query(
-                        'INSERT INTO customers (name, phone, email, address) VALUES ($1, $2, $3, $4) RETURNING id',
-                        [customerName, customerPhone, customerEmail || null, customerAddress || null]
-                    );
-                    customerId = newCust.rows[0].id;
-                }
+                const customerId = await createOrderCustomerRecord(client, {
+                    customerName,
+                    customerPhone,
+                    customerEmail,
+                    customerAddress
+                });
 
                 await reserveStockForItems(client, {
                     pickupDateId,
@@ -1206,6 +1194,9 @@ const registerAdminRoutes = (app, deps) => {
                     `INSERT INTO orders (
                         customer_id,
                         customer_email,
+                        customer_name,
+                        customer_phone,
+                        customer_address,
                         total_cents,
                         items,
                         status,
@@ -1217,11 +1208,14 @@ const registerAdminRoutes = (app, deps) => {
                         language,
                         payment_method
                     )
-                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
                     RETURNING id, order_number`,
                     [
                         customerId,
                         customerEmail || null,
+                        customerName,
+                        customerPhone,
+                        customerAddress || null,
                         totalCents,
                         JSON.stringify(orderItemsForStorage),
                         status,
@@ -2153,13 +2147,6 @@ const registerAdminRoutes = (app, deps) => {
                         orderId
                     ]
                 );
-                if (hasCustomerEmailField && existingOrder.customer_id) {
-                    await client.query(
-                        'UPDATE customers SET email = $1 WHERE id = $2',
-                        [customerEmailToStore, existingOrder.customer_id]
-                    );
-                }
-
                 const afterSnapshot = summarizeOrderForAudit({
                     ...existingOrder,
                     total_cents: nextTotalCents,

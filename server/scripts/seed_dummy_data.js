@@ -119,11 +119,39 @@ const ensureSchema = async (client) => {
         CREATE TABLE IF NOT EXISTS customers (
             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
             name TEXT NOT NULL,
-            phone TEXT UNIQUE NOT NULL,
+            phone TEXT NOT NULL,
             email TEXT,
             address TEXT,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         )
+    `);
+    await client.query(`
+        DO $$
+        DECLARE
+            phone_constraint_name TEXT;
+        BEGIN
+            SELECT tc.constraint_name
+            INTO phone_constraint_name
+            FROM information_schema.table_constraints tc
+            INNER JOIN information_schema.key_column_usage kcu
+                ON kcu.constraint_name = tc.constraint_name
+               AND kcu.table_schema = tc.table_schema
+               AND kcu.table_name = tc.table_name
+            WHERE tc.table_schema = current_schema()
+              AND tc.table_name = 'customers'
+              AND tc.constraint_type = 'UNIQUE'
+              AND kcu.column_name = 'phone'
+            ORDER BY tc.constraint_name
+            LIMIT 1;
+
+            IF phone_constraint_name IS NOT NULL THEN
+                EXECUTE format('ALTER TABLE customers DROP CONSTRAINT %I', phone_constraint_name);
+            END IF;
+        END $$;
+    `);
+    await client.query(`
+        CREATE INDEX IF NOT EXISTS customers_phone_idx
+        ON customers (phone)
     `);
 
     await client.query(`

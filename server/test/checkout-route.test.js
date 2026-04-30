@@ -100,9 +100,6 @@ test('checkout route creates reserved order and returns Stripe checkout URL', as
     const withTransaction = async (_pool, work) => {
         const client = {
             async query(sql) {
-                if (sql.includes('SELECT id FROM customers')) {
-                    return { rows: [] };
-                }
                 if (sql.includes('INSERT INTO customers')) {
                     return { rows: [{ id: 'customer-1' }] };
                 }
@@ -251,9 +248,6 @@ test('checkout route rejects full payment when Lohmann qty is above 50', async (
     const withTransaction = async (_pool, work) => {
         const client = {
             async query(sql) {
-                if (sql.includes('SELECT id FROM customers')) {
-                    return { rows: [] };
-                }
                 if (sql.includes('INSERT INTO customers')) {
                     return { rows: [{ id: 'customer-1' }] };
                 }
@@ -417,9 +411,6 @@ test('checkout route accepts deposit for Lohmann qty above 50 with lamb in same 
     const withTransaction = async (_pool, work) => {
         const client = {
             async query(sql) {
-                if (sql.includes('SELECT id FROM customers')) {
-                    return { rows: [] };
-                }
                 if (sql.includes('INSERT INTO customers')) {
                     return { rows: [{ id: 'customer-1' }] };
                 }
@@ -581,9 +572,6 @@ test('checkout route stores lamb-only orders as deposit even when full payment i
     const withTransaction = async (_pool, work) => {
         const client = {
             async query(sql, params) {
-                if (sql.includes('SELECT id FROM customers')) {
-                    return { rows: [] };
-                }
                 if (sql.includes('INSERT INTO customers')) {
                     return { rows: [{ id: 'customer-1' }] };
                 }
@@ -664,7 +652,7 @@ test('checkout route stores lamb-only orders as deposit even when full payment i
 
     assert.equal(res.statusCode, 200);
     assert.equal(stripeCreatePayload?.metadata?.payment_type, 'deposit');
-    const storedItems = JSON.parse(insertedOrderValues?.[3] || '[]');
+    const storedItems = JSON.parse(insertedOrderValues?.[6] || '[]');
     assert.equal(storedItems.length, 1);
     assert.deepEqual(storedItems[0], {
         id: 5,
@@ -673,9 +661,9 @@ test('checkout route stores lamb-only orders as deposit even when full payment i
         unit_cents: 10000,
         line_cents: 10000
     });
-    assert.equal(insertedOrderValues?.[7], 'deposit');
-    assert.equal(insertedOrderValues?.[8], 10000);
-    assert.equal(insertedOrderValues?.[9], 0);
+    assert.equal(insertedOrderValues?.[10], 'deposit');
+    assert.equal(insertedOrderValues?.[11], 10000);
+    assert.equal(insertedOrderValues?.[12], 0);
 });
 
 test('checkout route blocks suppressed customer emails before creating an order', async () => {

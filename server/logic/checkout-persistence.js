@@ -1,5 +1,6 @@
 const { normalizePhoneForStorage } = require('./checkout-validation');
 const { recordOrderEvent } = require('./audit-ops');
+const { createOrderCustomerRecord } = require('./order-customer-snapshots');
 
 const createReservedOrder = async ({
     pool,
@@ -26,25 +27,12 @@ const createReservedOrder = async ({
 }) => {
     const normalizedPhone = normalizePhoneForStorage(customerPhone);
     return withTransaction(pool, async (client) => {
-        let customerId;
-        const existingCust = await client.query(
-            'SELECT id FROM customers WHERE phone = $1 FOR UPDATE',
-            [normalizedPhone]
-        );
-
-        if (existingCust.rows.length > 0) {
-            customerId = existingCust.rows[0].id;
-            await client.query(
-                'UPDATE customers SET name=$1, email=$2, address=$3 WHERE id=$4',
-                [customerName, customerEmail, customerAddress, customerId]
-            );
-        } else {
-            const newCust = await client.query(
-                'INSERT INTO customers (name, phone, email, address) VALUES ($1, $2, $3, $4) RETURNING id',
-                [customerName, normalizedPhone, customerEmail, customerAddress]
-            );
-            customerId = newCust.rows[0].id;
-        }
+        const customerId = await createOrderCustomerRecord(client, {
+            customerName,
+            customerPhone: normalizedPhone,
+            customerEmail,
+            customerAddress
+        });
 
         await reserveStockForItems(client, {
             pickupDateId,
@@ -61,6 +49,9 @@ const createReservedOrder = async ({
             `INSERT INTO orders (
                 customer_id,
                 customer_email,
+                customer_name,
+                customer_phone,
+                customer_address,
                 total_cents,
                 items,
                 status,
@@ -71,11 +62,14 @@ const createReservedOrder = async ({
                 amount_due_cents,
                 language
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
             RETURNING id`,
             [
                 customerId,
                 customerEmail,
+                customerName,
+                normalizedPhone,
+                customerAddress,
                 totalCents,
                 JSON.stringify(orderItemsForStorage || []),
                 RESERVED_ORDER_STATUS,

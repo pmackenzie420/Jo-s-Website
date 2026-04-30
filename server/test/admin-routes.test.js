@@ -666,10 +666,6 @@ test('admin create paid manual order sends confirmation email', async () => {
                     rows: [{ hen_id: 1, stock: 10 }]
                 };
             }
-            if (normalizedSql.includes('SELECT id FROM customers WHERE phone = $1 FOR UPDATE')) {
-                assert.deepEqual(params, ['5145551234']);
-                return { rows: [] };
-            }
             if (normalizedSql.includes('INSERT INTO customers (name, phone, email, address)')) {
                 assert.deepEqual(params, ['Alice', '5145551234', 'alice@example.com', '123 Farm Road']);
                 return { rows: [{ id: 'customer-1' }] };
@@ -688,11 +684,14 @@ test('admin create paid manual order sends confirmation email', async () => {
             ) {
                 assert.equal(params[0], 'customer-1');
                 assert.equal(params[1], 'alice@example.com');
-                assert.equal(params[4], 'paid');
-                assert.equal(params[5], '2026-06-01');
-                assert.equal(params[6], 'hemmingford');
-                assert.equal(params[10], 'en');
-                assert.equal(params[11], 'etransfer');
+                assert.equal(params[2], 'Alice');
+                assert.equal(params[3], '5145551234');
+                assert.equal(params[4], '123 Farm Road');
+                assert.equal(params[7], 'paid');
+                assert.equal(params[8], '2026-06-01');
+                assert.equal(params[9], 'hemmingford');
+                assert.equal(params[13], 'en');
+                assert.equal(params[14], 'etransfer');
                 return { rows: [{ id: 'order-paid-1', order_number: 1001 }] };
             }
             throw new Error(`Unexpected SQL: ${normalizedSql}`);
@@ -772,10 +771,6 @@ test('admin create pending manual order does not send confirmation email', async
                     rows: [{ hen_id: 1, stock: 10 }]
                 };
             }
-            if (normalizedSql.includes('SELECT id FROM customers WHERE phone = $1 FOR UPDATE')) {
-                assert.deepEqual(params, ['5145551234']);
-                return { rows: [] };
-            }
             if (normalizedSql.includes('INSERT INTO customers (name, phone, email, address)')) {
                 assert.deepEqual(params, ['Alice', '5145551234', 'alice@example.com', '123 Farm Road']);
                 return { rows: [{ id: 'customer-1' }] };
@@ -794,11 +789,14 @@ test('admin create pending manual order does not send confirmation email', async
             ) {
                 assert.equal(params[0], 'customer-1');
                 assert.equal(params[1], 'alice@example.com');
-                assert.equal(params[4], 'pending');
-                assert.equal(params[7], 'deposit');
-                assert.equal(params[8], 0);
-                assert.equal(params[10], 'en');
-                assert.equal(params[11], 'etransfer');
+                assert.equal(params[2], 'Alice');
+                assert.equal(params[3], '5145551234');
+                assert.equal(params[4], '123 Farm Road');
+                assert.equal(params[7], 'pending');
+                assert.equal(params[10], 'deposit');
+                assert.equal(params[11], 0);
+                assert.equal(params[13], 'en');
+                assert.equal(params[14], 'etransfer');
                 return { rows: [{ id: 'order-pending-1', order_number: 1002 }] };
             }
             throw new Error(`Unexpected SQL: ${normalizedSql}`);
@@ -902,11 +900,6 @@ test('admin order update changes pickup date/amount and allows paid/email update
                 ordersUpdatedParams = params;
                 return { rowCount: 1, rows: [] };
             }
-            if (normalizedSql.includes('UPDATE customers SET email = $1 WHERE id = $2')) {
-                customerUpdatedParams = params;
-                return { rowCount: 1, rows: [] };
-            }
-
             throw new Error(`Unexpected SQL: ${normalizedSql}`);
         }
     };
@@ -967,7 +960,7 @@ test('admin order update changes pickup date/amount and allows paid/email update
         'new@example.com',
         'order-1'
     ]);
-    assert.deepEqual(customerUpdatedParams, ['new@example.com', 'customer-1']);
+    assert.equal(customerUpdatedParams, null);
     assert.deepEqual(confirmationCalls, ['order-1']);
 });
 

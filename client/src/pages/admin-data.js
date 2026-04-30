@@ -31,6 +31,34 @@ const normalizeTimestamp = (value) => {
   return text || '';
 };
 
+const normalizeCustomerKeyPart = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/\s+/g, ' ');
+
+const buildCustomerGroupingKey = (order) => {
+  const phone = normalizePhoneKey(order?.customerPhone || order?.customer_phone || '');
+  const email = String(order?.customerEmail || order?.customer_email || '').trim().toLowerCase();
+  const name = normalizeCustomerKeyPart(order?.customerName || order?.customer_name || '');
+
+  if (phone && name) {
+    return `phone-name:${phone}::${name}`;
+  }
+  if (email && name) {
+    return `email-name:${email}::${name}`;
+  }
+  if (phone && email) {
+    return `phone-email:${phone}::${email}`;
+  }
+  if (email) {
+    return `email:${email}`;
+  }
+  if (phone) {
+    return `phone:${phone}`;
+  }
+  return String(order?.id || '');
+};
+
 const normalizeEmailHistory = (value) => (
   Array.isArray(value)
     ? value.reduce((acc, entry) => {
@@ -249,7 +277,7 @@ const buildGroupedPickups = (ordersWithDetails, language = 'en') => {
         );
         const customerMap = new Map();
         sortedOrders.forEach((order) => {
-          const customerKey = normalizePhoneKey(order.customerPhone) || order.id;
+          const customerKey = buildCustomerGroupingKey(order);
           if (!customerMap.has(customerKey)) {
             customerMap.set(customerKey, {
               key: `${buildPickupKey(date, location)}::${customerKey}`,
@@ -348,7 +376,7 @@ const buildGroupedPickups = (ordersWithDetails, language = 'en') => {
 const buildCustomers = (ordersWithDetails) => {
   const customerMap = new Map();
   ordersWithDetails.forEach((order) => {
-    const key = normalizePhoneKey(order.customerPhone) || order.id;
+    const key = buildCustomerGroupingKey(order);
     const sortDate = order.pickupDate || order.orderDate;
     if (!customerMap.has(key)) {
       customerMap.set(key, {

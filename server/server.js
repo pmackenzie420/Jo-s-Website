@@ -58,6 +58,9 @@ const {
     recordInventoryEvents
 } = require('./logic/audit-ops');
 const {
+    ensureOrderCustomerSnapshotsSchema
+} = require('./logic/order-customer-snapshots');
+const {
     createRateLimiter,
     signAdminSession,
     signMainSession,
@@ -491,6 +494,14 @@ app.use((err, req, res, next) => {
 });
 
 const startServer = async () => {
+    try {
+        await ensureOrderCustomerSnapshotsSchema(pool);
+    } catch (err) {
+        logError('Failed to ensure order customer snapshot schema', err);
+        process.exitCode = 1;
+        return;
+    }
+
     try {
         await ensureAuditOpsSchema(pool);
     } catch (err) {

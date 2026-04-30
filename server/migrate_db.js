@@ -25,13 +25,42 @@ async function migrate() {
             CREATE TABLE IF NOT EXISTS customers (
                 id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 name TEXT NOT NULL,
-                phone TEXT UNIQUE NOT NULL,
+                phone TEXT NOT NULL,
                 email TEXT,
                 address TEXT,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         `);
         console.log("Created table: customers");
+
+        await pool.query(`
+            DO $$
+            DECLARE
+                phone_constraint_name TEXT;
+            BEGIN
+                SELECT tc.constraint_name
+                INTO phone_constraint_name
+                FROM information_schema.table_constraints tc
+                INNER JOIN information_schema.key_column_usage kcu
+                    ON kcu.constraint_name = tc.constraint_name
+                   AND kcu.table_schema = tc.table_schema
+                   AND kcu.table_name = tc.table_name
+                WHERE tc.table_schema = current_schema()
+                  AND tc.table_name = 'customers'
+                  AND tc.constraint_type = 'UNIQUE'
+                  AND kcu.column_name = 'phone'
+                ORDER BY tc.constraint_name
+                LIMIT 1;
+
+                IF phone_constraint_name IS NOT NULL THEN
+                    EXECUTE format('ALTER TABLE customers DROP CONSTRAINT %I', phone_constraint_name);
+                END IF;
+            END $$;
+        `);
+        await pool.query(`
+            CREATE INDEX IF NOT EXISTS customers_phone_idx
+            ON customers (phone)
+        `);
 
         // 2. Clear existing orders (Optional but safer for dev to avoid constraint issues, 
         //    or use ALTER with NULLABLE columns. We'll use NULLABLE for safety)
@@ -43,6 +72,21 @@ async function migrate() {
             BEGIN 
                 IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='customer_id') THEN
                     ALTER TABLE orders ADD COLUMN customer_id UUID REFERENCES customers(id);
+                END IF;
+            END $$;
+        `);
+
+        await pool.query(`
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='customer_name') THEN
+                    ALTER TABLE orders ADD COLUMN customer_name TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='customer_phone') THEN
+                    ALTER TABLE orders ADD COLUMN customer_phone TEXT;
+                END IF;
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='orders' AND column_name='customer_address') THEN
+                    ALTER TABLE orders ADD COLUMN customer_address TEXT;
                 END IF;
             END $$;
         `);
@@ -269,6 +313,42 @@ async function migrate() {
                     ALTER TABLE orders ALTER COLUMN customer_email DROP NOT NULL;
                 END IF;
             END $$;
+        `);
+
+        await pool.query(`
+            WITH safe_customer_ids AS (
+                SELECT orders.customer_id
+                FROM orders
+                WHERE orders.customer_id IS NOT NULL
+                GROUP BY orders.customer_id
+                HAVING COUNT(
+                    DISTINCT COALESCE(LOWER(NULLIF(BTRIM(orders.customer_email), '')), '<blank>')
+                ) <= 1
+            )
+            UPDATE orders
+            SET
+                customer_name = CASE
+                    WHEN orders.customer_name IS NULL OR BTRIM(orders.customer_name) = ''
+                        THEN customers.name
+                    ELSE orders.customer_name
+                END,
+                customer_phone = CASE
+                    WHEN orders.customer_phone IS NULL OR BTRIM(orders.customer_phone) = ''
+                        THEN customers.phone
+                    ELSE orders.customer_phone
+                END,
+                customer_address = CASE
+                    WHEN orders.customer_address IS NULL OR BTRIM(orders.customer_address) = ''
+                        THEN customers.address
+                    ELSE orders.customer_address
+                END,
+                payment_type = COALESCE(orders.payment_type, 'full'),
+                amount_paid_cents = COALESCE(orders.amount_paid_cents, orders.total_cents),
+                amount_due_cents = COALESCE(orders.amount_due_cents, 0),
+                language = COALESCE(orders.language, 'en')
+            FROM customers
+            WHERE orders.customer_id = customers.id
+              AND orders.customer_id IN (SELECT customer_id FROM safe_customer_ids)
         `);
 
         await pool.query(`

@@ -81,9 +81,9 @@ const getOrderSummary = async (orderId) => {
     const orderResult = await pool.query(
         `SELECT 
             orders.*,
-            customers.name as customer_name,
-            customers.phone as customer_phone,
-            customers.address as customer_address
+            COALESCE(NULLIF(TRIM(orders.customer_name), ''), customers.name) as customer_name,
+            COALESCE(NULLIF(TRIM(orders.customer_phone), ''), customers.phone) as customer_phone,
+            COALESCE(NULLIF(TRIM(orders.customer_address), ''), customers.address) as customer_address
          FROM orders
          LEFT JOIN customers ON orders.customer_id = customers.id
          WHERE orders.id = $1`,
