@@ -59,6 +59,10 @@ const RESEND_MAX_SEND_ATTEMPTS = (() => {
     const parsed = Number.parseInt(process.env.RESEND_MAX_SEND_ATTEMPTS, 10);
     return Number.isFinite(parsed) && parsed > 0 ? parsed : 4;
 })();
+const RESEND_REQUEST_TIMEOUT_MS = (() => {
+    const parsed = Number.parseInt(process.env.RESEND_REQUEST_TIMEOUT_MS, 10);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : 15000;
+})();
 
 let resendSendQueue = Promise.resolve();
 let lastResendRequestStartedAt = 0;
@@ -108,6 +112,27 @@ const parseRetryDelayMs = (response) => {
     }
 
     return RESEND_MIN_REQUEST_INTERVAL_MS;
+};
+
+const fetchWithTimeout = async (url, options, timeoutMs) => {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeout = controller
+        ? setTimeout(() => controller.abort(), timeoutMs)
+        : null;
+
+    try {
+        return await fetch(url, {
+            ...options,
+            ...(controller ? { signal: controller.signal } : {})
+        });
+    } catch (err) {
+        if (err?.name === 'AbortError') {
+            throw new Error(`Resend request timed out after ${timeoutMs}ms.`);
+        }
+        throw err;
+    } finally {
+        if (timeout) clearTimeout(timeout);
+    }
 };
 
 const getPublicOrderReference = (order) => {
@@ -361,6 +386,9 @@ const normalizeResendTags = (tags) => {
 };
 
 const sendEmailMessage = async ({ to, subject, text, html, attachments, csv, filename, replyTo, from, headers, tags, idempotencyKey }) => {
+    if (!RESEND_API_KEY) {
+        throw new Error('Email provider API key is not configured.');
+    }
     const formattedSender = formatSender(from || EMAIL_FROM);
     if (!formattedSender) {
         throw new Error('Email sender address is not configured.');
@@ -410,11 +438,26 @@ const sendEmailMessage = async ({ to, subject, text, html, attachments, csv, fil
     const response = await runInResendQueue(async () => {
         for (let attempt = 1; attempt <= RESEND_MAX_SEND_ATTEMPTS; attempt += 1) {
             await waitForResendRateLimitWindow();
-            const attemptResponse = await fetch('https://api.resend.com/emails', {
-                method: 'POST',
-                headers: requestHeaders,
-                body: JSON.stringify(payload)
-            });
+            let attemptResponse;
+            try {
+                attemptResponse = await fetchWithTimeout('https://api.resend.com/emails', {
+                    method: 'POST',
+                    headers: requestHeaders,
+                    body: JSON.stringify(payload)
+                }, RESEND_REQUEST_TIMEOUT_MS);
+            } catch (err) {
+                if (attempt >= RESEND_MAX_SEND_ATTEMPTS) {
+                    throw err;
+                }
+                logWarn('Resend email send request failed; retrying', {
+                    email: String(to?.email || '').trim().toLowerCase() || 'invalid-email',
+                    attempt,
+                    reason: String(err?.message || err || 'Unknown send failure.').slice(0, 300),
+                    retryDelayMs: RESEND_MIN_REQUEST_INTERVAL_MS
+                });
+                await delay(RESEND_MIN_REQUEST_INTERVAL_MS);
+                continue;
+            }
 
             if (attemptResponse.status !== 429 || attempt >= RESEND_MAX_SEND_ATTEMPTS) {
                 return attemptResponse;

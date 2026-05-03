@@ -95,6 +95,7 @@ const { registerWebhookRoutes } = require('./routes/webhook');
 const app = express();
 const port = process.env.PORT || 3000;
 const isProduction = process.env.NODE_ENV === 'production';
+const JSON_BODY_LIMIT = process.env.JSON_BODY_LIMIT || '2mb';
 const parsePositiveInteger = (value, fallback) => {
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -357,7 +358,7 @@ registerWebhookRoutes(app, {
     })
 });
 
-app.use(express.json());
+app.use(express.json({ limit: JSON_BODY_LIMIT }));
 app.get('/', (req, res) => res.send('Hen Store API Running 🐔'));
 
 const { handlePickupStockRequest } = registerCatalogRoutes(app, {

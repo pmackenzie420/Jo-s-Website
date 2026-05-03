@@ -64,6 +64,11 @@ const parsePositiveInt = (value, fallback) => {
     return Math.floor(parsed);
 };
 
+const ADMIN_EMAIL_PREVIEW_CONCURRENCY = Math.min(
+    parsePositiveInt(process.env.ADMIN_EMAIL_PREVIEW_CONCURRENCY, 8),
+    25
+);
+
 const parseNonNegativeInt = (value, fallback) => {
     const parsed = Number(value);
     if (!Number.isFinite(parsed)) return fallback;
@@ -248,6 +253,21 @@ const DATE_CHANGE_EMAIL_HEADERS = {
     Precedence: 'bulk'
 };
 const normalizeEmailText = (value) => String(value || '').replace(/\r\n/g, '\n').trim();
+const UNRESOLVED_REMINDER_PLACEHOLDER_PATTERN = /\{time\}/i;
+const UNRESOLVED_REMINDER_PLACEHOLDER_ERROR = 'Reminder message still contains {time}. Replace the pickup times before sending.';
+
+const hasUnresolvedReminderPlaceholder = (message) => (
+    String(message?.emailType || '').trim().toLowerCase() === EMAIL_TYPES.PICKUP_REMINDER
+    && (
+        UNRESOLVED_REMINDER_PLACEHOLDER_PATTERN.test(String(message?.subject || ''))
+        || UNRESOLVED_REMINDER_PLACEHOLDER_PATTERN.test(String(message?.text || ''))
+        || UNRESOLVED_REMINDER_PLACEHOLDER_PATTERN.test(String(message?.html || ''))
+    )
+);
+
+const hasAnyUnresolvedReminderPlaceholder = (messages) => (
+    (Array.isArray(messages) ? messages : []).some(hasUnresolvedReminderPlaceholder)
+);
 
 const buildPlainTextEmailHtml = ({ text }) => {
     const normalized = normalizeEmailText(text);
@@ -649,8 +669,8 @@ const registerAdminRoutes = (app, deps) => {
             filename: sanitizeText(item?.filename, 120)
         }));
     };
-    const previewAdminSendMessages = async (messagesToPreview) => {
-        const recipients = [];
+    const previewAdminSendMessages = async (messagesToPreview, context = {}) => {
+        const recipients = Array(messagesToPreview.length);
         const seenEmails = new Set();
         const counts = {
             ready: 0,
@@ -660,37 +680,56 @@ const registerAdminRoutes = (app, deps) => {
             duplicate: 0
         };
 
-        for (const item of messagesToPreview) {
+        await sendWithConcurrency(messagesToPreview, ADMIN_EMAIL_PREVIEW_CONCURRENCY, async (item, index) => {
             const normalizedEmail = sanitizeText(item?.to?.email, 320).toLowerCase();
             if (normalizedEmail && seenEmails.has(normalizedEmail)) {
-                recipients.push({
+                recipients[index] = {
                     email: normalizedEmail,
                     name: sanitizeText(item?.to?.name, 120) || undefined,
                     status: 'duplicate',
                     reason: 'Duplicate recipient in this batch.'
-                });
-                counts.duplicate += 1;
-                continue;
+                };
+                return;
             }
             if (normalizedEmail) {
                 seenEmails.add(normalizedEmail);
             }
 
-            const preview = await previewEmailMessage({
-                pool,
-                verifyEmail,
-                message: item
-            });
-            recipients.push(preview);
+            try {
+                recipients[index] = await previewEmailMessage({
+                    pool,
+                    verifyEmail,
+                    message: item
+                });
+            } catch (err) {
+                const reason = normalizeEmailFailureReason(
+                    err?.message,
+                    'Could not verify this recipient right now. You can still send.'
+                );
+                logWarn('Admin email preview recipient verification failed', {
+                    email: normalizedEmail || 'invalid-email',
+                    requestId: context.requestId || null,
+                    reason
+                });
+                recipients[index] = {
+                    email: normalizedEmail || 'invalid-email',
+                    name: sanitizeText(item?.to?.name, 120) || undefined,
+                    status: 'warning',
+                    reason
+                };
+            }
+        });
+
+        for (const preview of recipients.filter(Boolean)) {
             if (Object.prototype.hasOwnProperty.call(counts, preview.status)) {
                 counts[preview.status] += 1;
             }
         }
 
         return {
-            total: recipients.length,
+            total: recipients.filter(Boolean).length,
             counts,
-            recipients
+            recipients: recipients.filter(Boolean)
         };
     };
 
@@ -3218,7 +3257,12 @@ const registerAdminRoutes = (app, deps) => {
             if (previewMessages.length > 500) {
                 return res.status(400).json({ error: 'Too many email recipients in one request.' });
             }
-            const preview = await previewAdminSendMessages(previewMessages);
+            if (hasAnyUnresolvedReminderPlaceholder(previewMessages)) {
+                return res.status(400).json({ error: UNRESOLVED_REMINDER_PLACEHOLDER_ERROR });
+            }
+            const preview = await previewAdminSendMessages(previewMessages, {
+                requestId: req.requestId || null
+            });
             return res.json({
                 success: true,
                 total: preview.total,
@@ -3244,6 +3288,9 @@ const registerAdminRoutes = (app, deps) => {
         }
         if (sendMessages.length > 500) {
             return res.status(400).json({ error: 'Too many email recipients in one request.' });
+        }
+        if (hasAnyUnresolvedReminderPlaceholder(sendMessages)) {
+            return res.status(400).json({ error: UNRESOLVED_REMINDER_PLACEHOLDER_ERROR });
         }
 
         try {

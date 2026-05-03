@@ -1,11 +1,22 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 
-const loadEmailModule = () => {
-    process.env.EMAIL_FROM = 'orders@lesfermessoulard.farm';
-    process.env.RESEND_API_KEY = 're_test_key';
-    process.env.RESEND_RATE_LIMIT_PER_SECOND = '1000';
-    process.env.RESEND_MAX_SEND_ATTEMPTS = '4';
+const loadEmailModule = ({
+    emailFrom = 'orders@lesfermessoulard.farm',
+    resendApiKey = 're_test_key',
+    rateLimitPerSecond = '1000',
+    maxSendAttempts = '4',
+    requestTimeoutMs = '15000'
+} = {}) => {
+    process.env.EMAIL_FROM = emailFrom;
+    if (resendApiKey === null) {
+        delete process.env.RESEND_API_KEY;
+    } else {
+        process.env.RESEND_API_KEY = resendApiKey;
+    }
+    process.env.RESEND_RATE_LIMIT_PER_SECOND = rateLimitPerSecond;
+    process.env.RESEND_MAX_SEND_ATTEMPTS = maxSendAttempts;
+    process.env.RESEND_REQUEST_TIMEOUT_MS = requestTimeoutMs;
 
     const modulePath = require.resolve('../logic/email');
     delete require.cache[modulePath];
@@ -82,6 +93,59 @@ test('sendEmailMessage retries resend 429 responses and succeeds', async () => {
         assert.equal(fetchCalls.length, 2);
         assert.equal(fetchCalls[0]?.headers?.['Idempotency-Key'], 'email-1');
         assert.equal(fetchCalls[1]?.headers?.['Idempotency-Key'], 'email-1');
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+test('sendEmailMessage fails before provider call when Resend key is missing', async () => {
+    const { sendEmailMessage } = loadEmailModule({ resendApiKey: null });
+    const originalFetch = global.fetch;
+    let fetchCalled = false;
+    global.fetch = async () => {
+        fetchCalled = true;
+        return createJsonResponse();
+    };
+
+    try {
+        await assert.rejects(
+            () => sendEmailMessage({
+                to: { email: 'customer@example.com' },
+                subject: 'Pickup reminder',
+                text: 'Reminder'
+            }),
+            /Email provider API key is not configured/
+        );
+        assert.equal(fetchCalled, false);
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+test('sendEmailMessage times out stalled Resend requests', async () => {
+    const { sendEmailMessage } = loadEmailModule({
+        maxSendAttempts: '1',
+        requestTimeoutMs: '1'
+    });
+    const originalFetch = global.fetch;
+
+    global.fetch = (_url, options = {}) => new Promise((_resolve, reject) => {
+        options.signal?.addEventListener('abort', () => {
+            const error = new Error('aborted');
+            error.name = 'AbortError';
+            reject(error);
+        });
+    });
+
+    try {
+        await assert.rejects(
+            () => sendEmailMessage({
+                to: { email: 'customer@example.com' },
+                subject: 'Pickup reminder',
+                text: 'Reminder'
+            }),
+            /Resend request timed out/
+        );
     } finally {
         global.fetch = originalFetch;
     }

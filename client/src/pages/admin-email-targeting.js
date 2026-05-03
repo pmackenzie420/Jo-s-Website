@@ -34,8 +34,8 @@ const pickRecipientLanguage = (customer) => {
 
 const trimTargetToken = (value) => String(value || '')
   .trim()
-  .replace(/^[<>()\[\]{}"'`]+/, '')
-  .replace(/[<>()\[\]{}"'`,.;:]+$/, '')
+  .replace(/^[<>()\]{}"'`[]+/, '')
+  .replace(/[<>()\]{}"'`,.;:[]+$/, '')
   .trim();
 
 const looksLikeLooseOrderId = (value) => {

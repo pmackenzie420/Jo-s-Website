@@ -1539,6 +1539,44 @@ test('admin email route builds branded html for plain-text reminder messages', a
     assert.match(String(sentMessages[0]?.html || ''), /This is a reminder for your pickup\.<br>Thank you\./);
 });
 
+test('admin email route rejects pickup reminders with unresolved time placeholders', async () => {
+    const pool = {
+        async query(sql) {
+            throw new Error(`Unexpected SQL: ${normalizeSql(sql)}`);
+        }
+    };
+
+    let sendAttempted = false;
+    const handlers = registerRoutesForTest(pool, {
+        sendTrackedEmailMessage: async () => {
+            sendAttempted = true;
+            return { success: true, email: 'customer@example.com', status: 'sent' };
+        }
+    });
+    const handler = handlers['POST /api/admin/email'];
+    assert.ok(handler);
+
+    const req = {
+        body: {
+            messages: [
+                {
+                    to: { email: 'customer@example.com', name: 'Customer Name' },
+                    subject: 'Pickup reminder',
+                    text: 'Reminder from {time} to {time}.',
+                    emailType: 'pickup_reminder'
+                }
+            ]
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 400);
+    assert.match(res.body?.error, /Replace the pickup times/);
+    assert.equal(sendAttempted, false);
+});
+
 test('admin email route reports invalid, blocked, and provider-rejected recipients', async () => {
     const pool = {
         async query(sql) {
@@ -1684,6 +1722,55 @@ test('admin email preview summarizes warnings, blocks, suppressions, and duplica
         suppressed: 1,
         duplicate: 1
     });
+});
+
+test('admin email preview keeps working when one recipient verification throws', async () => {
+    const pool = {
+        async query(sql) {
+            throw new Error(`Unexpected SQL: ${normalizeSql(sql)}`);
+        }
+    };
+
+    const handlers = registerRoutesForTest(pool, {
+        previewTrackedEmailMessage: async ({ message }) => {
+            const email = String(message?.to?.email || '').trim().toLowerCase();
+            if (email === 'slow-api@example.com') {
+                throw new Error('Verification provider timed out.');
+            }
+            return {
+                email,
+                status: 'ready'
+            };
+        }
+    });
+    const handler = handlers['POST /api/admin/email/preview'];
+    assert.ok(handler);
+
+    const req = {
+        requestId: 'req-preview-timeout',
+        body: {
+            messages: [
+                { to: { email: 'ready@example.com' }, subject: 'Test', text: 'Hello' },
+                { to: { email: 'slow-api@example.com' }, subject: 'Test', text: 'Hello' }
+            ]
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.success, true);
+    assert.deepEqual(res.body?.counts, {
+        ready: 1,
+        warning: 1,
+        blocked: 0,
+        suppressed: 0,
+        duplicate: 0
+    });
+    const warning = res.body?.recipients?.find((recipient) => recipient.email === 'slow-api@example.com');
+    assert.equal(warning?.status, 'warning');
+    assert.match(warning?.reason, /Verification provider timed out/);
 });
 
 test('admin resend confirmation route forces tracked resend', async () => {

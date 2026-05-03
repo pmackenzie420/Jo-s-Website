@@ -10,6 +10,7 @@
     "audit:emails": "node scripts/email_audit.js",
     "db:ensure-indexes": "node scripts/ensure_order_indexes.js",
     "db:seed-dummy": "node scripts/seed_dummy_data.js",
+    "db:readonly": "node scripts/readonly_query.js",
     "check:db": "node scripts/check_db.js",
     "check:data": "node scripts/check_data.js",
     "auth:hash": "node scripts/hash_password.js"

@@ -406,6 +406,26 @@ const sendTrackedEmailMessage = async ({
         pickup_date: pickupDate,
         pickup_location: pickupLocation || null
     });
+    const markUnexpectedFailure = async (reason, eventType = 'email.failed') => {
+        const failureAt = nowIso();
+        await updateEmailMessage(pool, initialRecord.id, {
+            send_status: 'failed',
+            verification_status: 'error',
+            last_error: truncate(reason, 500) || 'Email send failed before provider delivery.',
+            failed_at: failureAt,
+            last_event_type: eventType,
+            last_event_at: failureAt
+        });
+        return {
+            success: false,
+            emailMessageId: initialRecord.id,
+            email: normalizedEmail || 'invalid-email',
+            name: toName || undefined,
+            status: 'failed',
+            reason: truncate(reason, 500) || 'Email send failed before provider delivery.',
+            verificationStatus: 'error'
+        };
+    };
     const initialRecord = await createEmailMessage(pool, {
         emailType,
         normalizedEmail: normalizedEmail || 'invalid-email',
@@ -427,7 +447,14 @@ const sendTrackedEmailMessage = async ({
         lastEventType: 'pending',
         lastEventAt: nowIso()
     });
-    await attachEmailMessageOrders(pool, initialRecord?.id, orderIds);
+    try {
+        await attachEmailMessageOrders(pool, initialRecord?.id, orderIds);
+    } catch (err) {
+        return markUnexpectedFailure(
+            err?.message || 'Failed to link email message to order records.',
+            'email.tracking_failed'
+        );
+    }
 
     if (!normalizedEmail || !isValidEmail(normalizedEmail)) {
         await updateEmailMessage(pool, initialRecord.id, {
@@ -467,12 +494,22 @@ const sendTrackedEmailMessage = async ({
         };
     }
 
-    const assessment = await verifyManagedEmailAddress({
-        pool,
-        email: normalizedEmail,
-        language: message?.language || 'en',
-        verifyEmail
-    });
+    let assessment;
+    try {
+        assessment = await verifyManagedEmailAddress({
+            pool,
+            email: normalizedEmail,
+            language: message?.language || 'en',
+            verifyEmail
+        });
+    } catch (err) {
+        return markUnexpectedFailure(
+            err?.message
+                ? `Email verification failed before sending: ${err.message}`
+                : 'Email verification failed before sending.',
+            'email.verification_failed'
+        );
+    }
 
     if (assessment.shouldBlock) {
         const blockedStatus = assessment.status === 'suppressed' ? 'suppressed' : 'blocked';

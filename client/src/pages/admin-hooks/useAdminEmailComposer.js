@@ -5,6 +5,8 @@ import {
 } from '../admin-api';
 
 const EMAIL_LAST_REPORT_STORAGE_KEY = 'admin_email_last_report_v1';
+const UNRESOLVED_REMINDER_PLACEHOLDER_PATTERN = /\{time\}/i;
+const UNRESOLVED_REMINDER_PLACEHOLDER_ERROR = 'Replace {time} with the pickup times before sending.';
 
 const parseLocalDate = (value) => {
   if (!value) return null;
@@ -70,6 +72,23 @@ const normalizeEmailResults = (recipients) => (
       return acc;
     }, [])
     : []
+);
+
+const getRequestErrorMessage = (error, fallback) => (
+  String(
+    error?.response?.data?.error
+    || error?.response?.data?.message
+    || ''
+  ).trim() || fallback
+);
+
+const hasUnresolvedReminderPlaceholder = (message) => (
+  String(message?.emailType || '').trim().toLowerCase() === 'pickup_reminder'
+  && (
+    UNRESOLVED_REMINDER_PLACEHOLDER_PATTERN.test(String(message?.subject || ''))
+    || UNRESOLVED_REMINDER_PLACEHOLDER_PATTERN.test(String(message?.text || ''))
+    || UNRESOLVED_REMINDER_PLACEHOLDER_PATTERN.test(String(message?.html || ''))
+  )
 );
 
 const normalizeCounts = (value, keys) => (
@@ -203,6 +222,10 @@ export default function useAdminEmailComposer(showToast) {
         groupDate,
         locationLabel
       });
+      if (messages.some(hasUnresolvedReminderPlaceholder)) {
+        showToast({ type: 'error', text: UNRESOLVED_REMINDER_PLACEHOLDER_ERROR });
+        return null;
+      }
 
       setEmailPreviewLoading(groupKey);
       try {
@@ -220,8 +243,8 @@ export default function useAdminEmailComposer(showToast) {
           recipients: previewRecipients
         });
         return data;
-      } catch {
-        showToast({ type: 'error', text: 'Failed to check recipients.' });
+      } catch (error) {
+        showToast({ type: 'error', text: getRequestErrorMessage(error, 'Failed to check recipients.') });
         return null;
       } finally {
         setEmailPreviewLoading(null);
@@ -245,6 +268,10 @@ export default function useAdminEmailComposer(showToast) {
         groupDate,
         locationLabel
       });
+      if (messages.some(hasUnresolvedReminderPlaceholder)) {
+        showToast({ type: 'error', text: UNRESOLVED_REMINDER_PLACEHOLDER_ERROR });
+        return null;
+      }
 
       setEmailSending(groupKey);
       try {
@@ -279,8 +306,8 @@ export default function useAdminEmailComposer(showToast) {
           showToast({ type: 'success', text: summary });
         }
         return data;
-      } catch {
-        showToast({ type: 'error', text: 'Failed to send group email.' });
+      } catch (error) {
+        showToast({ type: 'error', text: getRequestErrorMessage(error, 'Failed to send group email.') });
         return null;
       } finally {
         setEmailSending(null);

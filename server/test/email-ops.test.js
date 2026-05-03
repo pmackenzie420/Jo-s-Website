@@ -74,6 +74,64 @@ test('sendTrackedEmailMessage serializes jsonb update fields on successful send'
     assert.equal(insertQuery.params.includes('req-email-1'), true);
 });
 
+test('sendTrackedEmailMessage marks tracking row failed when verification throws', async () => {
+    const queries = [];
+    let sendAttempted = false;
+    const pool = {
+        async query(sql, params = []) {
+            const normalizedSql = normalizeSql(sql);
+            queries.push({ sql: normalizedSql, params });
+
+            if (normalizedSql.includes('INSERT INTO email_messages')) {
+                return { rows: [{ id: 'email-message-verify-failed' }] };
+            }
+            if (normalizedSql.includes('INSERT INTO email_message_orders')) {
+                return { rows: [] };
+            }
+            if (normalizedSql.includes('FROM email_suppressions')) {
+                return { rows: [] };
+            }
+            if (normalizedSql.startsWith('UPDATE email_messages SET')) {
+                return { rows: [{ id: 'email-message-verify-failed' }] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const result = await sendTrackedEmailMessage({
+        pool,
+        verifyEmail: async () => {
+            throw new Error('Verifier unavailable.');
+        },
+        sendEmailMessage: async () => {
+            sendAttempted = true;
+            return { id: 'provider-email-should-not-send' };
+        },
+        message: {
+            to: {
+                email: 'customer@example.com',
+                name: 'Customer'
+            },
+            subject: 'Pickup reminder',
+            text: 'Reminder',
+            emailType: 'pickup_reminder',
+            orderIds: ['order-1']
+        }
+    });
+
+    assert.equal(result.success, false);
+    assert.equal(result.status, 'failed');
+    assert.equal(result.verificationStatus, 'error');
+    assert.match(result.reason, /Email verification failed before sending/);
+    assert.equal(sendAttempted, false);
+
+    const updateQuery = queries.find(({ sql }) => sql.startsWith('UPDATE email_messages SET'));
+    assert.ok(updateQuery);
+    assert.equal(updateQuery.params.includes('failed'), true);
+    assert.equal(updateQuery.params.includes('error'), true);
+    assert.equal(updateQuery.params.includes('email.verification_failed'), true);
+});
+
 test('listEmailActivity marks old pending rows as stale and preserves correlation ids', async () => {
     const queries = [];
     const pool = {
