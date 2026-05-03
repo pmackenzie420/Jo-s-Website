@@ -69,6 +69,37 @@ body.admin-active #root {
   overflow: hidden;
 }
 
+.admin-chicken-easter-egg {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 10px;
+  height: 140px;
+  pointer-events: none;
+  z-index: 8;
+  overflow: visible;
+}
+
+.admin-chicken-easter-egg-bird {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: clamp(74px, 8vw, 118px);
+  height: auto;
+  display: block;
+  user-select: none;
+  image-rendering: pixelated;
+  transform-origin: 50% 100%;
+  transition:
+    left 70ms steps(2, end),
+    transform 90ms steps(2, end);
+  will-change: left, transform;
+}
+
+body.admin-modal-open .admin-chicken-easter-egg {
+  display: none;
+}
+
 
 @supports (height: 100dvh) {
   html.admin-active,
@@ -212,6 +243,35 @@ body.admin-modal-open .admin-main {
   border: 1px solid var(--admin-border);
   box-shadow: none;
   padding: 18px;
+}
+
+.pickup-past-section {
+  margin-bottom: 0;
+}
+
+.pickup-past-grid,
+.pickup-past-list {
+  margin-top: 12px;
+}
+
+.pickup-past-list {
+  display: grid;
+  gap: 12px;
+}
+
+.pickup-section-label {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pickup-section-label .pickup-location-title,
+.pickup-section-label .pickup-location-meta {
+  display: block;
+}
+
+.pickup-collapsible-section.closed .pickup-location-header {
+  margin-bottom: 0;
 }
 
 .pickup-card-header {
@@ -2031,6 +2091,10 @@ body.admin-modal-open .admin-main {
     align-items: flex-start;
   }
 
+  .pickup-collapsible-section.closed .pickup-location-header {
+    border-bottom: none;
+  }
+
   .pickup-location-title {
     font-size: 18px;
     font-weight: 700;
@@ -2347,5 +2411,9 @@ body.admin-modal-open .admin-main {
 @media (prefers-reduced-motion: reduce) {
   .stagger-item {
     animation: none;
+  }
+
+  .admin-chicken-easter-egg {
+    display: none;
   }
 }

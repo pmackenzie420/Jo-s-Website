@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import useMediaQuery from '../hooks/useMediaQuery';
 import '../styles/pages/Admin.css';
 import AdminToast from './admin/AdminToast';
@@ -15,6 +15,12 @@ import AdminEditOrderModal from './admin/AdminEditOrderModal';
 import { getTabConfig } from './admin-utils';
 import { t } from './admin-i18n';
 import useAdminController from './useAdminController';
+
+// Delete this block and the root stupid_chicken folder to remove the easter egg.
+const ENABLE_STUPID_CHICKEN = import.meta.env.VITE_STUPID_CHICKEN !== 'false';
+const AdminChickenEasterEgg = ENABLE_STUPID_CHICKEN
+  ? lazy(() => import('./admin/AdminChickenEasterEgg'))
+  : null;
 
 export default function Admin() {
   const {
@@ -352,6 +358,12 @@ export default function Admin() {
             />
           )}
         </main>
+
+        {AdminChickenEasterEgg && (
+          <Suspense fallback={null}>
+            <AdminChickenEasterEgg />
+          </Suspense>
+        )}
 
         <nav className="admin-nav admin-nav-mobile">
           {getTabConfig(adminLanguage).map((tab) => (

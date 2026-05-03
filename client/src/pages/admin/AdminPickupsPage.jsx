@@ -8,6 +8,20 @@ import {
 import { t } from '../admin-i18n';
 import { getOrderSourceTranslationKey, getOrderSourceType } from '../admin-order-source';
 
+const getTodayDateKey = () => {
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const day = String(now.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const isPastPickupDate = (value) => {
+  const normalized = String(value || '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return false;
+  return normalized < getTodayDateKey();
+};
+
 export default function AdminPickupsPage({
   dataLoading,
   groupedPickups,
@@ -29,6 +43,7 @@ export default function AdminPickupsPage({
 }) {
   const [showDraftOrders, setShowDraftOrders] = useState(false);
   const [showArchivedOrders, setShowArchivedOrders] = useState(false);
+  const [showPastPickups, setShowPastPickups] = useState(false);
 
   if (dataLoading) {
     return <div className="admin-panel">{t('pickups.loading', adminLanguage)}</div>;
@@ -50,6 +65,12 @@ export default function AdminPickupsPage({
       orders: locationGroup.orders,
       activeOrderIds: locationGroup.activeOrderIds
     }))
+  );
+  const pastPickupCards = pickupCards.filter((card) => isPastPickupDate(card.date));
+  const currentPickupCards = pickupCards.filter((card) => !isPastPickupDate(card.date));
+  const pastPickupOrderCount = pastPickupCards.reduce(
+    (sum, card) => sum + (Array.isArray(card.orders) ? card.orders.length : 0),
+    0
   );
 
   const loadMoreLabel = ordersLoadingMore
@@ -129,7 +150,7 @@ export default function AdminPickupsPage({
   }) => {
     if (!Array.isArray(orders) || orders.length === 0) return null;
     return (
-      <section className="pickup-day stagger-item">
+      <section className={`pickup-day pickup-collapsible-section ${expanded ? 'open' : 'closed'} stagger-item`}>
         <div className="pickup-location">
           <div className="pickup-location-header">
             <button
@@ -169,6 +190,159 @@ export default function AdminPickupsPage({
     onToggle: () => setShowArchivedOrders((prev) => !prev)
   });
 
+  const renderMobilePickupCard = (card) => (
+    <section
+      key={card.key}
+      className="pickup-day stagger-item"
+    >
+      <div className="pickup-location">
+        <div className="pickup-location-header">
+          <div>
+            <div className="pickup-location-title">
+              {formatDateHeader(card.date, adminLanguage)} {card.locationLabel}
+            </div>
+          </div>
+          <div className="pickup-location-actions">
+            <button
+              type="button"
+              className="admin-button ghost small"
+              title={t('pickups.markAllTitle', adminLanguage)}
+              onClick={() => onBulkPickup(card.activeOrderIds, card.locationLabel, card.location)}
+              disabled={!card.activeOrderIds?.length}
+            >
+              ✓
+            </button>
+            <button
+              type="button"
+              className="admin-button ghost small pickup-invoice-button"
+              title={t('pickups.exportInvoicesTitle', adminLanguage)}
+              onClick={() =>
+                onExportInvoicesGroup(card.date, {
+                  location: card.location,
+                  locationLabel: card.locationLabel,
+                  orders: card.orders
+                })
+              }
+            >
+              {t('pickups.exportInvoicesShort', adminLanguage)}
+            </button>
+            <button
+              type="button"
+              className="admin-button ghost small"
+              title={t('pickups.exportTitle', adminLanguage)}
+              onClick={() =>
+                onExportGroup(card.date, {
+                  location: card.location,
+                  locationLabel: card.locationLabel,
+                  orders: card.orders
+                })
+              }
+            >
+              ↓
+            </button>
+          </div>
+        </div>
+        <div className="pickup-list">
+          {card.orders.map((order) => renderPickupRow(order))}
+        </div>
+      </div>
+    </section>
+  );
+
+  const renderDesktopPickupCard = (card) => (
+    <section
+      key={card.key}
+      className="pickup-card stagger-item"
+    >
+      <div className="pickup-card-header">
+        <div className="pickup-card-title">
+          {formatDateHeader(card.date, adminLanguage)} {card.locationLabel}
+        </div>
+        <div className="pickup-card-actions">
+          <button
+            type="button"
+            className="admin-button ghost small"
+            title={t('pickups.markAllTitle', adminLanguage)}
+            onClick={() =>
+              onBulkPickup(card.activeOrderIds, card.locationLabel, card.location)
+            }
+            disabled={!card.activeOrderIds?.length}
+          >
+            ✓
+          </button>
+          <button
+            type="button"
+            className="admin-button ghost small pickup-invoice-button"
+            title={t('pickups.exportInvoicesTitle', adminLanguage)}
+            onClick={() =>
+              onExportInvoicesGroup(card.date, {
+                location: card.location,
+                locationLabel: card.locationLabel,
+                orders: card.orders
+              })
+            }
+          >
+            {t('pickups.exportInvoicesShort', adminLanguage)}
+          </button>
+          <button
+            type="button"
+            className="admin-button ghost small"
+            title={t('pickups.exportTitle', adminLanguage)}
+            onClick={() =>
+              onExportGroup(card.date, {
+                location: card.location,
+                locationLabel: card.locationLabel,
+                orders: card.orders
+              })
+            }
+          >
+            ↓
+          </button>
+        </div>
+      </div>
+      <div className="pickup-list">
+        {card.orders.map((order) => renderPickupRow(order))}
+      </div>
+    </section>
+  );
+
+  const renderPastPickupsSection = ({ mobile = false } = {}) => {
+    if (pastPickupCards.length === 0) return null;
+    const renderCard = mobile ? renderMobilePickupCard : renderDesktopPickupCard;
+    return (
+      <section className={`pickup-day pickup-past-section pickup-collapsible-section ${showPastPickups ? 'open' : 'closed'} stagger-item`}>
+        <div className="pickup-location">
+          <div className="pickup-location-header">
+            <button
+              type="button"
+              className="pickup-section-toggle"
+              onClick={() => setShowPastPickups((prev) => !prev)}
+              aria-expanded={showPastPickups}
+            >
+              <span className="pickup-section-label">
+                <span className="pickup-location-title">{t('pickups.pastDates', adminLanguage)}</span>
+                <span className="pickup-location-meta">
+                  {t('pickups.pastDatesMeta', adminLanguage)
+                    .replace('{groups}', pastPickupCards.length)
+                    .replace('{orders}', pastPickupOrderCount)}
+                </span>
+              </span>
+              <span className={`pickup-section-toggle-pill ${showPastPickups ? 'open' : ''}`}>
+                {showPastPickups ? t('pickups.collapse', adminLanguage) : t('pickups.expand', adminLanguage)}
+                <span className={`pickup-section-chevron ${showPastPickups ? 'open' : ''}`} aria-hidden="true">▾</span>
+              </span>
+            </button>
+          </div>
+          {showPastPickups && (
+            <div className={mobile ? 'pickup-past-list' : 'pickup-card-grid pickup-past-grid'}>
+              {pastPickupCards.map((card) => renderCard(card))}
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  };
+
   if (isMobile) {
     return (
       <div className="admin-stack pickups-stack">
@@ -200,60 +374,8 @@ export default function AdminPickupsPage({
             </button>
           </div>
         </div>
-        {groupedPickups.flatMap((group) =>
-          group.locations.map((locationGroup) => (
-            <section
-              key={`${group.date}-${locationGroup.location}`}
-              className="pickup-day stagger-item"
-            >
-              <div className="pickup-location">
-                <div className="pickup-location-header">
-                  <div>
-                    <div className="pickup-location-title">
-                      {formatDateHeader(group.date, adminLanguage)} {locationGroup.locationLabel}
-                    </div>
-                  </div>
-                  <div className="pickup-location-actions">
-                    <button
-                      type="button"
-                      className="admin-button ghost small"
-                      title={t('pickups.markAllTitle', adminLanguage)}
-                      onClick={() =>
-                        onBulkPickup(
-                          locationGroup.activeOrderIds,
-                          locationGroup.locationLabel,
-                          locationGroup.location
-                        )
-                      }
-                      disabled={!locationGroup.activeOrderIds?.length}
-                    >
-                      ✓
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-button ghost small pickup-invoice-button"
-                      title={t('pickups.exportInvoicesTitle', adminLanguage)}
-                      onClick={() => onExportInvoicesGroup(group.date, locationGroup)}
-                    >
-                      {t('pickups.exportInvoicesShort', adminLanguage)}
-                    </button>
-                    <button
-                      type="button"
-                      className="admin-button ghost small"
-                      title={t('pickups.exportTitle', adminLanguage)}
-                      onClick={() => onExportGroup(group.date, locationGroup)}
-                    >
-                      ↓
-                    </button>
-                  </div>
-                </div>
-                <div className="pickup-list">
-                  {locationGroup.orders.map((order) => renderPickupRow(order))}
-                </div>
-              </div>
-            </section>
-          ))
-        )}
+        {renderPastPickupsSection({ mobile: true })}
+        {currentPickupCards.map((card) => renderMobilePickupCard(card))}
         {renderFailedOrdersSection()}
         {renderArchivedOrdersSection()}
         {renderStonksCard()}
@@ -291,63 +413,9 @@ export default function AdminPickupsPage({
           </button>
         </div>
       </div>
+      {renderPastPickupsSection()}
       <div className="pickup-card-grid">
-        {pickupCards.map((card) => (
-          <section
-            key={card.key}
-            className="pickup-card stagger-item"
-          >
-            <div className="pickup-card-header">
-              <div className="pickup-card-title">
-                {formatDateHeader(card.date, adminLanguage)} {card.locationLabel}
-              </div>
-              <div className="pickup-card-actions">
-                <button
-                  type="button"
-                  className="admin-button ghost small"
-                  title={t('pickups.markAllTitle', adminLanguage)}
-                  onClick={() =>
-                    onBulkPickup(card.activeOrderIds, card.locationLabel, card.location)
-                  }
-                  disabled={!card.activeOrderIds?.length}
-                >
-                  ✓
-                </button>
-                <button
-                  type="button"
-                  className="admin-button ghost small pickup-invoice-button"
-                  title={t('pickups.exportInvoicesTitle', adminLanguage)}
-                  onClick={() =>
-                    onExportInvoicesGroup(card.date, {
-                      location: card.location,
-                      locationLabel: card.locationLabel,
-                      orders: card.orders
-                    })
-                  }
-                >
-                  {t('pickups.exportInvoicesShort', adminLanguage)}
-                </button>
-                <button
-                  type="button"
-                  className="admin-button ghost small"
-                  title={t('pickups.exportTitle', adminLanguage)}
-                  onClick={() =>
-                    onExportGroup(card.date, {
-                      location: card.location,
-                      locationLabel: card.locationLabel,
-                      orders: card.orders
-                    })
-                  }
-                >
-                  ↓
-                </button>
-              </div>
-            </div>
-            <div className="pickup-list">
-              {card.orders.map((order) => renderPickupRow(order))}
-            </div>
-          </section>
-        ))}
+        {currentPickupCards.map((card) => renderDesktopPickupCard(card))}
       </div>
       {renderFailedOrdersSection()}
       {renderArchivedOrdersSection()}
