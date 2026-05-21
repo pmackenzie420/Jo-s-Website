@@ -10,6 +10,8 @@ import { getOrderSourceTranslationKey } from '../admin-order-source';
 export default function AdminCustomerModal({
   customer,
   adminLanguage,
+  onExportCustomerInvoices,
+  onExportOrderInvoice,
   onClose
 }) {
   if (!customer) return null;
@@ -55,6 +57,16 @@ export default function AdminCustomerModal({
                 })}
               </div>
             </div>
+            {customerOrders.length > 0 && (
+              <button
+                type="button"
+                className="admin-button ghost small"
+                onClick={() => onExportCustomerInvoices?.(customer)}
+                disabled={typeof onExportCustomerInvoices !== 'function'}
+              >
+                {t('customer.exportAllInvoices', adminLanguage)}
+              </button>
+            )}
           </div>
           {emailSuppression?.active && (
             <div className="detail-email-alert">
@@ -70,6 +82,8 @@ export default function AdminCustomerModal({
           )}
           <div className="customer-detail-orders">
             {sortedOrders.map((order) => {
+              const orderStatus = String(order?.status || '').trim().toLowerCase();
+              const canExportInvoice = !['cancelled', 'archived', 'reserved'].includes(orderStatus);
               const orderNumberText = getOrderNumberText(order);
               const orderSourceLabel = t(getOrderSourceTranslationKey(order), adminLanguage);
               const orderDate = formatDateLong(
@@ -95,6 +109,16 @@ export default function AdminCustomerModal({
                   <div className="history-payment">{paymentDetails}</div>
                   <div className="history-meta">
                     {t('orderSource.label', adminLanguage)}: {orderSourceLabel}
+                  </div>
+                  <div className="customer-detail-order-actions">
+                    <button
+                      type="button"
+                      className="admin-button ghost small"
+                      onClick={() => onExportOrderInvoice?.(order)}
+                      disabled={typeof onExportOrderInvoice !== 'function' || !canExportInvoice}
+                    >
+                      {t('customer.exportInvoice', adminLanguage)}
+                    </button>
                   </div>
                 </div>
               );

@@ -27,6 +27,7 @@ async function migrate() {
                 date_value DATE NOT NULL,
                 location TEXT,
                 is_active BOOLEAN DEFAULT true,
+                special_note TEXT,
                 created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
             );
         `);
@@ -35,6 +36,10 @@ async function migrate() {
         await pool.query(`
             ALTER TABLE pickup_dates
             ADD COLUMN IF NOT EXISTS location TEXT
+        `);
+        await pool.query(`
+            ALTER TABLE pickup_dates
+            ADD COLUMN IF NOT EXISTS special_note TEXT
         `);
         await pool.query(`
             UPDATE pickup_dates

@@ -61,6 +61,9 @@ const {
     ensureOrderCustomerSnapshotsSchema
 } = require('./logic/order-customer-snapshots');
 const {
+    ensurePickupDateNotesSchema
+} = require('./logic/pickup');
+const {
     createRateLimiter,
     signAdminSession,
     signMainSession,
@@ -495,6 +498,14 @@ app.use((err, req, res, next) => {
 });
 
 const startServer = async () => {
+    try {
+        await ensurePickupDateNotesSchema(pool);
+    } catch (err) {
+        logError('Failed to ensure pickup date notes schema', err);
+        process.exitCode = 1;
+        return;
+    }
+
     try {
         await ensureOrderCustomerSnapshotsSchema(pool);
     } catch (err) {

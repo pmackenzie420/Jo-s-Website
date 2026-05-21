@@ -435,6 +435,7 @@ const registerAdminRoutes = (app, deps) => {
         ip: sanitizeText(getClientIp(req), 200) || null,
         userAgent: sanitizeText(req?.get?.('user-agent') || req?.headers?.['user-agent'], 500) || null
     });
+    const sanitizePickupSpecialNote = (value) => sanitizeText(value, 500);
     const summarizeOrderForAudit = (value) => ({
         id: sanitizeText(value?.id, 120) || null,
         order_number: Number(value?.order_number || 0) || null,
@@ -770,6 +771,7 @@ const registerAdminRoutes = (app, deps) => {
                     date_value,
                     location,
                     is_active,
+                    special_note,
                     created_at
                 FROM pickup_dates
                 WHERE is_active = true
@@ -2641,6 +2643,7 @@ const registerAdminRoutes = (app, deps) => {
     app.post('/api/admin/pickup-dates', checkAuth, async (req, res) => {
         const dateValue = sanitizeText(req.body?.date_value, 40);
         const location = sanitizeText(req.body?.location, 40);
+        const specialNote = sanitizePickupSpecialNote(req.body?.special_note ?? req.body?.specialNote);
         if (!dateValue || !location) {
             return res.status(400).send('Date and location are required.');
         }
@@ -2664,8 +2667,8 @@ const registerAdminRoutes = (app, deps) => {
             }
 
             const result = await pool.query(
-                'INSERT INTO pickup_dates (date_value, location) VALUES ($1, $2) RETURNING *',
-                [dateValue, location]
+                'INSERT INTO pickup_dates (date_value, location, special_note) VALUES ($1, $2, NULLIF($3, \'\')) RETURNING *',
+                [dateValue, location, specialNote]
             );
             const pickupDate = result.rows[0];
             const hensRes = await pool.query(
@@ -2694,6 +2697,7 @@ const registerAdminRoutes = (app, deps) => {
                     id: sanitizeText(pickupDate?.id, 120) || null,
                     date_value: sanitizeText(pickupDate?.date_value, 40) || dateValue,
                     location: sanitizeText(pickupDate?.location, 40) || location,
+                    special_note: sanitizePickupSpecialNote(pickupDate?.special_note) || null,
                     seeded_hen_count: Number(hensRes.rows.length || 0)
                 },
                 ip: requestMeta.ip,
@@ -2715,6 +2719,12 @@ const registerAdminRoutes = (app, deps) => {
         const targetDateValue = sanitizeText(req.body?.date_value ?? req.body?.dateValue, 40);
         const requestedTargetLocation = sanitizeText(req.body?.location, 40);
         const emailUsers = parseBoolean(req.body?.email_users ?? req.body?.emailUsers, false);
+        const body = req.body || {};
+        const hasSpecialNoteInput = Object.prototype.hasOwnProperty.call(body, 'special_note')
+            || Object.prototype.hasOwnProperty.call(body, 'specialNote');
+        const requestedSpecialNote = hasSpecialNoteInput
+            ? sanitizePickupSpecialNote(body.special_note ?? body.specialNote)
+            : null;
 
         if (!sourceId) {
             return res.status(400).json({ error: 'Pickup date id is required.' });
@@ -2732,7 +2742,7 @@ const registerAdminRoutes = (app, deps) => {
             const updateResult = await runInTransaction(async (client) => {
                 const sourceResult = await client.query(
                     `
-                    SELECT id, date_value, location
+                    SELECT id, date_value, location, special_note
                     FROM pickup_dates
                     WHERE id = $1
                     FOR UPDATE
@@ -2746,7 +2756,13 @@ const registerAdminRoutes = (app, deps) => {
                 const source = sourceResult.rows[0];
                 const sourceDateValue = formatPickupDate(source.date_value);
                 const sourceLocation = sanitizeText(source.location, 40);
+                const sourceSpecialNote = sanitizePickupSpecialNote(source.special_note);
                 const targetLocation = sourceLocation;
+                const targetSpecialNote = hasSpecialNoteInput
+                    ? requestedSpecialNote
+                    : sourceSpecialNote;
+                const dateChanged = sourceDateValue !== targetDateValue;
+                const noteChanged = sourceSpecialNote !== targetSpecialNote;
 
                 if (requestedTargetLocation && requestedTargetLocation !== sourceLocation) {
                     return {
@@ -2755,13 +2771,37 @@ const registerAdminRoutes = (app, deps) => {
                     };
                 }
 
-                if (
-                    sourceDateValue === targetDateValue
-                ) {
+                if (!dateChanged && !noteChanged) {
                     return {
                         status: 'no_change',
                         sourceDateValue,
-                        sourceLocation
+                        sourceLocation,
+                        sourceSpecialNote
+                    };
+                }
+
+                if (!dateChanged) {
+                    await client.query(
+                        `
+                        UPDATE pickup_dates
+                        SET special_note = NULLIF($1, '')
+                        WHERE id = $2
+                        `,
+                        [targetSpecialNote, sourceId]
+                    );
+
+                    return {
+                        status: 'updated',
+                        merged: false,
+                        movedOrders: 0,
+                        recipients: [],
+                        fromDateValue: sourceDateValue,
+                        fromLocation: sourceLocation,
+                        fromSpecialNote: sourceSpecialNote,
+                        toDateValue: targetDateValue,
+                        toLocation: targetLocation,
+                        toSpecialNote: targetSpecialNote,
+                        noteChanged
                     };
                 }
 
@@ -2771,7 +2811,7 @@ const registerAdminRoutes = (app, deps) => {
 
                 const targetResult = await client.query(
                     `
-                    SELECT id
+                    SELECT id, special_note
                     FROM pickup_dates
                     WHERE date_value = $1
                       AND location = $2
@@ -2787,6 +2827,7 @@ const registerAdminRoutes = (app, deps) => {
                 if (targetResult.rows.length > 0) {
                     merged = true;
                     const targetId = targetResult.rows[0].id;
+                    const existingTargetSpecialNote = sanitizePickupSpecialNote(targetResult.rows[0]?.special_note);
 
                     const movedOrders = await client.query(
                         `
@@ -2810,6 +2851,17 @@ const registerAdminRoutes = (app, deps) => {
                         [targetId, sourceId]
                     );
 
+                    if (hasSpecialNoteInput) {
+                        await client.query(
+                            `
+                            UPDATE pickup_dates
+                            SET special_note = NULLIF($1, '')
+                            WHERE id = $2
+                            `,
+                            [targetSpecialNote, targetId]
+                        );
+                    }
+
                     await client.query('DELETE FROM pickup_dates WHERE id = $1', [sourceId]);
 
                     return {
@@ -2819,18 +2871,25 @@ const registerAdminRoutes = (app, deps) => {
                         recipients,
                         fromDateValue: sourceDateValue,
                         fromLocation: sourceLocation,
+                        fromSpecialNote: sourceSpecialNote,
                         toDateValue: targetDateValue,
-                        toLocation: targetLocation
+                        toLocation: targetLocation,
+                        toSpecialNote: hasSpecialNoteInput ? targetSpecialNote : existingTargetSpecialNote,
+                        noteChanged: hasSpecialNoteInput
+                            ? existingTargetSpecialNote !== targetSpecialNote
+                            : false
                     };
                 }
 
                 await client.query(
                     `
                     UPDATE pickup_dates
-                    SET date_value = $1, location = $2
-                    WHERE id = $3
+                    SET date_value = $1,
+                        location = $2,
+                        special_note = NULLIF($3, '')
+                    WHERE id = $4
                     `,
-                    [targetDateValue, targetLocation, sourceId]
+                    [targetDateValue, targetLocation, targetSpecialNote, sourceId]
                 );
 
                 const movedOrders = await client.query(
@@ -2850,8 +2909,11 @@ const registerAdminRoutes = (app, deps) => {
                     recipients,
                     fromDateValue: sourceDateValue,
                     fromLocation: sourceLocation,
+                    fromSpecialNote: sourceSpecialNote,
                     toDateValue: targetDateValue,
-                    toLocation: targetLocation
+                    toLocation: targetLocation,
+                    toSpecialNote: targetSpecialNote,
+                    noteChanged
                 };
             });
 
@@ -2978,13 +3040,16 @@ const registerAdminRoutes = (app, deps) => {
                 requestId: requestMeta.requestId,
                 before: {
                     date_value: updateResult.fromDateValue,
-                    location: updateResult.fromLocation
+                    location: updateResult.fromLocation,
+                    special_note: updateResult.fromSpecialNote || null
                 },
                 after: {
                     date_value: updateResult.toDateValue,
                     location: updateResult.toLocation,
+                    special_note: updateResult.toSpecialNote || null,
                     merged: updateResult.merged,
                     moved_orders: updateResult.movedOrders,
+                    note_updated: Boolean(updateResult.noteChanged),
                     email_requested: emailUsers,
                     email_recipients: updateResult.recipients.length,
                     email_sent: emailSent,
@@ -3004,6 +3069,8 @@ const registerAdminRoutes = (app, deps) => {
                 emailSent,
                 emailFailed,
                 failedRecipients,
+                noteUpdated: Boolean(updateResult.noteChanged),
+                specialNote: updateResult.toSpecialNote || null,
                 fromDateValue: updateResult.fromDateValue,
                 fromLocation: updateResult.fromLocation,
                 toDateValue: updateResult.toDateValue,

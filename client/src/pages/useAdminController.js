@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  EVENING_PICKUP_NOTE,
   LOCATION_LABELS,
   LOCATION_OPTIONS,
   parsePickupKey,
@@ -77,10 +78,14 @@ export default function useAdminController() {
   const [selectedCustomer, setSelectedCustomer] = useState(null);
   const [selectedPickup, setSelectedPickup] = useState(null);
   const [editingOrder, setEditingOrder] = useState(null);
+  const [invoiceReviewOrder, setInvoiceReviewOrder] = useState(null);
+  const [invoiceExporting, setInvoiceExporting] = useState(false);
   const [newPickupDate, setNewPickupDate] = useState('');
   const [newPickupLocation, setNewPickupLocation] = useState(LOCATION_OPTIONS[0]?.value || '');
+  const [newPickupSpecialNote, setNewPickupSpecialNote] = useState('');
   const [changingDateId, setChangingDateId] = useState(null);
   const [changePickupDate, setChangePickupDate] = useState('');
+  const [changePickupSpecialNote, setChangePickupSpecialNote] = useState('');
   const [changeEmailUsers, setChangeEmailUsers] = useState(false);
   const [allPickupStocks, setAllPickupStocks] = useState({});
   const [allPickupReserved, setAllPickupReserved] = useState({});
@@ -546,6 +551,15 @@ export default function useAdminController() {
   const handleInvoiceExportForOrder = useCallback(
     async (order) => {
       if (!order) return false;
+      setInvoiceReviewOrder(order);
+      return true;
+    },
+    []
+  );
+
+  const handleReviewedInvoiceExport = useCallback(
+    async (order) => {
+      if (!order || invoiceExporting) return false;
       const groupDate = normalizeDate(order?.pickupDate || order?.pickup_date || order?.created_at || new Date());
       const location = String(order?.pickupLocation || order?.pickup_location || '');
       const locationGroup = location
@@ -555,13 +569,22 @@ export default function useAdminController() {
             orders: [order]
           }
         : null;
-      return exportInvoicesForOrders({
-        orders: [order],
-        groupDate,
-        locationGroup
-      });
+      setInvoiceExporting(true);
+      try {
+        const exported = await exportInvoicesForOrders({
+          orders: [order],
+          groupDate,
+          locationGroup
+        });
+        if (exported) {
+          setInvoiceReviewOrder(null);
+        }
+        return exported;
+      } finally {
+        setInvoiceExporting(false);
+      }
     },
-    [exportInvoicesForOrders]
+    [exportInvoicesForOrders, invoiceExporting]
   );
 
 const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
@@ -613,11 +636,11 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
   );
 
   const addDate = useCallback(
-    async (dateValue, locationValue) => {
+    async (dateValue, locationValue, specialNote = '') => {
       if (!dateValue || !locationValue) return false;
       setScheduleLoading('add');
       try {
-        await addPickupDate({ dateValue, location: locationValue });
+        await addPickupDate({ dateValue, location: locationValue, specialNote });
         showToast({ type: 'success', text: t('toast.dateAdded', adminLanguage) });
         await refreshMeta();
         return true;
@@ -635,12 +658,14 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     const currentDate = normalizeDate(dateItem?.date_value);
     setChangingDateId(dateItem?.id || null);
     setChangePickupDate(currentDate);
+    setChangePickupSpecialNote(String(dateItem?.special_note || ''));
     setChangeEmailUsers(false);
   }, []);
 
   const cancelDateChange = useCallback(() => {
     setChangingDateId(null);
     setChangePickupDate('');
+    setChangePickupSpecialNote('');
     setChangeEmailUsers(false);
   }, []);
 
@@ -655,8 +680,17 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
       const fromDate = normalizeDate(dateItem.date_value);
       const fromDateLabel = formatDateLong(fromDate, adminLanguage);
       const toDateLabel = formatDateLong(changePickupDate, adminLanguage);
+      const dateChanged = fromDate !== changePickupDate;
+      const currentSpecialNote = String(dateItem.special_note || '').trim();
+      const nextSpecialNote = String(changePickupSpecialNote || '').trim();
+      if (!dateChanged && currentSpecialNote === nextSpecialNote) {
+        showToast({ type: 'error', text: t('toast.dateUnchanged', adminLanguage) });
+        return;
+      }
 
-      const confirmKey = changeEmailUsers
+      const confirmKey = !dateChanged
+        ? 'confirm.changeDateNote'
+        : changeEmailUsers
         ? 'confirm.changeDateEmail'
         : 'confirm.changeDateNoEmail';
       const warningText = tf(confirmKey, adminLanguage, { from: fromDateLabel, to: toDateLabel });
@@ -669,7 +703,8 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
         const response = await updatePickupDate({
           dateId: dateItem.id,
           dateValue: changePickupDate,
-          emailUsers: changeEmailUsers
+          specialNote: changePickupSpecialNote,
+          emailUsers: dateChanged && changeEmailUsers
         });
 
         const payload = response?.data || {};
@@ -681,7 +716,7 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
           Number(payload.emailRecipients || 0)
           || (emailSentCount + emailFailedCount)
         );
-        const emailSummary = changeEmailUsers
+        const emailSummary = dateChanged && changeEmailUsers
           ? ` Emails: ${formatEmailOutcomeSummary({
             total: emailTotalCount,
             sent: emailSentCount,
@@ -717,6 +752,7 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
       cancelDateChange,
       changeEmailUsers,
       changePickupDate,
+      changePickupSpecialNote,
       refreshMeta,
       refreshOrders,
       showToast
@@ -863,6 +899,7 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
 
   const handleAddDateClick = useCallback(async () => {
     if (!isAddingDate) {
+      setNewPickupSpecialNote(EVENING_PICKUP_NOTE);
       setIsAddingDate(true);
       return;
     }
@@ -880,9 +917,10 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     if (!confirmed) {
       return;
     }
-    const didAdd = await addDate(newPickupDate, newPickupLocation);
+    const didAdd = await addDate(newPickupDate, newPickupLocation, newPickupSpecialNote);
     if (didAdd) {
       setNewPickupDate('');
+      setNewPickupSpecialNote(EVENING_PICKUP_NOTE);
       setIsAddingDate(false);
     }
   }, [
@@ -890,6 +928,7 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     isAddingDate,
     newPickupDate,
     newPickupLocation,
+    newPickupSpecialNote,
     addDate,
     showToast
   ]);
@@ -1086,10 +1125,14 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     selectedCustomer,
     selectedPickup,
     editingOrder,
+    invoiceReviewOrder,
+    invoiceExporting,
     newPickupDate,
     newPickupLocation,
+    newPickupSpecialNote,
     changingDateId,
     changePickupDate,
+    changePickupSpecialNote,
     changeEmailUsers,
     emailGroupKey,
     emailSubject,
@@ -1124,10 +1167,13 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     setSelectedCustomer,
     setSelectedPickup,
     setEditingOrder,
+    setInvoiceReviewOrder,
     setIsAddingDate,
     setNewPickupLocation,
     setNewPickupDate,
+    setNewPickupSpecialNote,
     setChangePickupDate,
+    setChangePickupSpecialNote,
     setChangeEmailUsers,
     setEmailSubject,
     setEmailMessage,
@@ -1140,6 +1186,7 @@ const handlePickupStockChange = useCallback((pickupKey, henId, value) => {
     handleInvoiceExportDownload,
     handleInvoiceExportForCustomer,
     handleInvoiceExportForOrder,
+    handleReviewedInvoiceExport,
     handlePickupStockChange,
     handlePickupStockSave,
     deleteDate,

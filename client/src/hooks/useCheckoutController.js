@@ -24,6 +24,7 @@ const DEFAULT_FORM_DATA = {
   address: '',
   pickupLocation: '',
   pickupDate: '',
+  pickupSpecialNote: '',
   paymentOption: 'full',
 };
 
@@ -47,14 +48,30 @@ export default function useCheckoutController(lang) {
     }
     try {
       const stored = window.sessionStorage.getItem(FORM_STORAGE_KEY);
-      if (!stored) return DEFAULT_FORM_DATA;
+      const hasRouteStateNote = Object.prototype.hasOwnProperty.call(
+        location.state || {},
+        'pickupSpecialNote'
+      );
+      const routeStateNote = String(location.state?.pickupSpecialNote || '').trim();
+      if (!stored) return { ...DEFAULT_FORM_DATA, pickupSpecialNote: routeStateNote };
       const parsed = JSON.parse(stored);
-      if (!parsed || typeof parsed !== 'object') return DEFAULT_FORM_DATA;
-      return { ...DEFAULT_FORM_DATA, ...parsed };
+      if (!parsed || typeof parsed !== 'object') {
+        return { ...DEFAULT_FORM_DATA, pickupSpecialNote: routeStateNote };
+      }
+      return {
+        ...DEFAULT_FORM_DATA,
+        ...parsed,
+        pickupSpecialNote: hasRouteStateNote
+          ? routeStateNote
+          : String(parsed.pickupSpecialNote || '').trim()
+      };
     } catch {
-      return DEFAULT_FORM_DATA;
+      return {
+        ...DEFAULT_FORM_DATA,
+        pickupSpecialNote: String(location.state?.pickupSpecialNote || '').trim()
+      };
     }
-  }, []);
+  }, [location.state]);
   const [currentStep, setCurrentStep] = useState(() => {
     if (typeof window === 'undefined') {
       return 1;

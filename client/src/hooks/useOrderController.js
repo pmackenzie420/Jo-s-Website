@@ -139,12 +139,23 @@ export default function useOrderController(lang) {
     try {
       const stored = window.sessionStorage.getItem(FORM_STORAGE_KEY);
       const parsed = stored ? JSON.parse(stored) : {};
-      const next = { ...(parsed || {}), pickupLocation, pickupDate };
+      const selectedDate = availableDates.find((dateItem) => {
+        const value = typeof dateItem.date_value === 'string'
+          ? dateItem.date_value.split('T')[0]
+          : dateItem.date_value;
+        return value === pickupDate;
+      });
+      const next = {
+        ...(parsed || {}),
+        pickupLocation,
+        pickupDate,
+        pickupSpecialNote: String(selectedDate?.special_note || '').trim()
+      };
       window.sessionStorage.setItem(FORM_STORAGE_KEY, JSON.stringify(next));
     } catch {
       // Ignore storage write issues.
     }
-  }, [pickupLocation, pickupDate]);
+  }, [availableDates, pickupLocation, pickupDate]);
 
   useEffect(() => {
     let isActive = true;
@@ -228,6 +239,16 @@ export default function useOrderController(lang) {
       .filter(Boolean);
     return values.sort();
   }, [availableDates]);
+
+  const selectedPickupSpecialNote = useMemo(() => {
+    const selectedDate = availableDates.find((dateItem) => {
+      const value = typeof dateItem.date_value === 'string'
+        ? dateItem.date_value.split('T')[0]
+        : dateItem.date_value;
+      return value === pickupDate;
+    });
+    return String(selectedDate?.special_note || '').trim();
+  }, [availableDates, pickupDate]);
 
   const pickupReady = Boolean(pickupLocation && pickupDate);
   const pickupSelectionMessage =
@@ -350,7 +371,13 @@ export default function useOrderController(lang) {
       return;
     }
     const total = items.reduce((acc, item) => acc + item.lineTotal, 0);
-    navigate('/checkout', { state: { cartItems: items, grandTotal: total } });
+    navigate('/checkout', {
+      state: {
+        cartItems: items,
+        grandTotal: total,
+        pickupSpecialNote: selectedPickupSpecialNote
+      }
+    });
   };
 
   return {
@@ -363,6 +390,7 @@ export default function useOrderController(lang) {
     pickupDate,
     setPickupDate,
     availableDateValues,
+    selectedPickupSpecialNote,
     pickupDatesLoading,
     pickupError,
     pickupReady,

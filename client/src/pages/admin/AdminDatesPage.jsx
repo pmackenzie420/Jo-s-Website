@@ -14,8 +14,10 @@ export default function AdminDatesPage({
   isAddingDate,
   newPickupDate,
   newPickupLocation,
+  newPickupSpecialNote,
   changingDateId,
   changePickupDate,
+  changePickupSpecialNote,
   changeEmailUsers,
   dateInputRef,
   orderCountByPickupKey,
@@ -27,7 +29,9 @@ export default function AdminDatesPage({
   onSetIsAddingDate,
   onSetNewPickupLocation,
   onSetNewPickupDate,
+  onSetNewPickupSpecialNote,
   onSetChangePickupDate,
+  onSetChangePickupSpecialNote,
   onSetChangeEmailUsers,
   onAddDateClick,
   addDateButtonLabel
@@ -55,6 +59,7 @@ export default function AdminDatesPage({
                   LOCATION_LABELS[dateItem.location] ||
                   dateItem.location ||
                   'Unknown';
+                const specialNote = String(dateItem.special_note || '').trim();
                 const orderCount = orderCountByPickupKey.get(
                   buildPickupKey(dateValue, dateItem.location)
                 ) || 0;
@@ -69,6 +74,11 @@ export default function AdminDatesPage({
                       <div className="date-meta">
                         {locationLabel} · {tf('dates.pickups', adminLanguage, { count: orderCount })}
                       </div>
+                      {specialNote && (
+                        <div className="date-special-note">
+                          <span>{t('dates.specialNoteLabel', adminLanguage)}:</span> {specialNote}
+                        </div>
+                      )}
                     </div>
                     <div className="date-row-actions">
                       <button
@@ -97,6 +107,19 @@ export default function AdminDatesPage({
                           className="admin-input date-input"
                           value={changePickupDate}
                           onChange={(event) => onSetChangePickupDate(event.target.value)}
+                        />
+
+                        <label className="admin-label" htmlFor={`change-special-note-${dateItem.id}`}>
+                          {t('dates.specialNoteOptional', adminLanguage)}
+                        </label>
+                        <textarea
+                          id={`change-special-note-${dateItem.id}`}
+                          className="admin-input date-note-input"
+                          value={changePickupSpecialNote}
+                          maxLength={500}
+                          rows={3}
+                          placeholder={t('dates.specialNotePlaceholder', adminLanguage)}
+                          onChange={(event) => onSetChangePickupSpecialNote(event.target.value)}
                         />
 
                         <label className="date-change-switch">
@@ -163,13 +186,28 @@ export default function AdminDatesPage({
                       onChange={(event) => onSetNewPickupDate(event.target.value)}
                     />
                   </div>
+                  <label className="admin-label" htmlFor="pickup-special-note">
+                    {t('dates.specialNoteOptional', adminLanguage)}
+                  </label>
+                  <textarea
+                    id="pickup-special-note"
+                    className="admin-input date-note-input"
+                    value={newPickupSpecialNote}
+                    maxLength={500}
+                    rows={3}
+                    placeholder={t('dates.specialNotePlaceholder', adminLanguage)}
+                    onChange={(event) => onSetNewPickupSpecialNote(event.target.value)}
+                  />
                 </>
               )}
               <div className={`date-actions-row${isAddingDate ? ' date-actions-row--offset' : ''}`}>
                 {isAddingDate && (
                   <button
                     className="admin-button ghost"
-                    onClick={() => onSetIsAddingDate(false)}
+                    onClick={() => {
+                      onSetNewPickupDate('');
+                      onSetIsAddingDate(false);
+                    }}
                   >
                     {t('btn.cancel', adminLanguage)}
                   </button>

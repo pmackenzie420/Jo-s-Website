@@ -837,11 +837,27 @@ body.admin-modal-open .admin-main {
   color: var(--admin-muted);
 }
 
+.date-special-note {
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--admin-ink);
+}
+
+.date-special-note span {
+  font-weight: 600;
+}
+
 .date-change-panel {
   grid-column: 1 / -1;
   display: grid;
   gap: 8px;
   padding-top: 8px;
+}
+
+.date-note-input {
+  min-height: 76px;
+  resize: vertical;
 }
 
 .date-change-switch {
@@ -1113,6 +1129,64 @@ body.admin-modal-open .admin-main {
 .admin-edit-order-actions .admin-button {
   width: auto;
   min-width: 120px;
+}
+
+.admin-invoice-review-modal {
+  max-width: 820px;
+}
+
+.admin-invoice-review-note {
+  margin: 10px 0 14px;
+  padding: 8px 0;
+  border-top: 1px solid var(--admin-border);
+  border-bottom: 1px solid var(--admin-border);
+  font-size: 13px;
+  color: var(--admin-muted);
+}
+
+.admin-invoice-review-table .admin-table-row {
+  grid-template-columns: minmax(0, 2fr) 70px 140px 140px;
+  align-items: center;
+}
+
+.admin-invoice-item-name {
+  font-weight: 600;
+}
+
+.admin-invoice-price-input {
+  width: 120px;
+  text-align: right;
+}
+
+.admin-invoice-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--admin-border);
+}
+
+.admin-invoice-summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.admin-invoice-summary span {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--admin-muted);
+}
+
+.admin-invoice-summary strong {
+  font-size: 18px;
+}
+
+.admin-invoice-price-change,
+.admin-invoice-error {
+  margin-top: 12px;
 }
 
 .admin-toast {
@@ -1916,6 +1990,10 @@ body.admin-modal-open .admin-main {
   max-width: 920px;
 }
 
+.customer-detail-modal .pickup-detail-top {
+  flex-wrap: wrap;
+}
+
 .customer-detail-orders {
   display: flex;
   flex-direction: column;
@@ -1939,6 +2017,11 @@ body.admin-modal-open .admin-main {
   align-items: baseline;
   justify-content: space-between;
   gap: 16px;
+}
+
+.customer-detail-order-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .pickup-detail-order-row {
@@ -2232,6 +2315,10 @@ body.admin-modal-open .admin-main {
     gap: 6px;
   }
 
+  .customer-detail-order-actions {
+    justify-content: flex-start;
+  }
+
   .admin-edit-order-actions {
     flex-direction: column;
   }
@@ -2252,6 +2339,21 @@ body.admin-modal-open .admin-main {
 
   .admin-edit-order-qty {
     width: 100%;
+  }
+
+  .admin-invoice-review-table .admin-table-row {
+    grid-template-columns: minmax(0, 1fr) 44px 82px 82px;
+    gap: 6px;
+  }
+
+  .admin-invoice-price-input {
+    width: 100%;
+    padding: 8px 6px;
+    font-size: 13px;
+  }
+
+  .admin-invoice-summary {
+    grid-template-columns: 1fr;
   }
 }
 

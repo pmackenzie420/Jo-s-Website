@@ -78,6 +78,12 @@ const ADMIN_STRINGS = {
   'dates.applying':         { en: 'Applying...',       fr: 'Application...' },
   'dates.applyChange':      { en: 'Apply Date Change', fr: 'Appliquer le changement' },
   'dates.pickupLocation':   { en: 'Pickup location',   fr: 'Lieu de ramassage' },
+  'dates.specialNoteLabel': { en: 'Special note',      fr: 'Note spéciale' },
+  'dates.specialNoteOptional': { en: 'Special note (optional)', fr: 'Note spéciale (facultative)' },
+  'dates.specialNotePlaceholder': {
+    en: 'Optional note shown to customers at checkout.',
+    fr: 'Note facultative affichée aux clients au paiement.'
+  },
   'dates.selected':         { en: 'Selected: {date}',  fr: 'Sélectionné\u00a0: {date}' },
   'dates.addBtn.adding':    { en: 'Adding...',          fr: 'Ajout...' },
   'dates.addBtn.confirm':   { en: 'Confirm Pickup Date', fr: 'Confirmer la date' },
@@ -254,6 +260,23 @@ const ADMIN_STRINGS = {
   'edit.depositDue':        { en: 'Due at pickup: {amount}', fr: 'Dû au ramassage\u00a0: {amount}' },
   'edit.depositRequired':   { en: 'Deposit required for orders above {qty} Lohmann hens.', fr: 'Acompte requis pour les commandes de plus de {qty} poules Lohmann.' },
 
+  // Invoice review modal
+  'invoice.title':           { en: 'Review Invoice',      fr: 'Réviser la facture' },
+  'invoice.invoiceOnly':     { en: 'Invoice prices only. The order stays unchanged.', fr: 'Prix de facture seulement. La commande reste inchangée.' },
+  'invoice.item':            { en: 'Item',                fr: 'Article' },
+  'invoice.qty':             { en: 'Qty',                 fr: 'Qté' },
+  'invoice.unit':            { en: 'Unit',                fr: 'Unit.' },
+  'invoice.line':            { en: 'Line',                fr: 'Ligne' },
+  'invoice.total':           { en: 'Total',               fr: 'Total' },
+  'invoice.paid':            { en: 'Paid',                fr: 'Payé' },
+  'invoice.due':             { en: 'Due',                 fr: 'Dû' },
+  'invoice.changed':         { en: 'Invoice prices changed for this export.', fr: 'Prix de facture modifiés pour cet export.' },
+  'invoice.invalidPrices':   { en: 'Enter valid invoice prices before exporting.', fr: 'Entrez des prix de facture valides avant l\'export.' },
+  'invoice.noItems':         { en: 'No invoice items found for this order.', fr: 'Aucun article de facture trouvé pour cette commande.' },
+  'invoice.reset':           { en: 'Reset Prices',        fr: 'Réinitialiser les prix' },
+  'invoice.export':          { en: 'Export Invoice',      fr: 'Exporter la facture' },
+  'invoice.exporting':       { en: 'Exporting...',        fr: 'Export...' },
+
   // Validation errors
   'val.nameRequired':       { en: 'Customer name is required.', fr: 'Le nom du client est requis.' },
   'val.phoneRequired':      { en: 'Customer phone is required.', fr: 'Le téléphone du client est requis.' },
@@ -289,6 +312,7 @@ const ADMIN_STRINGS = {
   'toast.selectLocation':       { en: 'Select a pickup location.', fr: 'Sélectionnez un lieu de ramassage.' },
   'toast.dateUpdated':          { en: 'Pickup date updated.', fr: 'Date de ramassage mise à jour.' },
   'toast.dateUpdateFailed':     { en: 'Failed to update pickup date.', fr: 'Échec de la mise à jour de la date.' },
+  'toast.dateUnchanged':        { en: 'No pickup date changes to save.', fr: 'Aucun changement de date à enregistrer.' },
   'toast.selectNewDate':        { en: 'Please select a new date.', fr: 'Veuillez sélectionner une nouvelle date.' },
   'toast.dateRemoved':          { en: 'Pickup date removed.', fr: 'Date de ramassage supprimée.' },
   'toast.dateRemoveFailed':     { en: 'Failed to remove pickup date.', fr: 'Échec de la suppression de la date.' },
@@ -329,6 +353,7 @@ const ADMIN_STRINGS = {
   'confirm.addDate':            { en: 'Add pickup date: {date} ({location})?', fr: 'Ajouter la date de ramassage\u00a0: {date} ({location})\u00a0?' },
   'confirm.changeDateEmail':    { en: 'Email users with pickup date change from {from} to {to}?', fr: 'Aviser les clients du changement de date de {from} à {to}\u00a0?' },
   'confirm.changeDateNoEmail':  { en: 'Apply pickup date change from {from} to {to} without emailing users?', fr: 'Appliquer le changement de date de {from} à {to} sans aviser les clients\u00a0?' },
+  'confirm.changeDateNote':     { en: 'Update the special note for {from}?', fr: 'Mettre à jour la note spéciale pour {from}\u00a0?' },
 
   // Stonks card
   'stonks.title':           { en: 'Revenue',            fr: 'Revenus' },

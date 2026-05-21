@@ -1,3 +1,10 @@
+const ensurePickupDateNotesSchema = async (pool) => {
+    await pool.query(`
+        ALTER TABLE pickup_dates
+        ADD COLUMN IF NOT EXISTS special_note TEXT
+    `);
+};
+
 const fetchPickupDates = async (pool, location, options = {}) => {
     const includePast = options.includePast !== false;
     const values = [];
@@ -17,12 +24,13 @@ const fetchPickupDates = async (pool, location, options = {}) => {
                 date_value,
                 location,
                 is_active,
+                special_note,
                 created_at
             FROM pickup_dates
             WHERE ${whereClauses.join('\n              AND ')}
             ORDER BY date_value, location, created_at ASC, id ASC
         )
-        SELECT id, date_value, location, is_active, created_at
+        SELECT id, date_value, location, is_active, special_note, created_at
         FROM canonical_dates
         ORDER BY date_value ASC
         `,
@@ -161,6 +169,7 @@ const fetchReservedPickupItems = async (pool) => {
 };
 
 module.exports = {
+    ensurePickupDateNotesSchema,
     fetchPickupDates,
     findPickupDateId,
     fetchPickupStockItems,

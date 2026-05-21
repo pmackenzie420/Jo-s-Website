@@ -12,6 +12,7 @@ import AdminCreateOrderPage from './admin/AdminCreateOrderPage';
 import AdminCustomerModal from './admin/AdminCustomerModal';
 import AdminPickupModal from './admin/AdminPickupModal';
 import AdminEditOrderModal from './admin/AdminEditOrderModal';
+import AdminInvoiceReviewModal from './admin/AdminInvoiceReviewModal';
 import { getTabConfig } from './admin-utils';
 import { t } from './admin-i18n';
 import useAdminController from './useAdminController';
@@ -39,10 +40,14 @@ export default function Admin() {
     selectedCustomer,
     selectedPickup,
     editingOrder,
+    invoiceReviewOrder,
+    invoiceExporting,
     newPickupDate,
     newPickupLocation,
+    newPickupSpecialNote,
     changingDateId,
     changePickupDate,
+    changePickupSpecialNote,
     changeEmailUsers,
     emailGroupKey,
     emailSubject,
@@ -77,10 +82,13 @@ export default function Admin() {
     setSelectedCustomer,
     setSelectedPickup,
     setEditingOrder,
+    setInvoiceReviewOrder,
     setIsAddingDate,
     setNewPickupLocation,
     setNewPickupDate,
+    setNewPickupSpecialNote,
     setChangePickupDate,
+    setChangePickupSpecialNote,
     setChangeEmailUsers,
     setEmailSubject,
     setEmailMessage,
@@ -93,6 +101,7 @@ export default function Admin() {
     handleInvoiceExportDownload,
     handleInvoiceExportForCustomer,
     handleInvoiceExportForOrder,
+    handleReviewedInvoiceExport,
     handlePickupStockChange,
     handlePickupStockSave,
     deleteDate,
@@ -142,14 +151,14 @@ export default function Admin() {
   }, []);
 
   useEffect(() => {
-    const hasModal = Boolean(selectedCustomer || selectedPickup || editingOrder);
+    const hasModal = Boolean(selectedCustomer || selectedPickup || editingOrder || invoiceReviewOrder);
     if (hasModal) {
       document.body.classList.add('admin-modal-open');
     } else {
       document.body.classList.remove('admin-modal-open');
     }
     return () => document.body.classList.remove('admin-modal-open');
-  }, [selectedCustomer, selectedPickup, editingOrder]);
+  }, [selectedCustomer, selectedPickup, editingOrder, invoiceReviewOrder]);
 
   if (!isLoggedIn) {
     return (
@@ -285,8 +294,10 @@ export default function Admin() {
               isAddingDate={isAddingDate}
               newPickupDate={newPickupDate}
               newPickupLocation={newPickupLocation}
+              newPickupSpecialNote={newPickupSpecialNote}
               changingDateId={changingDateId}
               changePickupDate={changePickupDate}
+              changePickupSpecialNote={changePickupSpecialNote}
               changeEmailUsers={changeEmailUsers}
               dateInputRef={dateInputRef}
               orderCountByPickupKey={orderCountByPickupKey}
@@ -298,7 +309,9 @@ export default function Admin() {
               onSetIsAddingDate={setIsAddingDate}
               onSetNewPickupLocation={setNewPickupLocation}
               onSetNewPickupDate={setNewPickupDate}
+              onSetNewPickupSpecialNote={setNewPickupSpecialNote}
               onSetChangePickupDate={setChangePickupDate}
+              onSetChangePickupSpecialNote={setChangePickupSpecialNote}
               onSetChangeEmailUsers={setChangeEmailUsers}
               onAddDateClick={handleAddDateClick}
               addDateButtonLabel={addDateButtonLabel}
@@ -405,6 +418,13 @@ export default function Admin() {
         adminLanguage={adminLanguage}
         onClose={() => setEditingOrder(null)}
         onSave={handleUpdateAdminOrder}
+      />
+      <AdminInvoiceReviewModal
+        order={invoiceReviewOrder}
+        adminLanguage={adminLanguage}
+        exporting={invoiceExporting}
+        onClose={() => setInvoiceReviewOrder(null)}
+        onExport={handleReviewedInvoiceExport}
       />
     </div>
   );

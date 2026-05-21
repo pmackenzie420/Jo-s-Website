@@ -16,17 +16,17 @@ const fetchOrdersPage = ({ limit = 500, offset = 0 } = {}) =>
 const updatePickupStock = ({ date, location, items }) =>
   axios.put(`${API_URL}/admin/pickup-stock`, { date, location, items }, withAuth);
 
-const addPickupDate = ({ dateValue, location }) =>
+const addPickupDate = ({ dateValue, location, specialNote = '' }) =>
   axios.post(
     `${API_URL}/admin/pickup-dates`,
-    { date_value: dateValue, location },
+    { date_value: dateValue, location, special_note: specialNote },
     withAuth
   );
 
-const updatePickupDate = ({ dateId, dateValue, emailUsers = false }) =>
+const updatePickupDate = ({ dateId, dateValue, specialNote = '', emailUsers = false }) =>
   axios.put(
     `${API_URL}/admin/pickup-dates/${dateId}`,
-    { date_value: dateValue, email_users: emailUsers },
+    { date_value: dateValue, special_note: specialNote, email_users: emailUsers },
     withAuth
   );
 

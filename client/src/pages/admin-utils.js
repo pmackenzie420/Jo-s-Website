@@ -10,6 +10,11 @@ const LOCATION_OPTIONS = Object.entries(LOCATION_LABELS).map(([value, label]) =>
   label
 }));
 
+const EVENING_PICKUP_NOTE = [
+  'Special note: This is an evening pickup date. Pickups must be made between {time} and {time}.',
+  'Note spéciale : Cette date est une date de ramassage en soirée. Les ramassages doivent être faits entre {time} et {time}.'
+].join('\n\n');
+
 const buildPickupKey = (date, location) => `${date}::${location}`;
 
 const parsePickupKey = (value) => {
@@ -277,6 +282,7 @@ const buildShortSummary = (items, itemCount, language = 'en') => {
 export {
   LOCATION_LABELS,
   LOCATION_OPTIONS,
+  EVENING_PICKUP_NOTE,
   getTabConfig,
   buildPickupKey,
   parsePickupKey,

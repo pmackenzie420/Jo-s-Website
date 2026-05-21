@@ -87,6 +87,7 @@ export default function Checkout({ lang }) {
       ? pickupLocationLabels[formData.pickupLocation]
       : formData.pickupLocation || '';
   const pickupDateLabel = formData.pickupDate ? formatPickupDate(formData.pickupDate) : '';
+  const pickupSpecialNote = String(formData.pickupSpecialNote || '').trim();
 
   const payButtonLabel = loading
     ? (lang === 'en' ? 'Processing...' : 'Traitement...')
@@ -394,6 +395,11 @@ export default function Checkout({ lang }) {
                 <div className="summary-pickup-value">
                   {pickupDateLabel} · {pickupLocationLabel}
                 </div>
+                {pickupSpecialNote && (
+                  <div className="summary-pickup-note">
+                    <span>Special note / Note spéciale:</span> {pickupSpecialNote}
+                  </div>
+                )}
               </div>
             )}
             {cartItems.map((item, idx) => (

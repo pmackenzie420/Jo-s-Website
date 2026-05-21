@@ -160,6 +160,7 @@ const ensureSchema = async (client) => {
             date_value DATE NOT NULL,
             location TEXT NOT NULL,
             is_active BOOLEAN NOT NULL DEFAULT true,
+            special_note TEXT,
             created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
         )
     `);

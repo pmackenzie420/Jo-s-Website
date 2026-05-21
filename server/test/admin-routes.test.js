@@ -305,6 +305,59 @@ test('admin add pickup date rejects duplicates for same date and location', asyn
     assert.equal(insertCalled, false);
 });
 
+test('admin add pickup date stores optional special note', async () => {
+    let insertParams = null;
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+            if (
+                normalizedSql.includes('FROM pickup_dates')
+                && normalizedSql.includes('WHERE date_value = $1 AND location = $2')
+            ) {
+                return { rows: [] };
+            }
+            if (normalizedSql.includes('INSERT INTO pickup_dates (date_value, location, special_note)')) {
+                insertParams = params;
+                return {
+                    rows: [{
+                        id: 'pickup-date-1',
+                        date_value: '2026-06-01',
+                        location: 'hemmingford',
+                        special_note: 'Evening pickup from 6 PM to 8 PM.'
+                    }]
+                };
+            }
+            if (normalizedSql.includes('SELECT id, COALESCE(stock, 0) as stock FROM hens')) {
+                return { rows: [] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const handlers = registerRoutesForTest(pool);
+    const handler = handlers['POST /api/admin/pickup-dates'];
+    assert.ok(handler);
+
+    const req = {
+        body: {
+            date_value: '2026-06-01',
+            location: 'hemmingford',
+            special_note: 'Evening pickup from 6 PM to 8 PM.'
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.deepEqual(insertParams, [
+        '2026-06-01',
+        'hemmingford',
+        'Evening pickup from 6 PM to 8 PM.'
+    ]);
+    assert.equal(res.body?.special_note, 'Evening pickup from 6 PM to 8 PM.');
+});
+
 test('admin pickup date update merges into existing target and emails affected users', async () => {
     const pool = {
         async query(sql, params) {
@@ -412,6 +465,58 @@ test('admin pickup date update merges into existing target and emails affected u
         sentMessages.some((message) => String(message?.subject || '').includes('Changement de date de ramassage')),
         true
     );
+});
+
+test('admin pickup date update allows special-note-only changes', async () => {
+    let noteUpdateParams = null;
+    const pool = {
+        async query(sql, params) {
+            const normalizedSql = normalizeSql(sql);
+            if (normalizedSql.includes('BEGIN') || normalizedSql.includes('COMMIT') || normalizedSql.includes('ROLLBACK')) {
+                return { rows: [] };
+            }
+            if (normalizedSql.includes('FROM pickup_dates') && normalizedSql.includes('WHERE id = $1') && normalizedSql.includes('FOR UPDATE')) {
+                assert.deepEqual(params, ['pickup-date-1']);
+                return {
+                    rows: [{
+                        id: 'pickup-date-1',
+                        date_value: '2026-06-01',
+                        location: 'hemmingford',
+                        special_note: null
+                    }]
+                };
+            }
+            if (normalizedSql.includes('UPDATE pickup_dates SET special_note = NULLIF($1, \'\') WHERE id = $2')) {
+                noteUpdateParams = params;
+                return { rowCount: 1, rows: [] };
+            }
+            throw new Error(`Unexpected SQL: ${normalizedSql}`);
+        }
+    };
+
+    const handlers = registerRoutesForTest(pool);
+    const handler = handlers['PUT /api/admin/pickup-dates/:id'];
+    assert.ok(handler);
+
+    const req = {
+        params: { id: 'pickup-date-1' },
+        body: {
+            date_value: '2026-06-01',
+            special_note: 'Evening pickup from 6 PM to 8 PM.'
+        }
+    };
+    const res = createMockRes();
+
+    await handler(req, res);
+
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.body?.success, true);
+    assert.equal(res.body?.noteUpdated, true);
+    assert.equal(res.body?.movedOrders, 0);
+    assert.deepEqual(noteUpdateParams, [
+        'Evening pickup from 6 PM to 8 PM.',
+        'pickup-date-1'
+    ]);
 });
 
 test('admin cancelling orders releases reserved stock before direct status updates', async () => {

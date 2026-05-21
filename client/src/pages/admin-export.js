@@ -8,6 +8,12 @@ import {
   normalizeOrderNumber
 } from './admin-utils.js';
 import { resolveInvoiceDisplayDate } from './admin-invoice-utils.js';
+import {
+  normalizeInvoiceItems,
+  parseAmount,
+  resolveInvoicePaymentAmounts,
+  resolveInvoiceTotalAmount
+} from './admin-invoice-pricing.js';
 
 const INVOICE_TEMPLATE_SOURCE_FIXED = '/invoicefixedspelling.jpg';
 const INVOICE_TEMPLATE_SOURCE_FIXED_LONG = '/invoicefixedspellingandlongclient.jpg';
@@ -186,47 +192,6 @@ const savePdfDocument = (doc, filename) => {
   }
 
   doc.save(filename);
-};
-
-const parseAmount = (value) => {
-  const number = Number(value);
-  return Number.isFinite(number) ? number : 0;
-};
-
-const parseAmountFromCents = (value) => {
-  const cents = Number(value);
-  if (!Number.isFinite(cents)) return 0;
-  return cents / 100;
-};
-
-const parseAmountOrNull = (value) => {
-  const amount = Number(value);
-  return Number.isFinite(amount) ? amount : null;
-};
-
-const parseAmountFromCentsOrNull = (value) => {
-  const cents = Number(value);
-  return Number.isFinite(cents) ? cents / 100 : null;
-};
-
-const parseLineAmount = (item, quantity, unitAmount) => {
-  const lineCents = Number(item?.lineCents ?? item?.line_cents ?? 0);
-  if (Number.isFinite(lineCents) && lineCents > 0) {
-    return lineCents / 100;
-  }
-  return Math.max(quantity, 0) * unitAmount;
-};
-
-const parseUnitAmount = (item, quantity) => {
-  const unitCents = Number(item?.unitCents ?? item?.unit_cents ?? 0);
-  if (Number.isFinite(unitCents) && unitCents > 0) {
-    return unitCents / 100;
-  }
-  const lineCents = Number(item?.lineCents ?? item?.line_cents ?? 0);
-  if (Number.isFinite(lineCents) && lineCents > 0 && quantity > 0) {
-    return (lineCents / 100) / quantity;
-  }
-  return 0;
 };
 
 const byInvoiceOrder = (first, second) => {
@@ -413,33 +378,6 @@ const buildInvoiceClientLines = (order, context, maxWidth, layout) => {
   ];
 };
 
-const normalizeInvoiceItems = (orderItems = []) => {
-  const grouped = new Map();
-  (Array.isArray(orderItems) ? orderItems : []).forEach((item) => {
-    const quantityRaw = Number(item?.quantity ?? item?.qty ?? 0);
-    const quantity = Number.isFinite(quantityRaw) ? Math.floor(quantityRaw) : 0;
-    if (quantity <= 0) return;
-
-    const unitAmount = parseUnitAmount(item, quantity);
-    const lineAmount = parseLineAmount(item, quantity, unitAmount);
-    const description = String(item?.displayName || item?.name || 'Item').trim() || 'Item';
-    const key = `${description}::${unitAmount.toFixed(2)}`;
-    const current = grouped.get(key) || {
-      quantity: 0,
-      description,
-      unitAmount,
-      lineAmount: 0
-    };
-    grouped.set(key, {
-      quantity: current.quantity + quantity,
-      description,
-      unitAmount,
-      lineAmount: current.lineAmount + lineAmount
-    });
-  });
-  return Array.from(grouped.values()).sort((a, b) => a.description.localeCompare(b.description));
-};
-
 const clampItemsToTemplateRows = (items, layout) => {
   const maxRows = layout.rowY.length;
   if (items.length <= maxRows) return items;
@@ -456,38 +394,6 @@ const clampItemsToTemplateRows = (items, layout) => {
   });
   return visible;
 };
-
-const resolveInvoicePaymentAmounts = (order, totalAmount) => {
-  const paidDirect = parseAmountOrNull(order?.amountPaid);
-  const paidFromCents = parseAmountFromCentsOrNull(order?.amount_paid_cents);
-  const dueDirect = parseAmountOrNull(order?.amountDue);
-  const dueFromCents = parseAmountFromCentsOrNull(order?.amount_due_cents);
-
-  let paidAmount = paidDirect ?? paidFromCents;
-  let dueAmount = dueDirect ?? dueFromCents;
-
-  if (paidAmount === null && dueAmount !== null) {
-    paidAmount = Math.max(totalAmount - dueAmount, 0);
-  }
-  if (dueAmount === null && paidAmount !== null) {
-    dueAmount = Math.max(totalAmount - paidAmount, 0);
-  }
-  if (paidAmount === null) {
-    paidAmount = totalAmount;
-  }
-  if (dueAmount === null) {
-    dueAmount = Math.max(totalAmount - paidAmount, 0);
-  }
-
-  return {
-    paidAmount: Math.max(paidAmount, 0),
-    dueAmount: Math.max(dueAmount, 0)
-  };
-};
-
-const resolveInvoiceTotalAmount = (order) => (
-  parseAmount(order?.totalAmount) || parseAmountFromCents(order?.total_cents)
-);
 
 const shouldUseFullPaymentTemplate = (order) => {
   const totalAmount = resolveInvoiceTotalAmount(order);

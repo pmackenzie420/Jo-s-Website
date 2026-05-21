@@ -22,6 +22,7 @@ export default function Order({ lang }) {
     pickupDate,
     setPickupDate,
     availableDateValues,
+    selectedPickupSpecialNote,
     pickupDatesLoading,
     pickupError,
     pickupReady,
@@ -46,6 +47,7 @@ export default function Order({ lang }) {
     pickupRequiredNote: lang === 'en'
       ? 'Pickup date and location are required to proceed.'
       : 'La date et le lieu de ramassage sont requis.',
+    pickupSpecialNote: 'Special note / Note spéciale',
     pickupNotSelected: lang === 'en'
       ? 'Select pickup date to see availability'
       : 'Choisissez une date pour voir la disponibilité',
@@ -121,6 +123,11 @@ export default function Order({ lang }) {
           </div>
           {!pickupReady && (
             <div className="pickup-note">{t.pickupRequiredNote}</div>
+          )}
+          {pickupReady && selectedPickupSpecialNote && (
+            <div className="pickup-special-note">
+              <span>{t.pickupSpecialNote}:</span> {selectedPickupSpecialNote}
+            </div>
           )}
           {pickupError && <div className="pickup-error">{pickupError}</div>}
         </div>

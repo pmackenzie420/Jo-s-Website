@@ -307,6 +307,21 @@
   font-weight: 600;
 }
 
+.pickup-special-note {
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-subtle);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--color-text-strong);
+}
+
+.pickup-special-note span {
+  font-weight: 700;
+}
+
 .btn-checkout:focus-visible {
   outline: none;
   border-color: var(--color-border-strong);
